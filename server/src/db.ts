@@ -1,0 +1,31 @@
+import pg from 'pg';
+import { config } from './config.ts';
+
+// Single shared pool. Raw parameterized SQL everywhere — no ORM.
+export const pool = new pg.Pool({
+  connectionString: config.databaseUrl,
+  max: Number(process.env.PG_POOL_MAX ?? 10),
+  idleTimeoutMillis: 30_000,
+});
+
+export type Row = Record<string, unknown>;
+
+export async function query<T = Row>(text: string, params: unknown[] = []): Promise<T[]> {
+  const res = await pool.query(text, params);
+  return res.rows as T[];
+}
+
+export async function one<T = Row>(text: string, params: unknown[] = []): Promise<T | null> {
+  const rows = await query<T>(text, params);
+  return rows[0] ?? null;
+}
+
+// Run several statements on a single connection (used by recommend to SET work_mem then SELECT).
+export async function withClient<T>(fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    return await fn(client);
+  } finally {
+    client.release();
+  }
+}

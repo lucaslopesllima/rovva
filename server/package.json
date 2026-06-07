@@ -1,0 +1,27 @@
+{
+  "name": "rs-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/index.ts",
+    "dev": "node --watch src/index.ts",
+    "migrate": "node scripts/migrate.ts",
+    "etl": "node etl/etl.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/static": "9.1.3",
+    "fastify": "5.8.5",
+    "jose": "5.9.6",
+    "pg": "8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "@types/pg": "8.11.10",
+    "typescript": "5.7.3"
+  }
+}

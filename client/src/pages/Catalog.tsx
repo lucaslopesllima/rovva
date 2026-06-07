@@ -1,0 +1,146 @@
+import { useEffect, useState } from 'react';
+import { api } from '../lib/api.ts';
+import type { CatalogItem, RepresentedCompany } from '../lib/types.ts';
+import { Badge, Btn, Card, EmptyState, PageHeader, Spinner, cn } from '../lib/ui.tsx';
+import { Icon } from '../lib/icons.tsx';
+
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const brl = (n: number): string => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+type Form = { nome: string; codigo: string; descricao: string; preco: string; represented_id: string };
+const EMPTY: Form = { nome: '', codigo: '', descricao: '', preco: '', represented_id: '' };
+const toForm = (i: CatalogItem): Form => ({
+  nome: i.nome, codigo: i.codigo ?? '', descricao: i.descricao ?? '',
+  preco: i.preco ?? '', represented_id: i.represented_id != null ? String(i.represented_id) : '',
+});
+function toBody(f: Form): Record<string, unknown> {
+  const t = (s: string): string | null => (s.trim() === '' ? null : s.trim());
+  return {
+    nome: f.nome.trim(), codigo: t(f.codigo), descricao: t(f.descricao),
+    preco: f.preco.trim() === '' ? null : Number(f.preco),
+    represented_id: f.represented_id === '' ? null : Number(f.represented_id),
+  };
+}
+
+export function Catalog(): React.JSX.Element {
+  const [list, setList] = useState<CatalogItem[]>([]);
+  const [reps, setReps] = useState<RepresentedCompany[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<number | 'new' | null>(null);
+
+  const load = async (): Promise<void> => {
+    const [c, r] = await Promise.all([
+      api.get<{ items: CatalogItem[] }>('/api/catalog'),
+      api.get<{ empresas: RepresentedCompany[] }>('/api/represented'),
+    ]);
+    setList(c.items);
+    setReps(r.empresas);
+    setLoading(false);
+  };
+  useEffect(() => { void load(); }, []);
+
+  const repName = (id: number | null): string | null => reps.find((r) => r.id === id)?.nome ?? null;
+
+  const create = async (f: Form): Promise<void> => {
+    const r = await api.post<{ item: CatalogItem }>('/api/catalog', toBody(f));
+    setList((xs) => [...xs, r.item]);
+    setEditing(null);
+  };
+  const update = async (id: number, f: Form): Promise<void> => {
+    const r = await api.patch<{ item: CatalogItem }>(`/api/catalog/${id}`, toBody(f));
+    setList((xs) => xs.map((x) => (x.id === id ? r.item : x)));
+    setEditing(null);
+  };
+  const toggleAtivo = async (i: CatalogItem): Promise<void> => {
+    setList((xs) => xs.map((x) => (x.id === i.id ? { ...x, ativo: !x.ativo } : x)));
+    await api.patch(`/api/catalog/${i.id}`, { ativo: !i.ativo });
+  };
+  const remove = async (id: number): Promise<void> => {
+    if (!confirm('Excluir este item do catálogo?')) return;
+    setList((xs) => xs.filter((x) => x.id !== id));
+    await api.del(`/api/catalog/${id}`);
+  };
+
+  return (
+    <div className="space-y-4 p-4 sm:p-6">
+      <PageHeader title="Catálogo" subtitle="Produtos e serviços que você oferece. Vincule na prospecção."
+        actions={editing !== 'new' && <Btn icon="plus" onClick={() => setEditing('new')}>Novo item</Btn>} />
+
+      {loading ? <Spinner /> : (
+        <Card className="p-4">
+          {editing === 'new' && (
+            <div className="mb-4"><ItemForm reps={reps} initial={EMPTY} onSave={create} onCancel={() => setEditing(null)} /></div>
+          )}
+
+          <div className="space-y-2">
+            {list.length === 0 && editing !== 'new' && (
+              <EmptyState icon="box" title="Catálogo vazio" hint="Cadastre os produtos/serviços que você representa." />
+            )}
+            {list.map((i) => editing === i.id ? (
+              <Card key={i.id} className="border-brand-200 bg-brand-50/40 p-3">
+                <ItemForm reps={reps} initial={toForm(i)} onSave={(f) => update(i.id, f)} onCancel={() => setEditing(null)} />
+              </Card>
+            ) : (
+              <div key={i.id} className={cn('flex items-start gap-3 rounded-xl border border-ink-200/70 bg-white p-3', !i.ativo && 'opacity-60')}>
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink-100 text-ink-500"><Icon name="box" size={18} /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p className="truncate text-sm font-semibold text-ink-800">{i.nome}</p>
+                    {i.codigo && <Badge tone="neutral">{i.codigo}</Badge>}
+                    {repName(i.represented_id) && <Badge tone="brand">{repName(i.represented_id)}</Badge>}
+                    {!i.ativo && <Badge tone="neutral">inativo</Badge>}
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-ink-400">
+                    {[i.preco != null ? brl(Number(i.preco)) : null, i.descricao].filter(Boolean).join(' · ') || 'sem detalhes'}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button onClick={() => void toggleAtivo(i)} title={i.ativo ? 'Desativar' : 'Ativar'}
+                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name={i.ativo ? 'check' : 'x'} size={16} /></button>
+                  <button onClick={() => setEditing(i.id)} aria-label="Editar"
+                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="settings" size={16} /></button>
+                  <button onClick={() => void remove(i.id)} aria-label="Excluir"
+                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="x" size={16} /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function ItemForm({ reps, initial, onSave, onCancel }: {
+  reps: RepresentedCompany[]; initial: Form; onSave: (f: Form) => void | Promise<void>; onCancel: () => void;
+}): React.JSX.Element {
+  const [f, setF] = useState<Form>(initial);
+  const [busy, setBusy] = useState(false);
+  const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF((p) => ({ ...p, [k]: e.target.value }));
+
+  const submit = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (!f.nome.trim()) return;
+    setBusy(true);
+    try { await onSave(f); } finally { setBusy(false); }
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-2.5">
+      <input autoFocus value={f.nome} onChange={set('nome')} placeholder="Nome do produto / serviço *" className={inputCls} />
+      <div className="grid gap-2.5 sm:grid-cols-3">
+        <input value={f.codigo} onChange={set('codigo')} placeholder="Código / SKU" className={inputCls} />
+        <input type="number" min="0" step="0.01" value={f.preco} onChange={set('preco')} placeholder="Preço (R$)" className={inputCls} />
+        <select value={f.represented_id} onChange={set('represented_id')} className={inputCls}>
+          <option value="">Representada (opcional)</option>
+          {reps.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
+        </select>
+      </div>
+      <textarea value={f.descricao} onChange={set('descricao')} placeholder="Descrição" rows={2} className={cn(inputCls, 'resize-y')} />
+      <div className="flex justify-end gap-2">
+        <Btn variant="ghost" type="button" onClick={onCancel}>Cancelar</Btn>
+        <Btn icon="check" type="submit" disabled={busy}>{busy ? '…' : 'Salvar'}</Btn>
+      </div>
+    </form>
+  );
+}

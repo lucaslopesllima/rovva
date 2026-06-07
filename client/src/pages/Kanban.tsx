@@ -1,0 +1,540 @@
+import { useEffect, useMemo, useState } from 'react';
+import { api } from '../lib/api.ts';
+import type { Brand, CatalogItem, Contact, KanbanCard, NamedItem, RepresentedCompany, Stage } from '../lib/types.ts';
+import { Badge, Btn, PageHeader, Spinner, StatCard, cn, type Tone } from '../lib/ui.tsx';
+import { Icon } from '../lib/icons.tsx';
+import { CompanyFilterBar, useCompanyFilter } from '../lib/companyFilter.tsx';
+import { CompanyModal } from '../lib/companyModal.tsx';
+
+const STATUS_TONE: Record<string, Tone> = {
+  prospect: 'info', cliente: 'success', descartado: 'neutral',
+};
+const STATUS_LABEL: Record<string, string> = {
+  prospect: 'Prospect', cliente: 'Cliente', descartado: 'Descartado',
+};
+const STATUS_OPTS = ['prospect', 'cliente', 'descartado'] as const;
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const brl = (n: number): string => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+
+export function Kanban(): React.JSX.Element {
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [cards, setCards] = useState<KanbanCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dragId, setDragId] = useState<number | null>(null);
+  const [over, setOver] = useState<number | 'none' | null>(null);
+  const [editing, setEditing] = useState<KanbanCard | null>(null);
+  const [viewing, setViewing] = useState<number | null>(null); // company_id em visualização
+  const [reps, setReps] = useState<RepresentedCompany[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [scenarios, setScenarios] = useState<NamedItem[]>([]);
+  const [actions, setActions] = useState<NamedItem[]>([]);
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filter = useCompanyFilter('funil');
+
+  const load = async (): Promise<void> => {
+    const r = await api.get<{ stages: Stage[]; cards: KanbanCard[] }>('/api/kanban');
+    setStages(r.stages);
+    setCards(r.cards);
+    setLoading(false);
+  };
+  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void Promise.all([
+      api.get<{ empresas: RepresentedCompany[] }>('/api/represented').then((r) => setReps(r.empresas)),
+      api.get<{ brands: Brand[] }>('/api/brands').then((r) => setBrands(r.brands)),
+      api.get<{ items: NamedItem[] }>('/api/scenarios').then((r) => setScenarios(r.items)),
+      api.get<{ items: NamedItem[] }>('/api/actions').then((r) => setActions(r.items)),
+      api.get<{ items: CatalogItem[] }>('/api/catalog').then((r) => setCatalog(r.items)),
+    ]).catch(() => undefined);
+  }, []);
+
+  const move = async (cardId: number, stageId: number | null): Promise<void> => {
+    const card = cards.find((c) => c.id === cardId);
+    if (!card || card.stage_id === stageId) return;
+    setCards((cs) => cs.map((c) => (c.id === cardId ? { ...c, stage_id: stageId } : c))); // optimistic
+    try {
+      await api.patch(`/api/relationships/${cardId}`, { stage_id: stageId });
+    } catch {
+      void load(); // revert from server on failure
+    }
+  };
+
+  const saveEdit = async (id: number, patch: EditPatch): Promise<void> => {
+    await api.patch(`/api/relationships/${id}`, patch);
+    await load(); // refetch so the joined dropdown labels (marca, contato, etc.) come back fresh
+    setEditing(null);
+  };
+
+  const removeFromFunnel = async (id: number): Promise<void> => {
+    setCards((cs) => cs.filter((c) => c.id !== id)); // optimista
+    setEditing(null);
+    try { await api.del(`/api/relationships/${id}`); } catch { void load(); }
+  };
+
+  const visibleCards = useMemo(() => filter.apply(cards), [filter.apply, cards]);
+
+  if (loading) return <div className="p-6"><Spinner /></div>;
+
+  const columns: { key: number | 'none'; nome: string }[] = [
+    ...stages.map((s) => ({ key: s.id as number | 'none', nome: s.nome })),
+  ];
+  const hasOrphans = visibleCards.some((c) => c.stage_id === null);
+  if (hasOrphans) columns.unshift({ key: 'none', nome: 'Sem etapa' });
+
+  const totalValor = visibleCards.reduce((s, c) => s + Number(c.valor_estimado ?? 0), 0);
+  const clientes = visibleCards.filter((c) => c.status === 'cliente').length;
+  const oculto = cards.length - visibleCards.length;
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="space-y-4 p-4 sm:p-6">
+        <PageHeader title="Funil de vendas" subtitle="Arraste os cards entre as etapas."
+          actions={
+            <Btn variant={filter.filtroAtivo ? 'primary' : 'soft'} icon="search" onClick={() => setFiltersOpen((v) => !v)}>
+              Filtros{oculto > 0 ? ` · ${oculto} ocultos` : ''}
+            </Btn>
+          } />
+
+        {filtersOpen && <CompanyFilterBar f={filter} />}
+
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatCard label={oculto > 0 ? 'Negócios (filtrados)' : 'Negócios'} value={visibleCards.length} icon="layers" tone="brand" />
+          <StatCard label="Valor em funil" value={brl(totalValor)} icon="trendingUp" tone="success" />
+          <StatCard label="Clientes" value={clientes} icon="users" tone="info" />
+          <StatCard label="Etapas" value={stages.length} icon="columns" tone="neutral" />
+        </div>
+      </div>
+
+      <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-4 pb-4 sm:px-6 sm:pb-6">
+        {columns.map((col) => {
+          const colCards = visibleCards.filter((c) => (c.stage_id ?? 'none') === col.key);
+          const valor = colCards.reduce((s, c) => s + Number(c.valor_estimado ?? 0), 0);
+          const target = col.key === 'none' ? null : (col.key as number);
+          const active = over === col.key;
+          return (
+            <div key={String(col.key)}
+              onDragOver={(e) => { e.preventDefault(); setOver(col.key); }}
+              onDragLeave={() => setOver((o) => (o === col.key ? null : o))}
+              onDrop={() => { if (dragId !== null) void move(dragId, target); setDragId(null); setOver(null); }}
+              className={cn('flex w-72 shrink-0 flex-col rounded-2xl border p-2 transition-colors',
+                active ? 'border-brand-300 bg-brand-50/60' : 'border-ink-200/70 bg-ink-100/50')}>
+              <div className="flex items-center justify-between px-2 py-1.5">
+                <span className="text-sm font-semibold text-ink-700">{col.nome}</span>
+                <span className="tabnums rounded-full bg-white px-2 py-0.5 text-xs font-medium text-ink-500 shadow-card">{colCards.length}</span>
+              </div>
+              {valor > 0 && (
+                <p className="tabnums px-2 pb-1.5 text-xs font-medium text-ink-400">{brl(valor)}</p>
+              )}
+              <div className="flex-1 space-y-2 overflow-auto px-0.5 pb-1">
+                {colCards.map((c) => (
+                  <div key={c.id} draggable
+                    onDragStart={() => setDragId(c.id)}
+                    onDragEnd={() => { setDragId(null); setOver(null); }}
+                    className={cn('group relative cursor-grab rounded-xl border border-ink-200/70 bg-white p-3 shadow-card transition active:cursor-grabbing',
+                      dragId === c.id && 'opacity-50')}>
+                    <button type="button"
+                      onClick={() => setEditing(c)}
+                      title="Editar prospecção"
+                      className="absolute right-2 top-2 rounded-lg p-1 text-ink-300 opacity-0 transition hover:bg-ink-100 hover:text-ink-600 group-hover:opacity-100 focus:opacity-100">
+                      <Icon name="pencil" size={14} />
+                    </button>
+                    <div className="flex items-center gap-1 pr-6">
+                      <p className="truncate text-sm font-semibold text-ink-800">{c.nome_fantasia || c.razao_social}</p>
+                      <button type="button"
+                        onClick={() => setViewing(c.company_id)}
+                        title="Ver dados da empresa"
+                        className="shrink-0 rounded-md p-0.5 text-ink-300 transition hover:bg-ink-100 hover:text-brand-600">
+                        <Icon name="eye" size={14} />
+                      </button>
+                    </div>
+                    <p className="truncate text-xs text-ink-400">{c.razao_social}</p>
+                    {(c.marca || c.contatos.length > 0) && (
+                      <p className="mt-1 truncate text-xs text-ink-500">
+                        {[c.marca, c.contatos.map((x) => x.nome).join(', ')].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
+                    {c.catalogo.length > 0 && (
+                      <p className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-xs text-ink-400">
+                        <Icon name="box" size={12} className="shrink-0" />
+                        <span className="truncate">{c.catalogo.map((x) => x.nome).join(', ')}</span>
+                      </p>
+                    )}
+                    {c.valor_estimado && Number(c.valor_estimado) > 0 && (
+                      <p className="tabnums mt-1 text-xs font-semibold text-emerald-600">{brl(Number(c.valor_estimado))}</p>
+                    )}
+                    <div className="mt-2 flex items-center justify-between">
+                      <Badge tone={STATUS_TONE[c.status] ?? 'neutral'}>{c.status}</Badge>
+                      <span className="inline-flex min-w-0 items-center gap-1 text-xs text-ink-400">
+                        <Icon name="mapPin" size={12} className="shrink-0" />
+                        <span className="truncate">{[c.cidade, c.uf].filter(Boolean).join(' · ')}</span>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {colCards.length === 0 && (
+                  <p className="rounded-xl border border-dashed border-ink-200 px-2 py-6 text-center text-xs text-ink-300">
+                    Solte cards aqui
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {editing && (
+        <EditModal card={editing} stages={stages} reps={reps} brands={brands}
+          scenarios={scenarios} actions={actions} catalog={catalog}
+          onCatalogCreated={(it) => setCatalog((xs) => [...xs, it])}
+          onRemove={removeFromFunnel}
+          onSave={saveEdit} onClose={() => setEditing(null)} />
+      )}
+      {viewing !== null && (
+        <CompanyModal companyId={viewing} onClose={() => setViewing(null)} />
+      )}
+    </div>
+  );
+}
+
+interface EditPatch {
+  stage_id: number | null; status: string; valor_estimado: number | null; notas: string | null;
+  represented_id: number | null; marca_id: number | null; contato_ids: number[]; catalogo_ids: number[];
+  cenario_id: number | null; acao_id: number | null;
+  data_contato: string | null; previsao_data: string | null;
+}
+
+const txt = (s: string): string | null => (s.trim() === '' ? null : s.trim());
+const numOrNull = (s: string): number | null => (s === '' ? null : Number(s));
+const Field = ({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element => (
+  <label className="block">
+    <span className="mb-1 block text-xs font-medium text-ink-500">{label}</span>
+    {children}
+  </label>
+);
+
+function EditModal({ card, stages, reps, brands, scenarios, actions, catalog, onCatalogCreated, onRemove, onSave, onClose }: {
+  card: KanbanCard; stages: Stage[]; reps: RepresentedCompany[]; brands: Brand[];
+  scenarios: NamedItem[]; actions: NamedItem[]; catalog: CatalogItem[];
+  onCatalogCreated: (item: CatalogItem) => void;
+  onRemove: (id: number) => void | Promise<void>;
+  onSave: (id: number, patch: EditPatch) => Promise<void>; onClose: () => void;
+}): React.JSX.Element {
+  const [stageId, setStageId] = useState<number | null>(card.stage_id);
+  const [status, setStatus] = useState<string>(card.status);
+  const [valor, setValor] = useState<string>(card.valor_estimado ?? '');
+  const [representadaId, setRepresentadaId] = useState<number | null>(card.represented_id);
+  const [marcaId, setMarcaId] = useState<number | null>(card.marca_id);
+  const [contatoIds, setContatoIds] = useState<number[]>(card.contatos.map((c) => c.id));
+  const [catalogoIds, setCatalogoIds] = useState<number[]>(card.catalogo.map((c) => c.id));
+  const [cenarioId, setCenarioId] = useState<number | null>(card.cenario_id);
+  const [acaoId, setAcaoId] = useState<number | null>(card.acao_id);
+  const [dataContato, setDataContato] = useState<string>(card.data_contato ?? '');
+  const [previsaoData, setPrevisaoData] = useState<string>(card.previsao_data ?? '');
+  const [notas, setNotas] = useState<string>(card.notas ?? '');
+  const [busy, setBusy] = useState(false);
+
+  // Contatos da empresa-cliente deste card (carregados sob demanda) + criação via modal.
+  const [contatos, setContatos] = useState<Contact[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [creatingProd, setCreatingProd] = useState(false);
+
+  useEffect(() => {
+    void api.get<{ contacts: Contact[] }>(`/api/contacts?company_id=${card.company_id}`)
+      .then((r) => setContatos(r.contacts)).catch(() => undefined);
+  }, [card.company_id]);
+
+  // Marca filtrada pela representada selecionada.
+  const marcasFiltradas = brands.filter((b) => representadaId == null || b.represented_id === representadaId);
+  const selecionados = contatoIds
+    .map((id) => contatos.find((c) => c.id === id))
+    .filter((c): c is Contact => !!c);
+  const disponiveis = contatos.filter((c) => !contatoIds.includes(c.id));
+  const catSel = catalogoIds.map((id) => catalog.find((c) => c.id === id)).filter((c): c is CatalogItem => !!c);
+  const catDisp = catalog.filter((c) => c.ativo && !catalogoIds.includes(c.id));
+
+  const onCreatedContato = (c: Contact): void => {
+    setContatos((xs) => [...xs, c]);
+    setContatoIds((ids) => [...ids, c.id]);
+    setCreating(false);
+  };
+
+  const onCreatedProduto = (it: CatalogItem): void => {
+    onCatalogCreated(it);
+    setCatalogoIds((ids) => [...ids, it.id]);
+    setCreatingProd(false);
+  };
+
+  const submit = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await onSave(card.id, {
+        stage_id: stageId,
+        status,
+        valor_estimado: numOrNull(valor.trim()),
+        represented_id: representadaId,
+        marca_id: marcaId,
+        contato_ids: contatoIds,
+        catalogo_ids: catalogoIds,
+        cenario_id: cenarioId,
+        acao_id: acaoId,
+        data_contato: dataContato === '' ? null : dataContato,
+        previsao_data: previsaoData === '' ? null : previsaoData,
+        notas: txt(notas),
+      });
+    } finally { setBusy(false); }
+  };
+
+  return (
+   <>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4"
+      onClick={onClose}>
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-ink-200 bg-white shadow-pop"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-ink-100 p-5">
+          <div>
+            <h2 className="text-base font-semibold text-ink-800">{card.nome_fantasia || card.razao_social}</h2>
+            <p className="truncate text-xs text-ink-400">{card.razao_social}</p>
+            {(card.cidade || card.uf) && (
+              <p className="mt-0.5 inline-flex items-center gap-1 text-xs text-ink-400">
+                <Icon name="mapPin" size={12} />{[card.cidade, card.uf].filter(Boolean).join(' · ')}
+              </p>
+            )}
+          </div>
+          <button type="button" onClick={onClose}
+            className="rounded-lg p-1 text-ink-400 transition hover:bg-ink-100 hover:text-ink-700">
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+          <div className="space-y-3 overflow-y-auto p-5">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Etapa do funil">
+                <select value={stageId ?? ''} onChange={(e) => setStageId(numOrNull(e.target.value))} className={inputCls}>
+                  <option value="">Sem etapa</option>
+                  {stages.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                </select>
+              </Field>
+              <Field label="Status">
+                <select value={status} onChange={(e) => setStatus(e.target.value)} className={inputCls}>
+                  {STATUS_OPTS.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                </select>
+              </Field>
+              <Field label="Representada">
+                <select value={representadaId ?? ''}
+                  onChange={(e) => { setRepresentadaId(numOrNull(e.target.value)); setMarcaId(null); }}
+                  className={inputCls}>
+                  <option value="">—</option>
+                  {reps.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
+                </select>
+              </Field>
+              <Field label="Marca">
+                <select value={marcaId ?? ''} onChange={(e) => setMarcaId(numOrNull(e.target.value))}
+                  disabled={representadaId == null} className={cn(inputCls, representadaId == null && 'opacity-50')}>
+                  <option value="">{representadaId == null ? 'Escolha a representada' : '—'}</option>
+                  {marcasFiltradas.map((b) => <option key={b.id} value={b.id}>{b.nome}</option>)}
+                </select>
+              </Field>
+              <div className="sm:col-span-2">
+                <span className="mb-1 block text-xs font-medium text-ink-500">Contatos</span>
+                {selecionados.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {selecionados.map((c) => (
+                      <span key={c.id} className="inline-flex items-center gap-1 rounded-full bg-ink-100 px-2.5 py-1 text-xs font-medium text-ink-700">
+                        {c.nome}{c.cargo ? ` · ${c.cargo}` : ''}
+                        <button type="button" onClick={() => setContatoIds((ids) => ids.filter((x) => x !== c.id))}
+                          className="text-ink-400 hover:text-rose-500" aria-label="Remover">
+                          <Icon name="x" size={13} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <select value="" onChange={(e) => { const id = numOrNull(e.target.value); if (id != null) setContatoIds((ids) => [...ids, id]); }}
+                    className={cn(inputCls, 'flex-1')} disabled={disponiveis.length === 0}>
+                    <option value="">{disponiveis.length === 0 ? 'Nenhum contato disponível' : 'Adicionar contato…'}</option>
+                    {disponiveis.map((c) => <option key={c.id} value={c.id}>{c.nome}{c.cargo ? ` (${c.cargo})` : ''}</option>)}
+                  </select>
+                  <Btn size="sm" variant="soft" type="button" icon="plus" onClick={() => setCreating(true)} title="Criar novo contato" />
+                </div>
+              </div>
+              <div className="sm:col-span-2">
+                <span className="mb-1 block text-xs font-medium text-ink-500">Catálogo</span>
+                {catSel.length > 0 && (
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {catSel.map((c) => (
+                      <span key={c.id} className="inline-flex items-center gap-1 rounded-full bg-ink-100 px-2.5 py-1 text-xs font-medium text-ink-700">
+                        {c.nome}{c.codigo ? ` · ${c.codigo}` : ''}
+                        <button type="button" onClick={() => setCatalogoIds((ids) => ids.filter((x) => x !== c.id))}
+                          className="text-ink-400 hover:text-rose-500" aria-label="Remover">
+                          <Icon name="x" size={13} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <select value="" onChange={(e) => { const id = numOrNull(e.target.value); if (id != null) setCatalogoIds((ids) => [...ids, id]); }}
+                    className={cn(inputCls, 'flex-1')} disabled={catDisp.length === 0}>
+                    <option value="">{catalog.length === 0 ? 'Nenhum item no catálogo' : catDisp.length === 0 ? 'Todos adicionados' : 'Adicionar item do catálogo…'}</option>
+                    {catDisp.map((c) => <option key={c.id} value={c.id}>{c.nome}{c.codigo ? ` (${c.codigo})` : ''}</option>)}
+                  </select>
+                  <Btn size="sm" variant="soft" type="button" icon="plus" onClick={() => setCreatingProd(true)} title="Criar novo produto" />
+                </div>
+              </div>
+              <Field label="Cenário atual">
+                <select value={cenarioId ?? ''} onChange={(e) => setCenarioId(numOrNull(e.target.value))} className={inputCls}>
+                  <option value="">—</option>
+                  {scenarios.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                </select>
+              </Field>
+              <Field label="Ação para próximo nível">
+                <select value={acaoId ?? ''} onChange={(e) => setAcaoId(numOrNull(e.target.value))} className={inputCls}>
+                  <option value="">—</option>
+                  {actions.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}
+                </select>
+              </Field>
+              <Field label="Data do contato">
+                <input type="date" value={dataContato} onChange={(e) => setDataContato(e.target.value)} className={inputCls} />
+              </Field>
+              <Field label="Valor estimado (R$)">
+                <input type="number" min="0" step="0.01" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" className={inputCls} />
+              </Field>
+              <Field label="Previsão de faturamento (data)">
+                <input type="date" value={previsaoData} onChange={(e) => setPrevisaoData(e.target.value)} className={inputCls} />
+              </Field>
+            </div>
+
+            <Field label="Notas">
+              <textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={3}
+                placeholder="Observações livres" className={cn(inputCls, 'resize-y')} />
+            </Field>
+          </div>
+          <div className="flex items-center gap-2 border-t border-ink-100 p-4">
+            <Btn variant="danger" type="button" icon="x"
+              onClick={() => { if (confirm('Remover esta empresa do funil?')) void onRemove(card.id); }}>
+              Remover do funil
+            </Btn>
+            <div className="ml-auto flex gap-2">
+              <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
+              <Btn icon="check" type="submit" disabled={busy}>{busy ? '…' : 'Salvar'}</Btn>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+    {creating && (
+      <NovoContato companyId={card.company_id} onCreated={onCreatedContato} onCancel={() => setCreating(false)} />
+    )}
+    {creatingProd && (
+      <NovoProduto reps={reps} onCreated={onCreatedProduto} onCancel={() => setCreatingProd(false)} />
+    )}
+   </>
+  );
+}
+
+// Modal "Criar novo contato" — vincula o contato à empresa-cliente do card.
+function NovoContato({ companyId, onCreated, onCancel }: {
+  companyId: number; onCreated: (c: Contact) => void; onCancel: () => void;
+}): React.JSX.Element {
+  const [nome, setNome] = useState('');
+  const [cargo, setCargo] = useState('');
+  const [telefone, setTelefone] = useState('');
+  const [email, setEmail] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const save = async (): Promise<void> => {
+    if (!nome.trim()) return;
+    setBusy(true);
+    try {
+      const r = await api.post<{ contact: Contact }>('/api/contacts', {
+        nome: nome.trim(), cargo: txt(cargo), telefone: txt(telefone), email: txt(email), company_id: companyId,
+      });
+      onCreated(r.contact);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink-900/40 p-4" onClick={onCancel}>
+      <div className="w-full max-w-md rounded-2xl border border-ink-200 bg-white shadow-pop" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-3 border-b border-ink-100 p-5">
+          <h2 className="text-base font-semibold text-ink-800">Criar novo contato</h2>
+          <button type="button" onClick={onCancel}
+            className="rounded-lg p-1 text-ink-400 transition hover:bg-ink-100 hover:text-ink-700">
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+        <div className="space-y-2.5 p-5">
+          <input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome *" className={inputCls} />
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <input value={cargo} onChange={(e) => setCargo(e.target.value)} placeholder="Cargo" className={inputCls} />
+            <input value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="Telefone" className={inputCls} />
+          </div>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail" className={inputCls} />
+        </div>
+        <div className="flex justify-end gap-2 border-t border-ink-100 p-4">
+          <Btn variant="ghost" type="button" onClick={onCancel}>Cancelar</Btn>
+          <Btn icon="check" type="button" onClick={() => void save()} disabled={busy || !nome.trim()}>{busy ? '…' : 'Criar'}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal "Criar novo produto" no catálogo (org-wide).
+function NovoProduto({ reps, onCreated, onCancel }: {
+  reps: RepresentedCompany[]; onCreated: (i: CatalogItem) => void; onCancel: () => void;
+}): React.JSX.Element {
+  const [nome, setNome] = useState('');
+  const [codigo, setCodigo] = useState('');
+  const [preco, setPreco] = useState('');
+  const [repId, setRepId] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const save = async (): Promise<void> => {
+    if (!nome.trim()) return;
+    setBusy(true);
+    try {
+      const r = await api.post<{ item: CatalogItem }>('/api/catalog', {
+        nome: nome.trim(), codigo: txt(codigo),
+        preco: preco.trim() === '' ? null : Number(preco),
+        represented_id: repId === '' ? null : Number(repId),
+      });
+      onCreated(r.item);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink-900/40 p-4" onClick={onCancel}>
+      <div className="w-full max-w-md rounded-2xl border border-ink-200 bg-white shadow-pop" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-3 border-b border-ink-100 p-5">
+          <h2 className="text-base font-semibold text-ink-800">Criar novo produto</h2>
+          <button type="button" onClick={onCancel}
+            className="rounded-lg p-1 text-ink-400 transition hover:bg-ink-100 hover:text-ink-700">
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+        <div className="space-y-2.5 p-5">
+          <input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome *" className={inputCls} />
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Código / SKU" className={inputCls} />
+            <input type="number" min="0" step="0.01" value={preco} onChange={(e) => setPreco(e.target.value)} placeholder="Preço (R$)" className={inputCls} />
+          </div>
+          <select value={repId} onChange={(e) => setRepId(e.target.value)} className={inputCls}>
+            <option value="">Representada (opcional)</option>
+            {reps.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
+          </select>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-ink-100 p-4">
+          <Btn variant="ghost" type="button" onClick={onCancel}>Cancelar</Btn>
+          <Btn icon="check" type="button" onClick={() => void save()} disabled={busy || !nome.trim()}>{busy ? '…' : 'Criar'}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+

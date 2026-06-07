@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+
+# Arquivos CSV
+*.csv
+
+# Base de dados CNPJ (dados de atualização — não versionar, vão pra VPS via rsync/scp)
+dados_cnpj/
