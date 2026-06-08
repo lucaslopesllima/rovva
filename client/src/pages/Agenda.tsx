@@ -3,6 +3,7 @@ import { api } from '../lib/api.ts';
 import type { Activity, KanbanCard } from '../lib/types.ts';
 import { Btn, Card, EmptyState, PageHeader, Segmented, Spinner, cn } from '../lib/ui.tsx';
 import { Icon, type IconName } from '../lib/icons.tsx';
+import { ActivityCreateModal } from '../lib/activityModal.tsx';
 
 /* ── tipo metadata (color + icon per activity kind) ─────── */
 const TIPO: Record<string, { label: string; icon: IconName; dot: string; chip: string }> = {
@@ -13,7 +14,6 @@ const TIPO: Record<string, { label: string; icon: IconName; dot: string; chip: s
 };
 const TIPOS = Object.keys(TIPO);
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
 /* ── date helpers ───────────────────────────────────────── */
 const startOfMonth = (d: Date): Date => new Date(d.getFullYear(), d.getMonth(), 1);
@@ -27,10 +27,6 @@ const dayKey = (d: Date): string => `${d.getFullYear()}-${d.getMonth()}-${d.getD
 const sameDay = (a: Date, b: Date): boolean => dayKey(a) === dayKey(b);
 const fmtTime = (iso: string): string => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 const fmtDayLong = (d: Date): string => d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
-const toLocalInput = (d: Date): string => {
-  const p = (n: number): string => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-};
 
 /* empresa no funil → opção do dropdown de vínculo */
 type FunnelCompany = { company_id: number; label: string };
@@ -46,6 +42,7 @@ export function Agenda(): React.JSX.Element {
   const [status, setStatus] = useState<'todos' | 'pendente' | 'feito'>('todos');
   const [addAt, setAddAt] = useState<Date | null>(null);     // add-modal open + preset date
   const [dayOpen, setDayOpen] = useState<Date | null>(null); // day-detail modal
+  const [editing, setEditing] = useState<Activity | null>(null); // edit-modal target
 
   const today = useMemo(() => new Date(), []);
 
@@ -186,18 +183,25 @@ export function Agenda(): React.JSX.Element {
           onDay={setDayOpen}
           onSlot={(d) => setAddAt(d)} />
       ) : (
-        <ListView byDay={byDay} onToggle={toggle} onRemove={remove} onAdd={() => setAddAt(new Date())} />
+        <ListView byDay={byDay} onToggle={toggle} onRemove={remove} onEdit={setEditing} onAdd={() => setAddAt(new Date())} />
       )}
 
       {addAt && (
-        <AddModal preset={addAt} funnel={funnel} onClose={() => setAddAt(null)}
+        <ActivityCreateModal preset={addAt} funnel={funnel} onClose={() => setAddAt(null)}
           onSaved={() => { setAddAt(null); void load(); }} />
       )}
       {dayOpen && (
         <DayModal date={dayOpen} events={byDay[dayKey(dayOpen)] ?? []}
           onClose={() => setDayOpen(null)}
           onToggle={toggle} onRemove={remove}
+          onEdit={(a) => { setDayOpen(null); setEditing(a); }}
           onAdd={() => { const d = new Date(dayOpen); d.setHours(9, 0, 0, 0); setDayOpen(null); setAddAt(d); }} />
+      )}
+      {editing && (
+        <ActivityCreateModal preset={new Date(editing.start_at)} funnel={funnel}
+          activity={{ id: editing.id, titulo: editing.titulo, tipo: editing.tipo, start_at: editing.start_at, company_id: editing.company_id }}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); void load(); }} />
       )}
     </div>
   );
@@ -327,8 +331,8 @@ function WeekView({ days, today, byDay, onDay, onSlot }: {
 }
 
 /* ── list view ──────────────────────────────────────────── */
-function ListView({ byDay, onToggle, onRemove, onAdd }: {
-  byDay: Record<string, Activity[]>; onToggle: (a: Activity) => void; onRemove: (a: Activity) => void; onAdd: () => void;
+function ListView({ byDay, onToggle, onRemove, onEdit, onAdd }: {
+  byDay: Record<string, Activity[]>; onToggle: (a: Activity) => void; onRemove: (a: Activity) => void; onEdit: (a: Activity) => void; onAdd: () => void;
 }): React.JSX.Element {
   const days = Object.entries(byDay).sort((a, b) => (a[1][0]?.start_at ?? '').localeCompare(b[1][0]?.start_at ?? ''));
   if (days.length === 0) {
@@ -340,7 +344,7 @@ function ListView({ byDay, onToggle, onRemove, onAdd }: {
         <div key={k}>
           <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-400">{fmtDayLong(new Date(list[0]!.start_at))}</p>
           <div className="space-y-2">
-            {list.map((a) => <Row key={a.id} a={a} onToggle={onToggle} onRemove={onRemove} />)}
+            {list.map((a) => <Row key={a.id} a={a} onToggle={onToggle} onRemove={onRemove} onEdit={onEdit} />)}
           </div>
         </div>
       ))}
@@ -349,7 +353,7 @@ function ListView({ byDay, onToggle, onRemove, onAdd }: {
   );
 }
 
-function Row({ a, onToggle, onRemove }: { a: Activity; onToggle: (a: Activity) => void; onRemove: (a: Activity) => void }): React.JSX.Element {
+function Row({ a, onToggle, onRemove, onEdit }: { a: Activity; onToggle: (a: Activity) => void; onRemove: (a: Activity) => void; onEdit: (a: Activity) => void }): React.JSX.Element {
   const done = a.status === 'feito';
   return (
     <Card className="flex items-center gap-3 p-3">
@@ -358,13 +362,19 @@ function Row({ a, onToggle, onRemove }: { a: Activity; onToggle: (a: Activity) =
           done ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-ink-300 text-transparent hover:border-brand-400')}>
         <Icon name="check" size={14} />
       </button>
-      <span className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-xl', TIPO[a.tipo]?.chip ?? 'bg-ink-100 text-ink-500', done && 'opacity-50')}>
-        <Icon name={TIPO[a.tipo]?.icon ?? 'check'} size={17} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className={cn('truncate text-sm font-semibold', done ? 'text-ink-400 line-through' : 'text-ink-800')}>{a.titulo}</p>
-        <p className="truncate text-xs text-ink-400">{fmtTime(a.start_at)} · {TIPO[a.tipo]?.label ?? a.tipo}{a.razao_social ? ` · ${a.razao_social}` : ''}</p>
-      </div>
+      <button onClick={() => onEdit(a)} className="flex min-w-0 flex-1 items-center gap-3 text-left" title="Editar">
+        <span className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-xl', TIPO[a.tipo]?.chip ?? 'bg-ink-100 text-ink-500', done && 'opacity-50')}>
+          <Icon name={TIPO[a.tipo]?.icon ?? 'check'} size={17} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className={cn('truncate text-sm font-semibold', done ? 'text-ink-400 line-through' : 'text-ink-800')}>{a.titulo}</p>
+          <p className="truncate text-xs text-ink-400">{fmtTime(a.start_at)} · {TIPO[a.tipo]?.label ?? a.tipo}{a.razao_social ? ` · ${a.razao_social}` : ''}</p>
+        </div>
+      </button>
+      <button onClick={() => onEdit(a)} aria-label="Editar"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-ink-100 hover:text-brand-600">
+        <Icon name="pencil" size={15} />
+      </button>
       <button onClick={() => onRemove(a)} aria-label="Excluir"
         className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500">
         <Icon name="x" size={16} />
@@ -392,72 +402,17 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
   );
 }
 
-/* ── add modal ──────────────────────────────────────────── */
-function AddModal({ preset, funnel, onClose, onSaved }: {
-  preset: Date; funnel: FunnelCompany[]; onClose: () => void; onSaved: () => void;
-}): React.JSX.Element {
-  const [titulo, setTitulo] = useState('');
-  const [tipo, setTipo] = useState('tarefa');
-  const [start, setStart] = useState(toLocalInput(preset));
-  const [companyId, setCompanyId] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const submit = async (e: React.FormEvent): Promise<void> => {
-    e.preventDefault();
-    if (!titulo || !start) return;
-    setBusy(true);
-    try {
-      await api.post('/api/activities', {
-        titulo, tipo, start_at: new Date(start).toISOString(), company_id: companyId,
-      });
-      onSaved();
-    } finally { setBusy(false); }
-  };
-
-  return (
-    <Modal title="Nova atividade" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-3">
-        <input autoFocus value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ex.: Ligar para cliente" className={inputCls} />
-        <div className="grid grid-cols-4 gap-1.5">
-          {TIPOS.map((t) => (
-            <button key={t} type="button" onClick={() => setTipo(t)}
-              className={cn('flex flex-col items-center gap-1 rounded-xl border px-2 py-2 text-[11px] font-semibold transition',
-                tipo === t ? 'border-transparent ' + TIPO[t]!.chip : 'border-ink-200 text-ink-500 hover:bg-ink-50')}>
-              <Icon name={TIPO[t]!.icon} size={16} />{TIPO[t]!.label}
-            </button>
-          ))}
-        </div>
-        <label className="block">
-          <span className="text-xs font-semibold text-ink-600">Quando</span>
-          <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} className={cn(inputCls, 'mt-1')} />
-        </label>
-        <label className="block">
-          <span className="text-xs font-semibold text-ink-600">Empresa do funil</span>
-          <select value={companyId ?? ''} onChange={(e) => setCompanyId(e.target.value === '' ? null : Number(e.target.value))} className={cn(inputCls, 'mt-1')}>
-            <option value="">Sem vínculo</option>
-            {funnel.map((f) => <option key={f.company_id} value={f.company_id}>{f.label}</option>)}
-          </select>
-        </label>
-        <div className="flex justify-end gap-2 pt-1">
-          <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
-          <Btn icon="check" type="submit" disabled={busy}>{busy ? '…' : 'Salvar'}</Btn>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
 /* ── day-detail modal ───────────────────────────────────── */
-function DayModal({ date, events, onClose, onToggle, onRemove, onAdd }: {
+function DayModal({ date, events, onClose, onToggle, onRemove, onEdit, onAdd }: {
   date: Date; events: Activity[]; onClose: () => void;
-  onToggle: (a: Activity) => void; onRemove: (a: Activity) => void; onAdd: () => void;
+  onToggle: (a: Activity) => void; onRemove: (a: Activity) => void; onEdit: (a: Activity) => void; onAdd: () => void;
 }): React.JSX.Element {
   return (
     <Modal title={fmtDayLong(date)} onClose={onClose}>
       <div className="space-y-2">
         {events.length === 0
           ? <p className="py-6 text-center text-sm text-ink-400">Nenhuma atividade neste dia.</p>
-          : events.map((a) => <Row key={a.id} a={a} onToggle={onToggle} onRemove={onRemove} />)}
+          : events.map((a) => <Row key={a.id} a={a} onToggle={onToggle} onRemove={onRemove} onEdit={onEdit} />)}
       </div>
       <Btn variant="soft" icon="plus" onClick={onAdd} className="mt-3 w-full">Adicionar neste dia</Btn>
     </Modal>

@@ -28,6 +28,7 @@ const PATHS: Record<string, string> = {
   pencil: 'M16.5 4.5l3 3M4 20l1-4L16 5l3 3L8 19l-4 1Z',
   eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
   box: 'M21 8 12 3 3 8m18 0-9 5m9-5v8l-9 5m0-8L3 8m9 5v8M3 8v8l9 5',
+  wallet: 'M3 7a2 2 0 0 1 2-2h13a1 1 0 0 1 1 1v2M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-4M3 7h16a2 2 0 0 1 2 2v2h-5a2 2 0 0 0 0 4h5m-5-2h.01',
 };
 
 export type IconName = keyof typeof PATHS;

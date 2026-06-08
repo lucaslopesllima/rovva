@@ -15,6 +15,8 @@ import { representedRoutes } from './routes/represented.ts';
 import { cadastroRoutes } from './routes/cadastros.ts';
 import { companyRoutes } from './routes/companies.ts';
 import { catalogRoutes } from './routes/catalog.ts';
+import { accountRoutes } from './routes/account.ts';
+import { financeRoutes } from './routes/finance.ts';
 
 const app = Fastify({ logger: true, trustProxy: true });
 
@@ -34,6 +36,8 @@ representedRoutes(app);
 cadastroRoutes(app);
 companyRoutes(app);
 catalogRoutes(app);
+accountRoutes(app);
+financeRoutes(app);
 
 // Serve the built React app (Dockerfile sets CLIENT_DIR). SPA fallback for client routes.
 if (config.clientDir && existsSync(config.clientDir)) {

@@ -5,6 +5,7 @@ import { Badge, Btn, PageHeader, Spinner, StatCard, cn, type Tone } from '../lib
 import { Icon } from '../lib/icons.tsx';
 import { CompanyFilterBar, useCompanyFilter } from '../lib/companyFilter.tsx';
 import { CompanyModal } from '../lib/companyModal.tsx';
+import { ActivityCreateModal } from '../lib/activityModal.tsx';
 
 const STATUS_TONE: Record<string, Tone> = {
   prospect: 'info', cliente: 'success', descartado: 'neutral',
@@ -239,6 +240,7 @@ function EditModal({ card, stages, reps, brands, scenarios, actions, catalog, on
   const [contatos, setContatos] = useState<Contact[]>([]);
   const [creating, setCreating] = useState(false);
   const [creatingProd, setCreatingProd] = useState(false);
+  const [creatingActivity, setCreatingActivity] = useState(false);
 
   useEffect(() => {
     void api.get<{ contacts: Contact[] }>(`/api/contacts?company_id=${card.company_id}`)
@@ -414,10 +416,13 @@ function EditModal({ card, stages, reps, brands, scenarios, actions, catalog, on
                 placeholder="Observações livres" className={cn(inputCls, 'resize-y')} />
             </Field>
           </div>
-          <div className="flex items-center gap-2 border-t border-ink-100 p-4">
+          <div className="flex flex-wrap items-center gap-2 border-t border-ink-100 p-4">
             <Btn variant="danger" type="button" icon="x"
               onClick={() => { if (confirm('Remover esta empresa do funil?')) void onRemove(card.id); }}>
               Remover do funil
+            </Btn>
+            <Btn variant="soft" type="button" icon="calendar" onClick={() => setCreatingActivity(true)}>
+              Criar compromisso
             </Btn>
             <div className="ml-auto flex gap-2">
               <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
@@ -433,8 +438,24 @@ function EditModal({ card, stages, reps, brands, scenarios, actions, catalog, on
     {creatingProd && (
       <NovoProduto reps={reps} onCreated={onCreatedProduto} onCancel={() => setCreatingProd(false)} />
     )}
+    {creatingActivity && (
+      <ActivityCreateModal
+        preset={hojeAs9()}
+        funnel={[{ company_id: card.company_id, label: card.nome_fantasia || card.razao_social }]}
+        presetCompanyId={card.company_id}
+        onClose={() => setCreatingActivity(false)}
+        onSaved={() => setCreatingActivity(false)}
+      />
+    )}
    </>
   );
+}
+
+// Hoje às 09:00 — preset do compromisso criado a partir do funil.
+function hojeAs9(): Date {
+  const d = new Date();
+  d.setHours(9, 0, 0, 0);
+  return d;
 }
 
 // Modal "Criar novo contato" — vincula o contato à empresa-cliente do card.

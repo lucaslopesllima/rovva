@@ -3,6 +3,7 @@ import { api } from '../lib/api.ts';
 import type { CnaeGrupo, CnaeItem, Municipio, Profile as TProfile } from '../lib/types.ts';
 import { Btn, Card, Spinner, cn } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
+import { Cnae, seedCnae } from '../lib/cnae.tsx';
 
 const DIV_LABEL = (secao: string): string =>
   secao === 'C' ? 'Indústria / Fabricação' : secao === 'G' ? 'Comércio' : `Seção ${secao}`;
@@ -24,6 +25,12 @@ export function ProfileForm(): React.JSX.Element {
   const [pesos, setPesos] = useState({ cnae: 0.5, proximidade: 0.3, porte: 0.2 });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // origem fixa p/ cálculo de rota
+  const [origemEndereco, setOrigemEndereco] = useState('');
+  const [origemLat, setOrigemLat] = useState<number | null>(null);
+  const [origemLon, setOrigemLon] = useState<number | null>(null);
+  const [geocoding, setGeocoding] = useState(false);
 
   // CNAE search
   const [q, setQ] = useState('');
@@ -48,6 +55,9 @@ export function ProfileForm(): React.JSX.Element {
       if (p.profile) {
         setRaio(p.profile.territorio_raio_km ?? '');
         if (p.profile.pesos) setPesos({ ...{ cnae: 0.5, proximidade: 0.3, porte: 0.2 }, ...p.profile.pesos });
+        setOrigemEndereco(p.profile.origem_endereco ?? '');
+        setOrigemLat(p.profile.origem_lat ?? null);
+        setOrigemLon(p.profile.origem_lon ?? null);
         const codes = p.profile.cnaes_alvo ?? [];
         if (codes.length) {
           const r = await api.get<{ labels: CnaeItem[] }>(`/api/cnae/labels?codes=${codes.join(',')}`);
@@ -62,6 +72,9 @@ export function ProfileForm(): React.JSX.Element {
       setLoading(false);
     })();
   }, []);
+
+  // pré-popula o cache de descrições dos CNAEs selecionados (chips traduzem na hora)
+  useEffect(() => { for (const c of cnaes) seedCnae(c.codigo, c.descricao); }, [cnaes]);
 
   useEffect(() => {
     if (debounce.current) clearTimeout(debounce.current);
@@ -101,12 +114,31 @@ export function ProfileForm(): React.JSX.Element {
     });
   };
 
+  // Geocodifica o endereço via Nominatim (OSM) → lat/lon.
+  const geocodar = async (): Promise<void> => {
+    const q = origemEndereco.trim();
+    if (!q) return;
+    setGeocoding(true);
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(q)}`;
+      const resp = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } });
+      const arr = await resp.json() as { lat: string; lon: string; display_name: string }[];
+      if (!arr.length) { alert('Endereço não encontrado.'); return; }
+      setOrigemLat(Number(arr[0]!.lat));
+      setOrigemLon(Number(arr[0]!.lon));
+    } catch { alert('Falha ao geocodificar.'); }
+    finally { setGeocoding(false); }
+  };
+
   const save = async (): Promise<void> => {
     await api.put('/api/profile', {
       cnaes_alvo: cnaes.map((c) => c.codigo),
       territorio_municipios: selMun.map((m) => m.id),
       territorio_raio_km: raio === '' ? null : Number(raio),
       pesos,
+      origem_endereco: origemEndereco.trim() || null,
+      origem_lat: origemLat,
+      origem_lon: origemLon,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -135,9 +167,11 @@ export function ProfileForm(): React.JSX.Element {
         {cnaes.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {cnaes.map((c) => (
-              <button key={c.codigo} onClick={() => toggleCnae(c)}
+              <button key={c.codigo} onClick={() => toggleCnae(c)} title={`${c.codigo} — ${c.descricao}`}
                 className="inline-flex items-center gap-1 rounded-full bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700">
-                {c.codigo} <Icon name="x" size={12} />
+                <span className="tabnums opacity-80">{c.codigo}</span>
+                <Cnae code={c.codigo} className="!cursor-pointer text-white" />
+                <Icon name="x" size={12} />
               </button>
             ))}
           </div>
@@ -243,6 +277,26 @@ export function ProfileForm(): React.JSX.Element {
           <input type="number" min={0} value={raio} onChange={(e) => setRaio(e.target.value === '' ? '' : Number(e.target.value))}
             placeholder="ex.: 50" className={cn(inputCls, 'mt-1 w-32')} />
         </label>
+      </Card>
+
+      {/* Origem fixa p/ rotas */}
+      <Card className="p-4 xl:col-span-2">
+        <SectionTitle title="Origem das rotas" hint="Endereço-base usado como ponto de partida ao traçar rota até uma empresa. Se vazio, usa a localização do navegador." />
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input value={origemEndereco}
+            onChange={(e) => { setOrigemEndereco(e.target.value); setOrigemLat(null); setOrigemLon(null); }}
+            placeholder="Ex.: Rua das Flores, 100, Centro, Florianópolis - SC" className={cn(inputCls, 'flex-1')} />
+          <Btn variant="soft" icon="search" onClick={() => void geocodar()} disabled={geocoding || !origemEndereco.trim()}>
+            {geocoding ? 'Buscando…' : 'Buscar coordenadas'}
+          </Btn>
+        </div>
+        {origemLat != null && origemLon != null ? (
+          <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
+            <Icon name="mapPin" size={13} /> Coordenadas: {origemLat.toFixed(5)}, {origemLon.toFixed(5)}
+          </p>
+        ) : origemEndereco.trim() ? (
+          <p className="mt-2 text-xs text-amber-600">Clique em “Buscar coordenadas” e salve para usar como origem.</p>
+        ) : null}
       </Card>
 
       {/* Weights */}

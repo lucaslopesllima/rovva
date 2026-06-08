@@ -50,11 +50,13 @@ export function useCnaeLabel(code: number): string | undefined {
 
 const truncar = (s: string): string => (s.length > MAX ? `${s.slice(0, MAX)}…` : s);
 
-// Mostra a descrição do CNAE (máx 10 chars + …) com tooltip do texto completo.
-export function Cnae({ code, className }: { code: number | null | undefined; className?: string }): React.JSX.Element {
+// Mostra a descrição do CNAE. Por padrão trunca em 10 chars + … (tooltip completo);
+// com `full`, exibe "código — descrição" inteiro e quebra linha (sem estourar layout).
+export function Cnae({ code, className, full = false }: { code: number | null | undefined; className?: string; full?: boolean }): React.JSX.Element {
   const desc = useCnaeLabel(typeof code === 'number' && Number.isFinite(code) ? code : NaN);
   if (code == null) return <span className={className}>—</span>;
   const completo = desc ? `${code} — ${desc}` : String(code);
+  if (full) return <span className={cn('break-words', className)}>{completo}</span>;
   const visivel = desc ? truncar(desc) : String(code);
   return <span className={cn('cursor-help', className)} title={completo}>{visivel}</span>;
 }

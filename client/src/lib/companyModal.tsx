@@ -14,6 +14,9 @@ const FAIXA_ETARIA: Record<number, string> = {
   6: '51 a 60', 7: '61 a 70', 8: '71 a 80', 9: 'Mais de 80',
 };
 const SOCIO_TIPO: Record<number, string> = { 1: 'Pessoa jurídica', 2: 'Pessoa física', 3: 'Estrangeiro' };
+const PRECISAO_LABEL: Record<string, string> = {
+  rua: 'endereço', rua_aprox: 'rua (aprox.)', cep: 'CEP', municipio: 'município',
+};
 
 const fmtCnpj = (s: string): string =>
   s.length === 14 ? s.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : s;
@@ -78,21 +81,29 @@ function SociosBloco({ socios }: { socios: Socio[] }): React.JSX.Element {
 export function CompanyModal({ companyId, onClose }: { companyId: number; onClose: () => void }): React.JSX.Element {
   const [data, setData] = useState<CompanyDetail | null>(null);
   const [socios, setSocios] = useState<Socio[]>([]);
+  const [geo, setGeo] = useState<{ lat: number; lon: number; precisao: string } | null>(null);
   const [err, setErr] = useState(false);
 
   useEffect(() => {
-    setData(null); setSocios([]); setErr(false);
+    setData(null); setSocios([]); setGeo(null); setErr(false);
     void api.get<{ company: CompanyDetail; socios: Socio[] }>(`/api/companies/${companyId}`)
       .then((r) => {
         setData(r.company); setSocios(r.socios ?? []);
         seedCnae(r.company.cnae_principal, r.company.cnae_descricao); // já temos a descrição
+        if (r.company.geo_lat != null && r.company.geo_lon != null) {
+          setGeo({ lat: r.company.geo_lat, lon: r.company.geo_lon, precisao: r.company.geo_precisao ?? 'rua' });
+        } else {
+          // geocodifica o endereço sob demanda (cacheia no banco)
+          void api.get<{ geocode: { lat: number; lon: number; precisao: string } }>(`/api/companies/${companyId}/geocode`)
+            .then((gr) => setGeo(gr.geocode)).catch(() => undefined);
+        }
       }).catch(() => setErr(true));
   }, [companyId]);
 
   const raw = data?.raw_data && Object.keys(data.raw_data).length > 0 ? data.raw_data : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-ink-900/40 p-4" onClick={onClose}>
       <div className="flex max-h-[90vh] w-full max-w-xl flex-col rounded-2xl border border-ink-200 bg-white shadow-pop"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 border-b border-ink-100 p-5">
@@ -123,9 +134,9 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
               </Section>
 
               <Section title="Atividade">
-                <InfoRow label="CNAE principal" value={<Cnae code={data.cnae_principal} />} />
+                <InfoRow label="CNAE principal" value={<Cnae code={data.cnae_principal} full />} />
                 <InfoRow label="CNAEs secundários" value={data.cnae_secundarios?.length
-                  ? <span className="flex flex-wrap gap-x-2 gap-y-1">{data.cnae_secundarios.map((cod) => <Cnae key={cod} code={cod} />)}</span>
+                  ? <span className="flex flex-col gap-y-1">{data.cnae_secundarios.map((cod) => <Cnae key={cod} code={cod} full />)}</span>
                   : null} />
                 <InfoRow label="Início de atividade" value={fmtData(data.data_inicio_atividade)} />
               </Section>
@@ -136,7 +147,9 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
                 <InfoRow label="Região" value={data.regiao} />
                 <InfoRow label="Cidade exterior" value={data.nome_cidade_exterior} />
                 <InfoRow label="País" value={data.pais_nome ?? (data.pais?.toString() || null)} />
-                <InfoRow label="Coordenadas" value={data.lat != null && data.lon != null ? `${data.lat.toFixed(5)}, ${data.lon.toFixed(5)}` : null} />
+                <InfoRow label="Localização" value={geo
+                  ? `${geo.lat.toFixed(5)}, ${geo.lon.toFixed(5)} · ${PRECISAO_LABEL[geo.precisao] ?? geo.precisao}`
+                  : <span className="text-ink-300">localizando…</span>} />
               </Section>
 
               <Section title="Contato">

@@ -1,0 +1,163 @@
+import { useEffect, useState } from 'react';
+import { api, ApiError } from '../lib/api.ts';
+import type { AccountOrg, AccountUser } from '../lib/types.ts';
+import { Btn, Card, PageHeader, Spinner, cn } from '../lib/ui.tsx';
+import { Icon } from '../lib/icons.tsx';
+
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const t = (s: string): string | null => (s.trim() === '' ? null : s.trim());
+
+function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }): React.JSX.Element {
+  return (
+    <label className={cn('block', className)}>
+      <span className="mb-1 block text-xs font-medium text-ink-500">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+export function Account(): React.JSX.Element {
+  const [org, setOrg] = useState<AccountOrg | null>(null);
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [savedInfo, setSavedInfo] = useState(false);
+  const [busyInfo, setBusyInfo] = useState(false);
+  const [errInfo, setErrInfo] = useState('');
+
+  const [cepBusy, setCepBusy] = useState(false);
+
+  // senha
+  const [atual, setAtual] = useState('');
+  const [nova, setNova] = useState('');
+  const [conf, setConf] = useState('');
+  const [busyPwd, setBusyPwd] = useState(false);
+  const [msgPwd, setMsgPwd] = useState('');
+  const [okPwd, setOkPwd] = useState(false);
+
+  useEffect(() => {
+    void api.get<{ org: AccountOrg; user: AccountUser }>('/api/account').then((r) => {
+      setOrg(r.org);
+      setEmail(r.user.email);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  const set = (k: keyof AccountOrg) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setOrg((o) => (o ? { ...o, [k]: e.target.value } : o));
+
+  // ViaCEP: preenche endereço a partir do CEP (8 dígitos).
+  const buscarCep = async (raw: string): Promise<void> => {
+    const cep = raw.replace(/\D/g, '');
+    if (cep.length !== 8) return;
+    setCepBusy(true);
+    try {
+      const resp = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const j = await resp.json() as { erro?: boolean; logradouro?: string; bairro?: string; localidade?: string; uf?: string; complemento?: string };
+      if (j.erro) return;
+      setOrg((o) => o ? {
+        ...o,
+        logradouro: j.logradouro || o.logradouro,
+        bairro: j.bairro || o.bairro,
+        cidade: j.localidade || o.cidade,
+        uf: j.uf || o.uf,
+        complemento: o.complemento || j.complemento || o.complemento,
+      } : o);
+    } catch { /* silencioso — usuário pode preencher à mão */ }
+    finally { setCepBusy(false); }
+  };
+
+  const onCep = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    const v = e.target.value;
+    setOrg((o) => (o ? { ...o, cep: v } : o));
+    if (v.replace(/\D/g, '').length === 8) void buscarCep(v);
+  };
+
+  const saveInfo = async (): Promise<void> => {
+    if (!org) return;
+    setBusyInfo(true); setErrInfo('');
+    try {
+      const r = await api.patch<{ org: AccountOrg; user: AccountUser }>('/api/account', {
+        nome: org.nome.trim(), email: email.trim(),
+        cnpj: t(org.cnpj ?? ''), telefone: t(org.telefone ?? ''),
+        cep: t(org.cep ?? ''), logradouro: t(org.logradouro ?? ''), numero: t(org.numero ?? ''),
+        complemento: t(org.complemento ?? ''), bairro: t(org.bairro ?? ''),
+        cidade: t(org.cidade ?? ''), uf: t(org.uf ?? ''),
+      });
+      setOrg(r.org); setEmail(r.user.email);
+      setSavedInfo(true); setTimeout(() => setSavedInfo(false), 2000);
+    } catch (e) {
+      setErrInfo(e instanceof ApiError ? e.message : 'Erro ao salvar');
+    } finally { setBusyInfo(false); }
+  };
+
+  const savePwd = async (): Promise<void> => {
+    setMsgPwd(''); setOkPwd(false);
+    if (nova.length < 6) { setMsgPwd('Nova senha precisa de ao menos 6 caracteres.'); return; }
+    if (nova !== conf) { setMsgPwd('A confirmação não confere.'); return; }
+    setBusyPwd(true);
+    try {
+      await api.post('/api/account/password', { senha_atual: atual, nova_senha: nova });
+      setOkPwd(true); setMsgPwd('Senha atualizada.');
+      setAtual(''); setNova(''); setConf('');
+    } catch (e) {
+      setMsgPwd(e instanceof ApiError ? e.message : 'Erro ao atualizar senha');
+    } finally { setBusyPwd(false); }
+  };
+
+  if (loading) return <div className="p-6"><Spinner /></div>;
+  if (!org) return <div className="p-6 text-sm text-ink-400">Não foi possível carregar o perfil.</div>;
+
+  return (
+    <div className="space-y-5 p-4 sm:p-6">
+      <PageHeader title="Meu perfil" subtitle="Dados do representante e segurança da conta." />
+
+      <Card className="max-w-3xl p-4">
+        <h3 className="text-sm font-semibold text-ink-900">Dados do representante</h3>
+        <p className="mt-0.5 text-xs text-ink-400">Usados também como origem das rotas e na sua identificação.</p>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <Field label="Nome / Razão social"><input value={org.nome} onChange={set('nome')} className={inputCls} /></Field>
+          <Field label="CNPJ"><input value={org.cnpj ?? ''} onChange={set('cnpj')} placeholder="00.000.000/0000-00" className={inputCls} /></Field>
+          <Field label="E-mail (login)"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} /></Field>
+          <Field label="Telefone"><input value={org.telefone ?? ''} onChange={set('telefone')} className={inputCls} /></Field>
+        </div>
+
+        <p className="mt-5 text-[11px] font-semibold uppercase tracking-wider text-ink-400">Endereço</p>
+        <div className="mt-2 grid gap-3 sm:grid-cols-6">
+          <Field label="CEP" className="sm:col-span-2">
+            <div className="relative">
+              <input value={org.cep ?? ''} onChange={onCep} onBlur={(e) => void buscarCep(e.target.value)}
+                placeholder="00000-000" className={inputCls} />
+              {cepBusy && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-ink-400">buscando…</span>}
+            </div>
+          </Field>
+          <Field label="Logradouro" className="sm:col-span-3"><input value={org.logradouro ?? ''} onChange={set('logradouro')} className={inputCls} /></Field>
+          <Field label="Número" className="sm:col-span-1"><input value={org.numero ?? ''} onChange={set('numero')} className={inputCls} /></Field>
+          <Field label="Complemento" className="sm:col-span-2"><input value={org.complemento ?? ''} onChange={set('complemento')} className={inputCls} /></Field>
+          <Field label="Bairro" className="sm:col-span-2"><input value={org.bairro ?? ''} onChange={set('bairro')} className={inputCls} /></Field>
+          <Field label="Cidade" className="sm:col-span-1"><input value={org.cidade ?? ''} onChange={set('cidade')} className={inputCls} /></Field>
+          <Field label="UF" className="sm:col-span-1"><input value={org.uf ?? ''} maxLength={2} onChange={set('uf')} className={cn(inputCls, 'uppercase')} /></Field>
+        </div>
+
+        <div className="mt-4 flex items-center gap-3">
+          <Btn icon="check" onClick={() => void saveInfo()} disabled={busyInfo}>{busyInfo ? '…' : 'Salvar dados'}</Btn>
+          {savedInfo && <span className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-600"><Icon name="check" size={16} /> Salvo</span>}
+          {errInfo && <span className="text-sm text-rose-600">{errInfo}</span>}
+        </div>
+      </Card>
+
+      <Card className="max-w-3xl p-4">
+        <h3 className="text-sm font-semibold text-ink-900">Atualizar senha</h3>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <Field label="Senha atual"><input type="password" value={atual} onChange={(e) => setAtual(e.target.value)} className={inputCls} /></Field>
+          <Field label="Nova senha"><input type="password" value={nova} onChange={(e) => setNova(e.target.value)} className={inputCls} /></Field>
+          <Field label="Confirmar nova senha"><input type="password" value={conf} onChange={(e) => setConf(e.target.value)} className={inputCls} /></Field>
+        </div>
+        <div className="mt-4 flex items-center gap-3">
+          <Btn icon="check" onClick={() => void savePwd()} disabled={busyPwd || !atual || !nova}>{busyPwd ? '…' : 'Atualizar senha'}</Btn>
+          {msgPwd && <span className={cn('text-sm', okPwd ? 'text-emerald-600' : 'text-rose-600')}>{msgPwd}</span>}
+        </div>
+      </Card>
+    </div>
+  );
+}

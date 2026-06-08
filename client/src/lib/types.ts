@@ -27,6 +27,9 @@ export interface Profile {
   territorio_municipios: number[];
   territorio_raio_km: number | null;
   pesos: { cnae: number; proximidade: number; porte: number };
+  origem_endereco: string | null;
+  origem_lat: number | null;
+  origem_lon: number | null;
 }
 
 export interface Municipio { id: number; nome: string; uf: string; regiao: string }
@@ -81,6 +84,11 @@ export interface CompanyDetail {
   opcao_simples: string | null; data_opcao_simples: string | null; data_exclusao_simples: string | null;
   opcao_mei: string | null; data_opcao_mei: string | null; data_exclusao_mei: string | null;
   lat: number | null; lon: number | null; raw_data: Record<string, unknown> | null;
+  geo_lat: number | null; geo_lon: number | null; geo_precisao: string | null;
+}
+
+export interface GeocodeResult {
+  lat: number; lon: number; precisao: string; fonte: string; cached: boolean;
 }
 
 export interface CatalogItem {
@@ -95,6 +103,13 @@ export interface Contact {
 }
 export interface NamedItem { id: number; nome: string }
 
+export interface AccountOrg {
+  id: number; nome: string; cnpj: string | null; telefone: string | null;
+  cep: string | null; logradouro: string | null; numero: string | null; complemento: string | null;
+  bairro: string | null; cidade: string | null; uf: string | null;
+}
+export interface AccountUser { id: number; email: string; role: string }
+
 export interface Relationship {
   id: number; company_id: number; stage_id: number | null; status: string;
   valor_estimado: string | null; notas: string | null; razao_social: string;
@@ -103,4 +118,24 @@ export interface Relationship {
 export interface Activity {
   id: number; tipo: string; titulo: string; start_at: string; end_at: string | null;
   company_id: number | null; status: string; razao_social: string | null;
+}
+
+export interface FinanceEntry {
+  id: number;
+  kind: 'pagar' | 'receber';
+  descricao: string;
+  valor: string;
+  vencimento: string;
+  liquidacao_data: string | null;
+  status: 'pendente' | 'liquidado' | 'cancelado';
+  categoria: string | null;
+  notas: string | null;
+  company_id: number | null;
+  represented_id: number | null;
+  activity_id: number | null;
+  owner_user_id: number | null;
+  created_at: string;
+  company_nome: string | null;
+  represented_nome: string | null;
+  activity_titulo: string | null;
 }

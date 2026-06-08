@@ -6,6 +6,8 @@ import { Kanban } from './pages/Kanban.tsx';
 import { Catalog } from './pages/Catalog.tsx';
 import { Agenda } from './pages/Agenda.tsx';
 import { Settings } from './pages/Settings.tsx';
+import { Account } from './pages/Account.tsx';
+import { Finance } from './pages/Finance.tsx';
 import { Icon, type IconName } from './lib/icons.tsx';
 import { cn } from './lib/ui.tsx';
 import type { ReactNode } from 'react';
@@ -28,6 +30,7 @@ const NAV: { to: string; label: string; icon: IconName }[] = [
   { to: '/funil', label: 'Funil', icon: 'columns' },
   { to: '/catalogo', label: 'Catálogo', icon: 'box' },
   { to: '/agenda', label: 'Agenda', icon: 'calendar' },
+  { to: '/financeiro', label: 'Financeiro', icon: 'wallet' },
   { to: '/config', label: 'Config', icon: 'settings' },
 ];
 
@@ -73,13 +76,15 @@ function Sidebar(): React.JSX.Element {
 
       <div className="mt-auto border-t border-white/10 pt-3">
         <div className="flex items-center gap-2.5 rounded-xl px-2 py-2">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-500/20 text-sm font-bold text-brand-200">
-            {(user?.org_nome ?? user?.email ?? '?').charAt(0).toUpperCase()}
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-semibold text-white">{user?.org_nome ?? 'Minha conta'}</p>
-            <p className="truncate text-[11px] text-ink-400">{user?.email}</p>
-          </div>
+          <NavLink to="/conta" title="Meu perfil" className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1 transition-colors hover:bg-white/5">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-500/20 text-sm font-bold text-brand-200">
+              {(user?.org_nome ?? user?.email ?? '?').charAt(0).toUpperCase()}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold text-white">{user?.org_nome ?? 'Minha conta'}</p>
+              <p className="truncate text-[11px] text-ink-400">{user?.email}</p>
+            </div>
+          </NavLink>
           <button onClick={logout} aria-label="Sair"
             className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-white/10 hover:text-white">
             <Icon name="logout" size={17} />
@@ -101,14 +106,20 @@ function Shell({ children }: { children: ReactNode }): React.JSX.Element {
         {/* mobile top bar */}
         <header className="flex items-center justify-between bg-ink-900 px-4 py-3 sm:hidden">
           <Brand />
-          <span className="text-sm font-medium text-ink-300">{title}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-ink-300">{title}</span>
+            <NavLink to="/conta" aria-label="Meu perfil"
+              className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-white/10 hover:text-white">
+              <Icon name="users" size={18} />
+            </NavLink>
+          </div>
         </header>
 
         <main className="min-h-0 flex-1 overflow-auto pb-20 sm:pb-0">{children}</main>
       </div>
 
       {/* mobile bottom nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-[1000] grid grid-cols-5 border-t border-ink-200 bg-white/95 backdrop-blur sm:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-[1000] grid grid-cols-6 border-t border-ink-200 bg-white/95 backdrop-blur sm:hidden">
         {NAV.map((n) => (
           <NavLink key={n.to} to={n.to} end={n.to === '/'}
             className={({ isActive }) => cn(
@@ -131,7 +142,9 @@ export function App(): React.JSX.Element {
       <Route path="/funil" element={<RequireAuth><Shell><Kanban /></Shell></RequireAuth>} />
       <Route path="/catalogo" element={<RequireAuth><Shell><Catalog /></Shell></RequireAuth>} />
       <Route path="/agenda" element={<RequireAuth><Shell><Agenda /></Shell></RequireAuth>} />
+      <Route path="/financeiro" element={<RequireAuth><Shell><Finance /></Shell></RequireAuth>} />
       <Route path="/config" element={<RequireAuth><Shell><Settings /></Shell></RequireAuth>} />
+      <Route path="/conta" element={<RequireAuth><Shell><Account /></Shell></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -39,11 +39,6 @@ export function recommendRoutes(app: FastifyInstance): void {
     const query = req.query as { limit?: number; offset?: number; q?: string; cnae?: string; uf?: string; porte?: string };
     const { limit = 20, offset = 0 } = query;
     const filters = parseFilters(query);
-    // Regra anti-sobrecarga: 0 filtros (recomendação) ou >=2; exatamente 1 é barrado.
-    const nAtivos = [filters.q, filters.cnae, filters.uf, filters.porte].filter(Boolean).length;
-    if (nAtivos === 1) {
-      return reply.code(400).send({ error: 'Aplique ao menos 2 filtros para buscar na base (evita varredura pesada).' });
-    }
 
     const profile = await one<RecommendProfile>(
       `SELECT cnaes_alvo, territorio_municipios, territorio_raio_km, pesos
