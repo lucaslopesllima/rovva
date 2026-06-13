@@ -60,8 +60,13 @@ export function Dashboard(): React.JSX.Element {
 
       {loading || !data ? <Spinner /> : (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             {/* KPI → ação: cada card leva à tela onde o usuário age sobre o número */}
+            {/* VGV (Valor Geral de Vendas): soma faturada/entregue da competência, mesmos filtros (mês + vendedor). */}
+            <Link to="/pedidos" className="rounded-2xl transition hover:shadow-pop focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
+              <StatCard label="VGV" value={brl0(data.vendas.total)} icon="wallet" tone="brand"
+                sub={metaPct != null ? `${metaPct}% da meta` : `${data.vendas.qtd} pedido(s)`} />
+            </Link>
             <Link to="/pedidos" className="rounded-2xl transition hover:shadow-pop focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
               <StatCard label="Vendas do mês" value={brl0(data.vendas.total)} icon="trendingUp" tone="success"
                 sub={metaPct != null ? `${metaPct}% da meta (${brl0(data.vendas.meta)})` : `${data.vendas.qtd} pedido(s)`} />
