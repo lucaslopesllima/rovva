@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { query } from '../db.ts';
 import { requireAuth } from '../auth.ts';
+import { invalidOrgRef } from '../orgRefs.ts';
 
 // Lightweight agenda (no real-time). All rows scoped by org_id.
 export function activityRoutes(app: FastifyInstance): void {
@@ -53,9 +54,11 @@ export function activityRoutes(app: FastifyInstance): void {
         },
       },
     },
-  }, async (req) => {
+  }, async (req, reply) => {
     const orgId = req.auth!.orgId;
     const b = req.body as Record<string, unknown>;
+    const badRef = await invalidOrgRef(orgId, b, ['owner_user_id']);
+    if (badRef) return reply.code(400).send({ error: `${badRef} inválido` });
     const rows = await query(
       `INSERT INTO activities (org_id, tipo, titulo, start_at, end_at, owner_user_id, company_id, status)
        VALUES ($1, COALESCE($2,'tarefa'), $3, $4, $5, $6, $7, COALESCE($8::activity_status,'pendente'))
@@ -84,6 +87,8 @@ export function activityRoutes(app: FastifyInstance): void {
     const orgId = req.auth!.orgId;
     const { id } = req.params as { id: number };
     const b = req.body as Record<string, unknown>;
+    const badRef = await invalidOrgRef(orgId, b, ['owner_user_id']);
+    if (badRef) return reply.code(400).send({ error: `${badRef} inválido` });
     const sets: string[] = [];
     const params: unknown[] = [];
     for (const k of ['tipo', 'titulo', 'start_at', 'end_at', 'company_id', 'owner_user_id', 'status'] as const) {

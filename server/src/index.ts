@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { config } from './config.ts';
 import { buildApp } from './app.ts';
 
-const app = buildApp();
+const app = await buildApp();
 
 // Serve the built React app (Dockerfile sets CLIENT_DIR). SPA fallback for client routes.
 if (config.clientDir && existsSync(config.clientDir)) {

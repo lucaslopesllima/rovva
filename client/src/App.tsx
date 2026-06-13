@@ -1,30 +1,35 @@
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Suspense, lazy, type ReactNode } from 'react';
 import { useAuth } from './lib/auth.tsx';
-import { Login } from './pages/Login.tsx';
-import { Recommend } from './pages/Recommend.tsx';
-import { Kanban } from './pages/Kanban.tsx';
-import { Catalog } from './pages/Catalog.tsx';
-import { Agenda } from './pages/Agenda.tsx';
-import { Settings } from './pages/Settings.tsx';
-import { Account } from './pages/Account.tsx';
-import { Finance } from './pages/Finance.tsx';
-import { RoutePlanner } from './pages/Routes.tsx';
-import { Team } from './pages/Team.tsx';
-import { ChangePassword } from './pages/ChangePassword.tsx';
 import { Icon, type IconName } from './lib/icons.tsx';
 import { cn } from './lib/ui.tsx';
-import type { ReactNode } from 'react';
+
+// Code splitting por rota: Leaflet e as páginas pesadas ficam fora do bundle
+// inicial — quem abre o Login não baixa o mapa.
+const Login = lazy(() => import('./pages/Login.tsx').then((m) => ({ default: m.Login })));
+const Recommend = lazy(() => import('./pages/Recommend.tsx').then((m) => ({ default: m.Recommend })));
+const Kanban = lazy(() => import('./pages/Kanban.tsx').then((m) => ({ default: m.Kanban })));
+const Catalog = lazy(() => import('./pages/Catalog.tsx').then((m) => ({ default: m.Catalog })));
+const Agenda = lazy(() => import('./pages/Agenda.tsx').then((m) => ({ default: m.Agenda })));
+const Settings = lazy(() => import('./pages/Settings.tsx').then((m) => ({ default: m.Settings })));
+const Account = lazy(() => import('./pages/Account.tsx').then((m) => ({ default: m.Account })));
+const Finance = lazy(() => import('./pages/Finance.tsx').then((m) => ({ default: m.Finance })));
+const RoutePlanner = lazy(() => import('./pages/Routes.tsx').then((m) => ({ default: m.RoutePlanner })));
+const Team = lazy(() => import('./pages/Team.tsx').then((m) => ({ default: m.Team })));
+const ChangePassword = lazy(() => import('./pages/ChangePassword.tsx').then((m) => ({ default: m.ChangePassword })));
+
+function FullScreenSpinner(): React.JSX.Element {
+  return (
+    <div className="grid h-dvh place-items-center bg-ink-50 text-ink-400">
+      <span className="h-6 w-6 animate-spin rounded-full border-2 border-ink-200 border-t-brand-500" />
+    </div>
+  );
+}
 
 function RequireAuth({ children }: { children: ReactNode }): React.JSX.Element {
   const { user, loading } = useAuth();
   const loc = useLocation();
-  if (loading) {
-    return (
-      <div className="grid h-dvh place-items-center bg-ink-50 text-ink-400">
-        <span className="h-6 w-6 animate-spin rounded-full border-2 border-ink-200 border-t-brand-500" />
-      </div>
-    );
-  }
+  if (loading) return <FullScreenSpinner />;
   if (!user) return <Navigate to="/login" replace />;
   // senha provisória bloqueia tudo até a troca
   if (user.must_change_password && loc.pathname !== '/trocar-senha') {
@@ -160,6 +165,7 @@ function Shell({ children }: { children: ReactNode }): React.JSX.Element {
 
 export function App(): React.JSX.Element {
   return (
+    <Suspense fallback={<FullScreenSpinner />}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<RequireAuth><Shell><Recommend /></Shell></RequireAuth>} />
@@ -175,5 +181,6 @@ export function App(): React.JSX.Element {
       <Route path="/conta" element={<RequireAuth><Shell><Account /></Shell></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   );
 }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, ApiError } from '../lib/api.ts';
+import { api, ApiError, setToken } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.tsx';
 import { Btn, Card } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
@@ -25,7 +25,9 @@ export function ChangePassword(): React.JSX.Element {
     if (nova !== conf) { setErr('A confirmação não confere.'); return; }
     setBusy(true);
     try {
-      await api.post('/api/account/password', { senha_atual: atual, nova_senha: nova });
+      // a troca rotaciona o token (token_version) — guarda o novo antes de qualquer chamada
+      const r = await api.post<{ token: string }>('/api/account/password', { senha_atual: atual, nova_senha: nova });
+      setToken(r.token);
       await refresh();
       navigate('/', { replace: true });
     } catch (e2) {

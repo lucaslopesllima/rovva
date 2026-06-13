@@ -3,9 +3,9 @@ import { api } from '../lib/api.ts';
 import type { CatalogItem, RepresentedCompany } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, PageHeader, Spinner, cn } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
+import { brl } from '../lib/format.ts';
 
 const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
-const brl = (n: number): string => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 type Form = { nome: string; codigo: string; descricao: string; preco: string; represented_id: string };
 const EMPTY: Form = { nome: '', codigo: '', descricao: '', preco: '', represented_id: '' };
@@ -51,14 +51,19 @@ export function Catalog(): React.JSX.Element {
     setList((xs) => xs.map((x) => (x.id === id ? r.item : x)));
     setEditing(null);
   };
+  // Otimista com rollback: PATCH/DELETE recusado devolve o estado anterior.
   const toggleAtivo = async (i: CatalogItem): Promise<void> => {
+    const before = list;
     setList((xs) => xs.map((x) => (x.id === i.id ? { ...x, ativo: !x.ativo } : x)));
-    await api.patch(`/api/catalog/${i.id}`, { ativo: !i.ativo });
+    try { await api.patch(`/api/catalog/${i.id}`, { ativo: !i.ativo }); }
+    catch { setList(before); alert('Não foi possível atualizar o item.'); }
   };
   const remove = async (id: number): Promise<void> => {
     if (!confirm('Excluir este item do catálogo?')) return;
+    const before = list;
     setList((xs) => xs.filter((x) => x.id !== id));
-    await api.del(`/api/catalog/${id}`);
+    try { await api.del(`/api/catalog/${id}`); }
+    catch { setList(before); alert('Não foi possível excluir o item.'); }
   };
 
   return (

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { one, query } from '../db.ts';
-import { requireAuth, hashPassword, verifyPassword } from '../auth.ts';
+import { requireAuth, hashPassword, verifyPassword, signToken } from '../auth.ts';
 import { geocodeAddr } from '../geocode.ts';
 
 const ADDR_FIELDS = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'uf'];
@@ -111,11 +111,17 @@ export function accountRoutes(app: FastifyInstance): void {
     if (!u || !(await verifyPassword(senha_atual, u.senha_hash))) {
       return reply.code(400).send({ error: 'senha atual incorreta' });
     }
-    // troca de senha também encerra o ciclo da senha provisória do primeiro login
-    await query(
-      'UPDATE users SET senha_hash = $1, must_change_password = false WHERE id = $2',
+    // troca de senha também encerra o ciclo da senha provisória do primeiro login.
+    // token_version++ derruba todos os tokens já emitidos (inclusive o desta
+    // requisição) — por isso devolvemos um token novo para a sessão atual.
+    const upd = await one<{ token_version: number }>(
+      `UPDATE users SET senha_hash = $1, must_change_password = false, token_version = token_version + 1
+       WHERE id = $2 RETURNING token_version`,
       [await hashPassword(nova_senha), userId],
     );
-    return { ok: true };
+    const token = await signToken({
+      userId, orgId: req.auth!.orgId, role: req.auth!.role, tokenVersion: upd!.token_version,
+    });
+    return { ok: true, token };
   });
 }

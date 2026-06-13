@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import { one, query } from '../db.ts';
+import type pg from 'pg';
+import { one, query, withClient } from '../db.ts';
 import { requireAuth } from '../auth.ts';
 import { audit, pick } from '../audit.ts';
+import { invalidOrgRef } from '../orgRefs.ts';
 
 // company_relationships is the tenant's REFERENCE into the global companies pool.
 // Creating/updating one NEVER writes the companies table.
@@ -34,10 +36,11 @@ const REL_LABELS = `rc.nome AS representada, mb.nome AS marca,
   ), '[]') AS catalogo`;
 
 // JOINs that resolve the FK labels above. Reused by GET /relationships and /kanban.
-const REL_JOINS = `LEFT JOIN represented_companies rc ON rc.id = r.represented_id
-  LEFT JOIN represented_brands mb ON mb.id = r.marca_id
-  LEFT JOIN funnel_scenarios cen ON cen.id = r.cenario_id
-  LEFT JOIN funnel_actions act ON act.id = r.acao_id`;
+// org no join: rótulo de outra org nunca resolve, mesmo que um id alheio escape.
+const REL_JOINS = `LEFT JOIN represented_companies rc ON rc.id = r.represented_id AND rc.org_id = r.org_id
+  LEFT JOIN represented_brands mb ON mb.id = r.marca_id   AND mb.org_id = r.org_id
+  LEFT JOIN funnel_scenarios cen ON cen.id = r.cenario_id AND cen.org_id = r.org_id
+  LEFT JOIN funnel_actions act ON act.id = r.acao_id      AND act.org_id = r.org_id`;
 
 // JSON-schema for the mutable fields, shared by POST/PATCH bodies.
 const EDITABLE_SCHEMA = {
@@ -62,14 +65,15 @@ const RET_COLS = `id, company_id, stage_id, status, valor_estimado, notas, owner
   data_contato::text AS data_contato, previsao_data::text AS previsao_data`;
 
 // Sincroniza os contatos da prospecção (N:N). Valida que rel e contatos são da org.
-async function syncContatos(relId: number, orgId: number, ids: number[]): Promise<void> {
-  await query(
+// Recebe o client da transação do PATCH — DELETE+INSERT são atômicos com o UPDATE.
+async function syncContatos(c: pg.PoolClient, relId: number, orgId: number, ids: number[]): Promise<void> {
+  await c.query(
     `DELETE FROM relationship_contacts WHERE relationship_id = $1
      AND EXISTS (SELECT 1 FROM company_relationships r WHERE r.id = $1 AND r.org_id = $2)`,
     [relId, orgId],
   );
   if (ids.length > 0) {
-    await query(
+    await c.query(
       `INSERT INTO relationship_contacts (relationship_id, contact_id)
        SELECT $1, c.id FROM contacts c
        WHERE c.id = ANY($2::bigint[]) AND c.org_id = $3
@@ -81,14 +85,14 @@ async function syncContatos(relId: number, orgId: number, ids: number[]): Promis
 }
 
 // Sincroniza os itens de catálogo da prospecção (N:N). Valida org.
-async function syncCatalogo(relId: number, orgId: number, ids: number[]): Promise<void> {
-  await query(
+async function syncCatalogo(c: pg.PoolClient, relId: number, orgId: number, ids: number[]): Promise<void> {
+  await c.query(
     `DELETE FROM relationship_catalog WHERE relationship_id = $1
      AND EXISTS (SELECT 1 FROM company_relationships r WHERE r.id = $1 AND r.org_id = $2)`,
     [relId, orgId],
   );
   if (ids.length > 0) {
-    await query(
+    await c.query(
       `INSERT INTO relationship_catalog (relationship_id, catalog_item_id)
        SELECT $1, ci.id FROM catalog_items ci
        WHERE ci.id = ANY($2::bigint[]) AND ci.org_id = $3
@@ -160,6 +164,10 @@ export function relationshipRoutes(app: FastifyInstance): void {
     const company = await one('SELECT id FROM companies WHERE id = $1', [b.company_id]);
     if (!company) return reply.code(404).send({ error: 'empresa não existe na base' });
 
+    const badRef = await invalidOrgRef(orgId, b,
+      ['owner_user_id', 'represented_id', 'marca_id', 'cenario_id', 'acao_id']);
+    if (badRef) return reply.code(400).send({ error: `${badRef} inválido` });
+
     // default stage = first stage of the org
     let stageId = (b.stage_id as number | null | undefined) ?? null;
     if (stageId === null) {
@@ -213,6 +221,10 @@ export function relationshipRoutes(app: FastifyInstance): void {
     const hasContatos = Array.isArray(b.contato_ids);
     const hasCatalogo = Array.isArray(b.catalogo_ids);
 
+    const badRef = await invalidOrgRef(orgId, b,
+      ['owner_user_id', 'represented_id', 'marca_id', 'cenario_id', 'acao_id']);
+    if (badRef) return reply.code(400).send({ error: `${badRef} inválido` });
+
     const sets: string[] = [];
     const params: unknown[] = [];
     for (const k of EDITABLE) {
@@ -223,27 +235,41 @@ export function relationshipRoutes(app: FastifyInstance): void {
     }
     if (sets.length === 0 && !hasContatos && !hasCatalogo) return reply.code(400).send({ error: 'nada para atualizar' });
 
-    let row: Record<string, unknown> | undefined;
-    if (sets.length > 0) {
-      sets.push('updated_at = now()');
-      params.push(id); const idIdx = params.length;
-      params.push(orgId); const orgIdx = params.length;
-      const rows = await query(
-        `UPDATE company_relationships SET ${sets.join(', ')}
-         WHERE id = $${idIdx} AND org_id = $${orgIdx}
-         RETURNING ${RET_COLS}`,
-        params,
-      );
-      if (rows.length === 0) return reply.code(404).send({ error: 'não encontrado' });
-      row = rows[0];
-    } else {
-      const r = await one(`SELECT ${RET_COLS} FROM company_relationships WHERE id = $1 AND org_id = $2`, [id, orgId]);
-      if (!r) return reply.code(404).send({ error: 'não encontrado' });
-      row = r as Record<string, unknown>;
-    }
+    // UPDATE + syncs numa transação só: falha no meio não deixa estado parcial.
+    const row = await withClient(async (c) => {
+      await c.query('BEGIN');
+      try {
+        let r: Record<string, unknown> | undefined;
+        if (sets.length > 0) {
+          const p = [...params];
+          p.push(id); const idIdx = p.length;
+          p.push(orgId); const orgIdx = p.length;
+          const rows = (await c.query(
+            `UPDATE company_relationships SET ${sets.join(', ')}, updated_at = now()
+             WHERE id = $${idIdx} AND org_id = $${orgIdx}
+             RETURNING ${RET_COLS}`,
+            p,
+          )).rows as Record<string, unknown>[];
+          r = rows[0];
+        } else {
+          const rows = (await c.query(
+            `SELECT ${RET_COLS} FROM company_relationships WHERE id = $1 AND org_id = $2`, [id, orgId],
+          )).rows as Record<string, unknown>[];
+          r = rows[0];
+        }
+        if (r) {
+          if (hasContatos) await syncContatos(c, id, orgId, b.contato_ids as number[]);
+          if (hasCatalogo) await syncCatalogo(c, id, orgId, b.catalogo_ids as number[]);
+        }
+        await c.query('COMMIT');
+        return r;
+      } catch (e) {
+        await c.query('ROLLBACK');
+        throw e;
+      }
+    });
+    if (!row) return reply.code(404).send({ error: 'não encontrado' });
 
-    if (hasContatos) await syncContatos(id, orgId, b.contato_ids as number[]);
-    if (hasCatalogo) await syncCatalogo(id, orgId, b.catalogo_ids as number[]);
     await audit(req, 'relationship', id, 'update', pick(b, [...EDITABLE, 'contato_ids', 'catalogo_ids']));
     return { relationship: row };
   });

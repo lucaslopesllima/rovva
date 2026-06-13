@@ -112,8 +112,9 @@ export function userRoutes(app: FastifyInstance): void {
       return reply.code(400).send({ error: 'use a troca de senha da própria conta' });
     }
     const { senha } = req.body as { senha: string };
+    // token_version++ derruba imediatamente as sessões abertas do usuário resetado.
     const rows = await query(
-      `UPDATE users SET senha_hash = $1, must_change_password = true
+      `UPDATE users SET senha_hash = $1, must_change_password = true, token_version = token_version + 1
        WHERE id = $2 AND org_id = $3 RETURNING id`,
       [await hashPassword(senha), id, orgId],
     );

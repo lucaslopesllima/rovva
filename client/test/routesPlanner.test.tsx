@@ -1,0 +1,125 @@
+// Planejador de rota: seleção do funil, otimizar, salvar, rotas salvas, veículos.
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { RoutePlanner } from '../src/pages/Routes.tsx';
+import { api, ApiError } from '../src/lib/api.ts';
+
+vi.mock('react-leaflet', () => ({
+  MapContainer: ({ children }: { children?: React.ReactNode }) => <div data-testid="map">{children}</div>,
+  TileLayer: () => null, CircleMarker: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+  Polyline: () => null, Tooltip: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
+  useMap: () => ({ fitBounds: vi.fn() }),
+}));
+vi.mock('../src/lib/api.ts', async (orig) => {
+  const real = await orig() as Record<string, unknown>;
+  return { ...real, api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), del: vi.fn() } };
+});
+const m = vi.mocked(api);
+
+const FUNNEL = [
+  { id: 1, company_id: 10, razao_social: 'Alfa LTDA', nome_fantasia: 'Alfa', uf: 'SP', lat: -23.5, lon: -46.6 },
+  { id: 2, company_id: 20, razao_social: 'Beta SA', nome_fantasia: null, uf: 'SP', lat: null, lon: null },
+];
+const VEHICLES = [
+  { id: 5, nome: 'Fiorino', placa: null, combustivel: 'flex', consumo_kml: '11', tanque_litros: null, preco_litro: '6.10', ativo: true },
+];
+const RESULT = {
+  origem: { lat: -23.5, lon: -46.6 },
+  stops: [{ company_id: 10, seq: 0, razao_social: 'Alfa LTDA', nome_fantasia: 'Alfa', uf: 'SP', cidade: 'São Paulo', lat: -23.5, lon: -46.6, leg_dist_km: 12.3, leg_dur_min: 20 }],
+  dist_km: 24.6, dur_min: 41, preco_litro: 6.1, litros: 2.2, custo_total: 13.4,
+  geometry: { coordinates: [[-23.5, -46.6]] }, skipped: [],
+};
+
+beforeEach(() => {
+  vi.mocked(m.get).mockReset();
+  vi.mocked(m.post).mockReset();
+  vi.mocked(m.del).mockReset();
+  m.get.mockImplementation(async (p: string) => {
+    if (p.startsWith('/api/relationships')) return { relationships: FUNNEL };
+    if (p === '/api/vehicles') return { vehicles: VEHICLES };
+    if (p === '/api/routes') return { routes: [] };
+    return {};
+  });
+});
+
+describe('RoutePlanner', () => {
+  it('lista empresas do funil, sinaliza quem não tem localização e busca', async () => {
+    render(<RoutePlanner />);
+    expect(await screen.findByText('Alfa')).toBeInTheDocument();
+    expect(screen.getByText(/sem localização/)).toBeInTheDocument();
+
+    await userEvent.type(screen.getByPlaceholderText('Buscar empresa…'), 'beta');
+    expect(screen.queryByText('Alfa')).not.toBeInTheDocument();
+    expect(screen.getByText('Beta SA')).toBeInTheDocument();
+  });
+
+  it('otimizar fica desabilitado sem seleção; com seleção chama a API e mostra resultado', async () => {
+    m.post.mockResolvedValueOnce(RESULT);
+    render(<RoutePlanner />);
+    await screen.findByText('Alfa');
+
+    const otimizar = screen.getByRole('button', { name: 'Otimizar rota' });
+    expect(otimizar).toBeDisabled();
+
+    await userEvent.click(screen.getByText('Alfa'));
+    await userEvent.click(otimizar);
+    expect(m.post).toHaveBeenCalledWith('/api/routes/optimize',
+      { company_ids: [10], vehicle_id: null, preco_litro: null });
+
+    expect(await screen.findByText('Sequência de visitas')).toBeInTheDocument();
+    expect(screen.getByText(/24,6 km/)).toBeInTheDocument();
+  });
+
+  it('erro da API aparece (ex.: sem origem cadastrada)', async () => {
+    m.post.mockRejectedValueOnce(new ApiError(400, 'Cadastre o endereço da sua conta para definir a origem da rota.'));
+    render(<RoutePlanner />);
+    await screen.findByText('Alfa');
+    await userEvent.click(screen.getByText('Alfa'));
+    await userEvent.click(screen.getByRole('button', { name: 'Otimizar rota' }));
+    expect(await screen.findByText(/Cadastre o endereço/)).toBeInTheDocument();
+  });
+
+  it('salvar rota usa prompt e persiste; cancelar não chama POST /api/routes', async () => {
+    m.post.mockResolvedValueOnce(RESULT); // optimize
+    render(<RoutePlanner />);
+    await screen.findByText('Alfa');
+    await userEvent.click(screen.getByText('Alfa'));
+    await userEvent.click(screen.getByRole('button', { name: 'Otimizar rota' }));
+    await screen.findByText('Sequência de visitas');
+
+    vi.stubGlobal('prompt', vi.fn(() => null));
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar rota' }));
+    expect(m.post).toHaveBeenCalledTimes(1); // só o optimize
+
+    vi.stubGlobal('prompt', vi.fn(() => 'Rota Zona Sul'));
+    m.post.mockResolvedValueOnce({ route: { id: 9 } });
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar rota' }));
+    await waitFor(() => expect(m.post).toHaveBeenCalledTimes(2));
+    expect(m.post).toHaveBeenLastCalledWith('/api/routes', expect.objectContaining({
+      nome: 'Rota Zona Sul', stops: [expect.objectContaining({ company_id: 10, seq: 0 })],
+    }));
+  });
+
+  it('rotas salvas listam e excluem com confirm', async () => {
+    m.get.mockImplementation(async (p: string) => {
+      if (p.startsWith('/api/relationships')) return { relationships: FUNNEL };
+      if (p === '/api/vehicles') return { vehicles: VEHICLES };
+      if (p === '/api/routes') return { routes: [{ id: 9, nome: 'Rota Salva', vehicle_id: null, veiculo: null, dist_km: '24.6', dur_min: '41', litros: null, custo_total: null, created_at: '', paradas: '1' }] };
+      return {};
+    });
+    m.del.mockResolvedValueOnce({});
+    vi.stubGlobal('confirm', vi.fn(() => true));
+    render(<RoutePlanner />);
+    expect(await screen.findByText('Rota Salva')).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText('Excluir'));
+    expect(m.del).toHaveBeenCalledWith('/api/routes/9');
+  });
+
+  it('aba Veículos lista veículo ativo', async () => {
+    render(<RoutePlanner />);
+    await screen.findByText('Alfa');
+    await userEvent.click(screen.getByRole('button', { name: 'Veículos' }));
+    expect(await screen.findByText(/Fiorino/)).toBeInTheDocument();
+  });
+});

@@ -32,7 +32,7 @@ async function login(email: string, senha: string): Promise<ReturnType<FastifyIn
 const bearer = (t: string): Record<string, string> => ({ authorization: `Bearer ${t}` });
 
 beforeAll(async () => {
-  app = buildApp({ logger: false });
+  app = await buildApp({ logger: false });
   await app.ready();
   // empresa do pool global para os testes de funil (cnpj único por execução)
   const cnpj = String(run).padStart(14, '0').slice(-14);
@@ -62,6 +62,58 @@ describe('auth', () => {
     await register('Org Auth2', mail('auth2'));
     const r = await login(mail('auth2'), 'errada123');
     expect(r.statusCode).toBe(401);
+  });
+
+  it('login com email inexistente falha 401 (caminho do hash dummy)', async () => {
+    const r = await login(mail('fantasma'), 'qualquer1');
+    expect(r.statusCode).toBe(401);
+  });
+
+  it('register com email duplicado -> 409', async () => {
+    const email = `fixo.${run}@teste.com`;
+    const a = await app.inject({ method: 'POST', url: '/api/auth/register', payload: { org_nome: 'A', email, senha: 'senha123' } });
+    expect(a.statusCode).toBe(201);
+    const dup = await app.inject({ method: 'POST', url: '/api/auth/register', payload: { org_nome: 'B', email, senha: 'senha123' } });
+    expect(dup.statusCode).toBe(409);
+  });
+
+  it('falha no meio do register dá ROLLBACK e propaga 500', async () => {
+    // byte NUL passa no JSON-schema mas o Postgres rejeita em text — o INSERT
+    // da organização falha DENTRO da transação e o catch faz ROLLBACK.
+    const email = mail('boom');
+    const r = await app.inject({
+      method: 'POST', url: '/api/auth/register',
+      payload: { org_nome: 'Org\u0000Boom', email, senha: 'senha123' },
+    });
+    expect(r.statusCode).toBe(500);
+    // rollback: nenhum resíduo da tentativa
+    expect(await one('SELECT id FROM users WHERE email = $1', [email])).toBeNull();
+  });
+
+  it('requireAuth: sem header e token inválido -> 401', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/auth/me' })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'GET', url: '/api/auth/me', headers: bearer('lixo') })).statusCode).toBe(401);
+  });
+
+  it('health responde ok', async () => {
+    const r = await app.inject({ method: 'GET', url: '/api/health' });
+    expect(r.json()).toEqual({ ok: true });
+  });
+});
+
+describe('rate limit de autenticação', () => {
+  it('estoura 429 após o limite por IP', async () => {
+    const app2 = await buildApp({ logger: false, authRateLimitMax: 2 });
+    await app2.ready();
+    try {
+      const tryLogin = (): ReturnType<FastifyInstance['inject']> =>
+        app2.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'x@y.z', senha: 'errada1' } });
+      expect((await tryLogin()).statusCode).toBe(401);
+      expect((await tryLogin()).statusCode).toBe(401);
+      expect((await tryLogin()).statusCode).toBe(429);
+    } finally {
+      await app2.close();
+    }
   });
 });
 
@@ -115,13 +167,17 @@ describe('gestão de usuários (admin)', () => {
     });
     expect(forbidden.statusCode).toBe(403);
 
-    // troca de senha limpa a flag
+    // troca de senha limpa a flag e rotaciona o token (token_version++):
+    // o antigo morre, a resposta traz o novo para a sessão atual.
     const pwd = await app.inject({
       method: 'POST', url: '/api/account/password', headers: bearer(rep.token),
       payload: { senha_atual: 'provisoria1', nova_senha: 'definitiva1' },
     });
     expect(pwd.statusCode).toBe(200);
-    const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: bearer(rep.token) });
+    const freshToken = (pwd.json() as { token: string }).token;
+    const stale = await app.inject({ method: 'GET', url: '/api/auth/me', headers: bearer(rep.token) });
+    expect(stale.statusCode).toBe(401);
+    const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: bearer(freshToken) });
     expect((me.json() as { user: { must_change_password: boolean } }).user.must_change_password).toBe(false);
 
     // admin não desativa a si mesmo

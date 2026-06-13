@@ -28,10 +28,12 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
 
   useEffect(() => {
     if (!getToken()) { setLoading(false); return; }
-    api.get<{ user: User }>('/api/auth/me')
+    const ac = new AbortController();
+    api.get<{ user: User }>('/api/auth/me', { signal: ac.signal })
       .then((r) => setUser(r.user))
-      .catch(() => setToken(null))
-      .finally(() => setLoading(false));
+      .catch((e) => { if (!ac.signal.aborted) setToken(null); void e; })
+      .finally(() => { if (!ac.signal.aborted) setLoading(false); });
+    return () => ac.abort();
   }, []);
 
   const login = async (email: string, senha: string): Promise<void> => {

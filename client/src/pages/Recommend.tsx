@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MapContainer, TileLayer, CircleMarker, Popup, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import type { LatLngBoundsExpression } from 'leaflet';
 import { api, ApiError } from '../lib/api.ts';
 import type { Recommendation, GeocodeResult } from '../lib/types.ts';
@@ -49,6 +49,62 @@ function FitRoute({ coords }: { coords: [number, number][] }): null {
     if (coords.length > 0) map.fitBounds(coords as LatLngBoundsExpression, { padding: [50, 50] });
   }, [coords, map]);
   return null;
+}
+
+type Ponto = { r: Recommendation; lat: number; lon: number; exato?: boolean };
+type Cluster = { key: string; n: number; lat: number; lon: number };
+
+// Acima deste nº de pontos, agrupa por célula de grade (~1/4 de tile no zoom
+// atual) — centenas de CircleMarkers individuais pesam no DOM. Clique no
+// cluster aproxima; ao dar zoom a grade refina e os grupos se abrem.
+const CLUSTER_THRESHOLD = 150;
+
+function RecMarkers({ pontos, focus, renderMarker }: {
+  pontos: Ponto[]; focus: MapFocus | null; renderMarker: (p: Ponto) => React.JSX.Element;
+}): React.JSX.Element {
+  const map = useMap();
+  const [zoom, setZoom] = useState(map.getZoom());
+  useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
+
+  const { singles, clusters } = useMemo(() => {
+    if (pontos.length <= CLUSTER_THRESHOLD) return { singles: pontos, clusters: [] as Cluster[] };
+    const cell = 360 / Math.pow(2, zoom + 2);
+    const buckets = new Map<string, Ponto[]>();
+    const singles: Ponto[] = [];
+    for (const p of pontos) {
+      if (focus?.id === p.r.id) { singles.push(p); continue; } // foco nunca clusteriza
+      const k = `${Math.floor(p.lat / cell)}:${Math.floor(p.lon / cell)}`;
+      const b = buckets.get(k);
+      if (b) b.push(p); else buckets.set(k, [p]);
+    }
+    const clusters: Cluster[] = [];
+    for (const [key, b] of buckets) {
+      if (b.length === 1) { singles.push(b[0]!); continue; }
+      clusters.push({
+        key, n: b.length,
+        lat: b.reduce((s, p) => s + p.lat, 0) / b.length,
+        lon: b.reduce((s, p) => s + p.lon, 0) / b.length,
+      });
+    }
+    return { singles, clusters };
+  }, [pontos, zoom, focus]);
+
+  return (
+    <>
+      {singles.map(renderMarker)}
+      {clusters.map((c) => (
+        <CircleMarker key={`cluster:${c.key}`} center={[c.lat, c.lon]}
+          radius={Math.min(20, 11 + Math.log2(c.n) * 1.5)}
+          pathOptions={{ color: '#1d4ed8', fillColor: '#3b82f6', fillOpacity: 0.8, weight: 2 }}
+          eventHandlers={{ click: () => map.setView([c.lat, c.lon], Math.min(zoom + 2, 16)) }}>
+          <Tooltip permanent direction="center"
+            className="!rounded-full !border-0 !bg-transparent !p-0 !shadow-none text-xs font-bold !text-white">
+            {c.n}
+          </Tooltip>
+        </CircleMarker>
+      ))}
+    </>
+  );
 }
 
 export function Recommend(): React.JSX.Element {
@@ -139,7 +195,13 @@ export function Recommend(): React.JSX.Element {
     .filter(Boolean).length;
   const semFiltro = nFiltros === 0;
 
+  // Aborta a busca anterior antes de disparar a próxima — sem isso uma resposta
+  // lenta de filtro antigo pode sobrescrever a da busca atual (race).
+  const loadCtl = useRef<AbortController | null>(null);
   const load = async (off: number): Promise<void> => {
+    loadCtl.current?.abort();
+    const ac = new AbortController();
+    loadCtl.current = ac;
     setLoading(true);
     setErr('');
     try {
@@ -149,23 +211,26 @@ export function Recommend(): React.JSX.Element {
       if (filter.fUf.trim()) qs.set('uf', filter.fUf.trim());
       if (filter.fPorte) qs.set('porte', filter.fPorte);
       const r = await api.get<{ results: Recommendation[]; page: { count: number } }>(
-        `/api/recommend?${qs.toString()}`,
+        `/api/recommend?${qs.toString()}`, { signal: ac.signal },
       );
       setRecs((prev) => (off === 0 ? r.results : [...prev, ...r.results]));
       setDone(r.results.length < LIMIT);
       setOffset(off + r.results.length);
     } catch (e) {
+      if (ac.signal.aborted) return; // busca substituída/página fechada — ignora
       setErr(e instanceof ApiError ? e.message : 'Erro ao buscar recomendações');
     } finally {
-      setLoading(false);
+      if (!ac.signal.aborted) setLoading(false);
     }
   };
+  useEffect(() => () => loadCtl.current?.abort(), []);
 
   // recarrega do servidor (página 0) ao mudar qualquer filtro — busca na BASE TODA,
   // com debounce p/ não disparar a cada tecla. Roda também no mount.
   useEffect(() => {
     if (semFiltro) {  // sem filtro -> tela vazia, sem consultar
       setRecs([]); setDone(true); setOffset(0); setErr('');
+      setLoading(false); // sem isso o spinner inicial nunca dá lugar ao empty state
       return;
     }
     const t = setTimeout(() => { void load(0); }, 350);
@@ -301,7 +366,7 @@ export function Recommend(): React.JSX.Element {
               <TileLayer attribution='&copy; OpenStreetMap' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
               <FitBounds pts={bounds} focus={focus} />
               <FlyTo focus={focus} />
-              {pontos.map(({ r, lat, lon }) => {
+              <RecMarkers pontos={pontos} focus={focus} renderMarker={({ r, lat, lon }) => {
                 const isFocus = focus?.id === r.id;
                 return (
                 <CircleMarker key={r.id} center={[lat, lon]} radius={isFocus ? 11 : 7}
@@ -326,7 +391,7 @@ export function Recommend(): React.JSX.Element {
                   </Popup>
                 </CircleMarker>
                 );
-              })}
+              }} />
               {route && (
                 <>
                   <Polyline positions={route.coords} pathOptions={{ color: '#2563eb', weight: 5, opacity: 0.8 }} />

@@ -6,6 +6,7 @@ import { Icon } from '../lib/icons.tsx';
 import { CompanyFilterBar, useCompanyFilter } from '../lib/companyFilter.tsx';
 import { CompanyModal } from '../lib/companyModal.tsx';
 import { ActivityCreateModal } from '../lib/activityModal.tsx';
+import { brl0 as brl } from '../lib/format.ts';
 
 const STATUS_TONE: Record<string, Tone> = {
   prospect: 'info', cliente: 'success', descartado: 'neutral',
@@ -15,7 +16,6 @@ const STATUS_LABEL: Record<string, string> = {
 };
 const STATUS_OPTS = ['prospect', 'cliente', 'descartado'] as const;
 const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
-const brl = (n: number): string => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 
 export function Kanban(): React.JSX.Element {
   const [stages, setStages] = useState<Stage[]>([]);

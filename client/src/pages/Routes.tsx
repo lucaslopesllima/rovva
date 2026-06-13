@@ -5,8 +5,8 @@ import { api, ApiError } from '../lib/api.ts';
 import type { FunnelCompany, Vehicle, OptimizeResult, SavedRoute } from '../lib/types.ts';
 import { Btn, Badge, Card, EmptyState, PageHeader, Segmented, Spinner, StatCard, cn } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
+import { brl } from '../lib/format.ts';
 
-const brl = (n: number): string => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const km = (n: number | null): string => (n == null ? '—' : `${n.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} km`);
 const dur = (min: number | null): string => {
   if (min == null) return '—';

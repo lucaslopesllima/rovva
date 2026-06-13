@@ -3,12 +3,9 @@ import { api } from '../lib/api.ts';
 import type { Activity, FinanceEntry, KanbanCard, RepresentedCompany } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, PageHeader, Segmented, Spinner, StatCard, cn, type Tone } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
+import { brl, fmtDate, todayStr } from '../lib/format.ts';
 
 const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
-
-const brl = (v: number): string => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const fmtDate = (iso: string): string => new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR');
-const todayStr = (): string => new Date().toISOString().slice(0, 10);
 
 const STATUS_META: Record<string, { label: string; tone: Tone }> = {
   pendente: { label: 'Pendente', tone: 'warn' },
@@ -75,16 +72,24 @@ export function Finance(): React.JSX.Element {
     return { receberAberto, pagarAberto, recebido, pago, saldo: receberAberto - pagarAberto };
   }, [entries]);
 
+  // Mutações otimistas com rollback: se o servidor recusar, o estado volta —
+  // a UI nunca fica mentindo sobre o que está salvo.
   const remove = async (e: FinanceEntry): Promise<void> => {
+    const before = entries;
     setEntries((xs) => xs.filter((x) => x.id !== e.id));
-    await api.del(`/api/finance/${e.id}`);
+    try { await api.del(`/api/finance/${e.id}`); }
+    catch { setEntries(before); alert('Não foi possível excluir o lançamento.'); }
   };
   const liquidar = async (e: FinanceEntry): Promise<void> => {
     const next = e.status === 'liquidado' ? 'pendente' : 'liquidado';
-    await api.patch(`/api/finance/${e.id}`, {
-      status: next, liquidacao_data: next === 'liquidado' ? todayStr() : null,
-    });
-    void load();
+    const before = entries;
+    setEntries((xs) => xs.map((x) => (x.id === e.id ? { ...x, status: next } : x)));
+    try {
+      await api.patch(`/api/finance/${e.id}`, {
+        status: next, liquidacao_data: next === 'liquidado' ? todayStr() : null,
+      });
+      void load();
+    } catch { setEntries(before); alert('Não foi possível atualizar o lançamento.'); }
   };
 
   return (

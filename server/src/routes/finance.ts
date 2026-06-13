@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { query } from '../db.ts';
 import { requireAuth } from '../auth.ts';
 import { audit, pick } from '../audit.ts';
+import { invalidOrgRef } from '../orgRefs.ts';
 
 // Módulo financeiro: contas a pagar/receber, org-scoped. SQL parametrizado, sem ORM.
 // Vínculos opcionais: empresa prospect (companies), empresa representada
@@ -16,8 +17,8 @@ const SELECT = `
          a.titulo        AS activity_titulo
   FROM finance_entries f
   LEFT JOIN companies c            ON c.id = f.company_id
-  LEFT JOIN represented_companies r ON r.id = f.represented_id
-  LEFT JOIN activities a            ON a.id = f.activity_id`;
+  LEFT JOIN represented_companies r ON r.id = f.represented_id AND r.org_id = f.org_id
+  LEFT JOIN activities a            ON a.id = f.activity_id    AND a.org_id = f.org_id`;
 
 // Campos editáveis (mesma lista no POST e no PATCH dinâmico).
 const FIELDS = ['kind', 'descricao', 'valor', 'vencimento', 'liquidacao_data', 'status',
@@ -76,9 +77,11 @@ export function financeRoutes(app: FastifyInstance): void {
         },
       },
     },
-  }, async (req) => {
+  }, async (req, reply) => {
     const orgId = req.auth!.orgId;
     const b = req.body as Record<string, unknown>;
+    const badRef = await invalidOrgRef(orgId, b, ['represented_id', 'activity_id', 'owner_user_id']);
+    if (badRef) return reply.code(400).send({ error: `${badRef} inválido` });
     const rows = await query(
       `INSERT INTO finance_entries
         (org_id, kind, descricao, valor, vencimento, liquidacao_data, status,
@@ -114,6 +117,7 @@ export function financeRoutes(app: FastifyInstance): void {
           company_id: { type: ['integer', 'null'] },
           represented_id: { type: ['integer', 'null'] },
           activity_id: { type: ['integer', 'null'] },
+          owner_user_id: { type: ['integer', 'null'] },
         },
       },
     },
@@ -121,6 +125,8 @@ export function financeRoutes(app: FastifyInstance): void {
     const orgId = req.auth!.orgId;
     const { id } = req.params as { id: number };
     const b = req.body as Record<string, unknown>;
+    const badRef = await invalidOrgRef(orgId, b, ['represented_id', 'activity_id', 'owner_user_id']);
+    if (badRef) return reply.code(400).send({ error: `${badRef} inválido` });
     const sets: string[] = [];
     const params: unknown[] = [];
     for (const k of FIELDS) {
