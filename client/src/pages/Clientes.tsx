@@ -6,7 +6,7 @@ import { Icon } from '../lib/icons.tsx';
 import { CompanySearch } from '../lib/companySearch.tsx';
 import { CompanyModal } from '../lib/companyModal.tsx';
 import { toast } from '../lib/toast.tsx';
-import { brl0, dec, maskCNPJ, numStr } from '../lib/format.ts';
+import { brl0, dec, maskCNPJ, maskSearchCNPJ, numStr } from '../lib/format.ts';
 
 const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
@@ -150,7 +150,7 @@ export function Clientes(): React.JSX.Element {
             {list.length > 0 && (
               <div className="relative mb-3">
                 <Icon name="search" size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-                <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filtrar por nome ou CNPJ…"
+                <input value={q} onChange={(e) => setQ(maskSearchCNPJ(e.target.value))} placeholder="Filtrar por nome ou CNPJ…"
                   className="w-full rounded-xl border border-ink-200 bg-white py-2.5 pl-9 pr-3 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
               </div>
             )}

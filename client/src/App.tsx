@@ -55,29 +55,53 @@ function RequireAdmin({ children }: { children: ReactNode }): React.JSX.Element 
   return <>{children}</>;
 }
 
-const NAV: { to: string; label: string; icon: IconName; admin?: boolean }[] = [
-  { to: '/', label: 'Dashboard', icon: 'gauge' },
-  { to: '/prospeccao', label: 'Prospecção', icon: 'target' },
-  { to: '/funil', label: 'Funil', icon: 'columns' },
-  { to: '/clientes', label: 'Clientes', icon: 'users' },
-  { to: '/carteiras', label: 'Carteiras', icon: 'layers', admin: true },
-  { to: '/pedidos', label: 'Pedidos', icon: 'list' },
-  { to: '/comissoes', label: 'Comissões', icon: 'percent' },
-  { to: '/relatorios', label: 'Relatórios', icon: 'barChart' },
-  { to: '/transportadoras', label: 'Transportadoras', icon: 'car' },
-  { to: '/rotas', label: 'Rotas', icon: 'route' },
-  { to: '/catalogo', label: 'Catálogo', icon: 'box' },
-  { to: '/agenda', label: 'Agenda', icon: 'calendar' },
-  { to: '/email', label: 'E-mail', icon: 'mail' },
-  { to: '/financeiro', label: 'Financeiro', icon: 'wallet' },
-  { to: '/equipe', label: 'Equipe', icon: 'users', admin: true },
-  { to: '/config', label: 'Config', icon: 'settings' },
+type NavItem = { to: string; label: string; icon: IconName; admin?: boolean };
+type NavGroup = { label?: string; items: NavItem[] };
+
+// Menu agrupado por intenção (chunking): reduz carga cognitiva e aproxima
+// itens do mesmo fluxo de trabalho. Dashboard fica solto no topo; config no fim.
+const NAV_GROUPS: NavGroup[] = [
+  { items: [{ to: '/', label: 'Dashboard', icon: 'gauge' }] },
+  { label: 'Vendas', items: [
+    { to: '/prospeccao', label: 'Prospecção', icon: 'target' },
+    { to: '/funil', label: 'Funil', icon: 'columns' },
+    { to: '/clientes', label: 'Clientes', icon: 'users' },
+    { to: '/carteiras', label: 'Carteiras', icon: 'layers', admin: true },
+    { to: '/pedidos', label: 'Pedidos', icon: 'list' },
+    { to: '/agenda', label: 'Agenda', icon: 'calendar' },
+  ] },
+  { label: 'Logística', items: [
+    { to: '/transportadoras', label: 'Transportadoras', icon: 'car' },
+    { to: '/rotas', label: 'Rotas', icon: 'route' },
+    { to: '/catalogo', label: 'Catálogo', icon: 'box' },
+  ] },
+  { label: 'Financeiro', items: [
+    { to: '/comissoes', label: 'Comissões', icon: 'percent' },
+    { to: '/financeiro', label: 'Financeiro', icon: 'wallet' },
+    { to: '/relatorios', label: 'Relatórios', icon: 'barChart' },
+  ] },
+  { label: 'Sistema', items: [
+    { to: '/email', label: 'E-mail', icon: 'mail' },
+    { to: '/equipe', label: 'Equipe', icon: 'users', admin: true },
+    { to: '/config', label: 'Config', icon: 'settings' },
+  ] },
 ];
 
-// Itens visíveis para o papel do usuário logado (Equipe é só de admin).
-function useNav(): typeof NAV {
+// Lista achatada — mobile (barra + folha "Mais") e título da página usam ordem linear.
+const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
+
+// Itens visíveis para o papel do usuário logado (Equipe/Carteiras só admin).
+function useNav(): NavItem[] {
   const { user } = useAuth();
   return NAV.filter((n) => !n.admin || user?.role === 'admin');
+}
+
+// Grupos visíveis: filtra itens por papel e descarta grupos que ficaram vazios.
+function useNavGroups(): NavGroup[] {
+  const { user } = useAuth();
+  return NAV_GROUPS
+    .map((g) => ({ ...g, items: g.items.filter((n) => !n.admin || user?.role === 'admin') }))
+    .filter((g) => g.items.length > 0);
 }
 
 // No mobile a barra inferior cabe ~4 alvos com toque confortável (≥44px). Os
@@ -100,18 +124,32 @@ function Brand({ compact }: { compact?: boolean }): React.JSX.Element {
 }
 
 const SIDEBAR_KEY = 'rs_sidebar_collapsed';
+const SIDEBAR_GROUPS_KEY = 'rs_sidebar_groups_closed';
 
 // Sidebar recolhível: alterna entre largura cheia (ícone + rótulo) e modo
 // compacto só com ícones. O estado persiste em localStorage entre sessões.
 function Sidebar(): React.JSX.Element {
   const { user, logout } = useAuth();
-  const nav = useNav();
+  const groups = useNavGroups();
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem(SIDEBAR_KEY) === '1'; } catch { return false; }
+  });
+  // Acordeon: guarda só os grupos FECHADOS (default = todos abertos).
+  const [closed, setClosed] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(SIDEBAR_GROUPS_KEY) ?? '[]')); } catch { return new Set(); }
   });
   useEffect(() => {
     try { localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0'); } catch { /* storage indisponível */ }
   }, [collapsed]);
+  useEffect(() => {
+    try { localStorage.setItem(SIDEBAR_GROUPS_KEY, JSON.stringify([...closed])); } catch { /* storage indisponível */ }
+  }, [closed]);
+
+  const toggleGroup = (label: string): void => setClosed((prev) => {
+    const next = new Set(prev);
+    next.has(label) ? next.delete(label) : next.add(label);
+    return next;
+  });
 
   const inicial = (user?.org_nome ?? user?.email ?? '?').charAt(0).toUpperCase();
 
@@ -126,26 +164,43 @@ function Sidebar(): React.JSX.Element {
           <Icon name="chevronRight" size={18} className={cn('transition-transform duration-300 ease-in-out', !collapsed && 'rotate-180')} />
         </button>
       </div>
-      {!collapsed && <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-500">Menu</p>}
-      <nav className="flex flex-col gap-1">
-        {nav.map((n) => (
-          <NavLink key={n.to} to={n.to} end={n.to === '/'} title={collapsed ? n.label : undefined}
-            className={({ isActive }) => cn(
-              'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
-              collapsed && 'justify-center px-0',
-              isActive ? 'bg-white/10 text-white' : 'text-ink-300 hover:bg-white/5 hover:text-white')}>
-            {({ isActive }) => (
-              <>
-                {isActive && <span className="absolute left-0 top-1/2 h-5 -translate-y-1/2 rounded-r-full bg-brand-400" style={{ width: 3 }} />}
-                <Icon name={n.icon} size={19} className={isActive ? 'text-brand-300' : 'text-ink-400 group-hover:text-ink-200'} />
-                {!collapsed && n.label}
-              </>
+      {/* nav rola na vertical quando os grupos passam da altura da tela */}
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden">
+        {groups.map((g, gi) => {
+          // acordeon só no modo expandido; recolhido sempre mostra os itens
+          const isClosed = !collapsed && g.label != null && closed.has(g.label);
+          return (
+          <div key={g.label ?? 'top'} className={cn('flex flex-col gap-1', gi > 0 && 'mt-2')}>
+            {g.label && (collapsed
+              // recolhido: cabeçalho some, separador fino marca a fronteira do grupo
+              ? <div className="mx-2 mb-1 border-t border-white/10" />
+              : <button onClick={() => toggleGroup(g.label!)} aria-expanded={!isClosed}
+                  className="flex w-full items-center justify-between rounded-lg px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-500 transition-colors hover:text-ink-300">
+                  {g.label}
+                  <Icon name="chevronRight" size={14} className={cn('text-white transition-transform duration-200', !isClosed && 'rotate-90')} />
+                </button>
             )}
-          </NavLink>
-        ))}
+            {!isClosed && g.items.map((n) => (
+              <NavLink key={n.to} to={n.to} end={n.to === '/'} title={collapsed ? n.label : undefined}
+                className={({ isActive }) => cn(
+                  'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
+                  collapsed && 'justify-center px-0',
+                  isActive ? 'bg-white/10 text-white' : 'text-ink-300 hover:bg-white/5 hover:text-white')}>
+                {({ isActive }) => (
+                  <>
+                    {isActive && <span className="absolute left-0 top-1/2 h-5 -translate-y-1/2 rounded-r-full bg-brand-400" style={{ width: 3 }} />}
+                    <Icon name={n.icon} size={19} className={isActive ? 'text-brand-300' : 'text-ink-400 group-hover:text-ink-200'} />
+                    {!collapsed && n.label}
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
+          );
+        })}
       </nav>
 
-      <div className="mt-auto border-t border-white/10 pt-3">
+      <div className="mt-auto shrink-0 border-t border-white/10 pt-3">
         {collapsed ? (
           <div className="flex flex-col items-center gap-2">
             <NavLink to="/conta" title={user?.org_nome ?? 'Meu perfil'}

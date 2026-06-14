@@ -19,8 +19,9 @@ export function companyRoutes(app: FastifyInstance): void {
       SELECT c.id, c.cnpj, c.razao_social, c.nome_fantasia, c.telefone1, c.telefone2, c.email,
              c.logradouro, c.numero, c.bairro, c.cep, c.uf, m.nome AS cidade
       FROM companies c LEFT JOIN municipios m ON m.id = c.municipio_id`;
-    // CNPJ quando o termo é majoritariamente numérico (≥4 dígitos).
-    if (digits.length >= 4 && digits.length >= q.replace(/\s/g, '').length - 2) {
+    // CNPJ quando o termo não tem letras (só dígitos + máscara) e ≥4 dígitos.
+    // Casado com maskSearchCNPJ no client, que formata o CNPJ na busca.
+    if (digits.length >= 4 && !/[a-zA-Z]/.test(q)) {
       const companies = await query(
         `${SELECT} WHERE c.cnpj LIKE $1 ORDER BY c.cnpj LIMIT 10`,
         [`${digits}%`],

@@ -4,7 +4,7 @@ import type { Cliente, Order, OrgUser } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, PageHeader, Spinner, StatCard, cn } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
 import { toast } from '../lib/toast.tsx';
-import { brl0, dec, maskCNPJ } from '../lib/format.ts';
+import { brl0, dec, maskCNPJ, maskSearchCNPJ } from '../lib/format.ts';
 
 // bigint do pg pode vir string — normaliza p/ comparar/agrupar por dono.
 const oid = (v: number | null): number | null => (v == null ? null : Number(v));
@@ -200,7 +200,7 @@ export function Carteiras(): React.JSX.Element {
             <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50/40 p-3">
               <div className="relative mb-2">
                 <Icon name="search" size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-                <input value={pickQ} onChange={(e) => setPickQ(e.target.value)} placeholder="Buscar cliente por nome ou CNPJ…"
+                <input value={pickQ} onChange={(e) => setPickQ(maskSearchCNPJ(e.target.value))} placeholder="Buscar cliente por nome ou CNPJ…"
                   className="w-full rounded-xl border border-ink-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
               </div>
               <div className="max-h-60 space-y-1 overflow-auto">

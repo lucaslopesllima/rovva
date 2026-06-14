@@ -49,6 +49,18 @@ export const maskPhone = (v: string): string => {
   return d.replace(/^(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3');
 };
 
+// CEP: 00000-000
+export const maskCEP = (v: string): string => {
+  const d = v.replace(/\D/g, '').slice(0, 8);
+  return d.replace(/^(\d{5})(\d)/, '$1-$2');
+};
+
+// Placa BR: ABC1D23 (Mercosul) ou ABC1234 (antiga). Uppercase + só
+// letras/dígitos, máx 7 chars. Não força layout (aceita ambos formatos);
+// posição 5 pode ser letra (Mercosul) ou dígito (antiga).
+export const maskPlaca = (v: string): string =>
+  v.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 7);
+
 // CNPJ: 00.000.000/0000-00
 export const maskCNPJ = (v: string): string => {
   const d = v.replace(/\D/g, '').slice(0, 14);
@@ -58,6 +70,14 @@ export const maskCNPJ = (v: string): string => {
     .replace(/\.(\d{3})(\d)/, '.$1/$2')
     .replace(/(\d{4})(\d)/, '$1-$2');
 };
+
+// Máscara p/ campos de busca que aceitam nome OU CNPJ. Só formata como CNPJ
+// quando a entrada é numérica (sem letras) e já tem ≥4 dígitos em sequência;
+// texto de nome passa intacto. O backend/filtros extraem só os dígitos, então
+// a máscara é cosmética e não quebra a busca. Casado com a regra do servidor
+// em /api/companies/search (CNPJ quando sem letras e ≥4 dígitos).
+export const maskSearchCNPJ = (v: string): string =>
+  /[a-zA-Z]/.test(v) || v.replace(/\D/g, '').length < 4 ? v : maskCNPJ(v);
 
 // link wa.me (WhatsApp click-to-chat). Assume DDI Brasil (55) quando ausente.
 // Retorna null se não houver dígitos suficientes p/ um telefone válido.

@@ -3,7 +3,7 @@ import { api, ApiError, setToken } from '../lib/api.ts';
 import type { AccountOrg, AccountUser } from '../lib/types.ts';
 import { Btn, Card, PageHeader, Spinner, cn } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
-import { maskCNPJ, maskPhone } from '../lib/format.ts';
+import { maskCNPJ, maskPhone, maskCEP } from '../lib/format.ts';
 import { toast } from '../lib/toast.tsx';
 
 const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
@@ -71,7 +71,7 @@ export function Account(): React.JSX.Element {
   };
 
   const onCep = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    const v = e.target.value;
+    const v = maskCEP(e.target.value);
     setOrg((o) => (o ? { ...o, cep: v } : o));
     if (v.replace(/\D/g, '').length === 8) void buscarCep(v);
   };

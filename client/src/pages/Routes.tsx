@@ -5,7 +5,7 @@ import { api, ApiError } from '../lib/api.ts';
 import type { FunnelCompany, Vehicle, OptimizeResult, SavedRoute } from '../lib/types.ts';
 import { Btn, Badge, Card, EmptyState, PageHeader, Segmented, Spinner, StatCard, cn } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
-import { brl } from '../lib/format.ts';
+import { brl, maskPlaca } from '../lib/format.ts';
 import { toast } from '../lib/toast.tsx';
 
 // Modal genérico de entrada — substitui window.prompt nativo nas rotas (nome,
@@ -502,7 +502,7 @@ function Vehicles({ vehicles, reload }: { vehicles: Vehicle[]; reload: () => voi
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-ink-500">Placa</label>
-            <input value={form.placa} onChange={(e) => set('placa', e.target.value)} placeholder="ABC1D23"
+            <input value={form.placa} onChange={(e) => set('placa', maskPlaca(e.target.value))} placeholder="ABC1D23"
               className="w-full rounded-xl border border-ink-200 px-3 py-2 text-sm outline-none focus:border-brand-400" />
           </div>
         </div>
