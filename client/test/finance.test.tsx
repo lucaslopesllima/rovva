@@ -54,10 +54,17 @@ beforeEach(() => {
 
 const nbsp = (s: string): RegExp => new RegExp(s.replace(' ', '[\\s\\u00a0]'));
 
+// A lista nasce filtrada pelo mês atual; as fixtures usam datas em 2099, então
+// troca para "Todo período" antes de afirmar que os lançamentos aparecem.
+const renderAll = async (): Promise<void> => {
+  render(<Finance />);
+  await userEvent.selectOptions(await screen.findByLabelText('Período'), 'todos');
+  await screen.findByText('Comissão X');
+};
+
 describe('Finance', () => {
   it('KPIs ignoram cancelados: a receber, a pagar, saldo e realizado', async () => {
-    render(<Finance />);
-    await screen.findByText('Comissão X');
+    await renderAll();
     // valores também aparecem nas linhas — KPI garante >=1; saldo (1000-400) só existe no card
     expect(screen.getAllByText(nbsp('R\\$ 1.000,00')).length).toBeGreaterThan(0); // a receber aberto
     expect(screen.getAllByText(nbsp('R\\$ 400,00')).length).toBeGreaterThan(0);   // a pagar aberto
@@ -66,8 +73,7 @@ describe('Finance', () => {
   });
 
   it('filtro por tipo esconde os outros lançamentos', async () => {
-    render(<Finance />);
-    await screen.findByText('Comissão X');
+    await renderAll();
     await userEvent.click(screen.getByRole('button', { name: /A pagar/ }));
     expect(screen.getByText('Aluguel')).toBeInTheDocument();
     expect(screen.queryByText('Comissão X')).not.toBeInTheDocument();
@@ -75,13 +81,12 @@ describe('Finance', () => {
 
   it('liquidar otimista: PATCH ok refaz a carga; falha reverte o status', async () => {
     m.patch.mockRejectedValueOnce(new Error('offline'));
-    render(<Finance />);
-    await screen.findByText('Comissão X');
+    await renderAll();
 
     const botoes = screen.getAllByTitle('Marcar liquidado');
     await userEvent.click(botoes[0]!);
-    expect(alert).toHaveBeenCalled();
-    // rollback: continua pendente (botão de liquidar segue lá)
+    expect(m.patch).toHaveBeenCalledWith('/api/finance/1', expect.objectContaining({ status: 'liquidado' }));
+    // rollback: PATCH falhou, volta a pendente (botão de liquidar segue lá)
     await waitFor(() => expect(screen.getAllByTitle('Marcar liquidado').length).toBe(botoes.length));
 
     m.patch.mockResolvedValueOnce({});
@@ -90,8 +95,7 @@ describe('Finance', () => {
   });
 
   it('view Fluxo de caixa lista semanas com saldo projetado', async () => {
-    render(<Finance />);
-    await screen.findByText('Comissão X');
+    await renderAll();
     await userEvent.click(screen.getByRole('button', { name: /Fluxo de caixa/ }));
     expect(await screen.findByText('Saldo projetado')).toBeInTheDocument();
     expect(screen.getByText(/Semana de/)).toBeInTheDocument();
@@ -99,8 +103,7 @@ describe('Finance', () => {
   });
 
   it('view DRE mostra receita, despesa e categoria', async () => {
-    render(<Finance />);
-    await screen.findByText('Comissão X');
+    await renderAll();
     await userEvent.click(screen.getByRole('button', { name: /^DRE$/ }));
     expect(await screen.findByText('Resultado')).toBeInTheDocument();
     expect(screen.getByText(/viagem:/)).toBeInTheDocument();
@@ -108,8 +111,7 @@ describe('Finance', () => {
 
   it('gerencia categorias: adiciona pelo modal', async () => {
     m.post.mockResolvedValue({ category: { id: 9, nome: 'Frete', grupo_dre: 'Operacional', kind: null, ativo: true } });
-    render(<Finance />);
-    await screen.findByText('Comissão X');
+    await renderAll();
     await userEvent.click(screen.getByRole('button', { name: /Categorias/ }));
     await userEvent.type(screen.getByPlaceholderText('Nome *'), 'Frete');
     await userEvent.click(screen.getByRole('button', { name: /Adicionar/ }));

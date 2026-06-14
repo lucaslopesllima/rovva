@@ -58,7 +58,7 @@ describe('Account', () => {
     render(<Account />);
     await screen.findByDisplayValue('Minha Rep');
 
-    const cep = screen.getByPlaceholderText(/CEP|00000/i);
+    const cep = screen.getByPlaceholderText('00000-000');
     await userEvent.type(cep, '01310100');
     await waitFor(() => expect(screen.getByDisplayValue('Av. Paulista')).toBeInTheDocument());
     expect(String(fetchMock.mock.calls[0]![0])).toContain('viacep.com.br/ws/01310100');
@@ -68,7 +68,7 @@ describe('Account', () => {
     fetchMock.mockRejectedValueOnce(new Error('offline'));
     render(<Account />);
     await screen.findByDisplayValue('Minha Rep');
-    await userEvent.type(screen.getByPlaceholderText(/CEP|00000/i), '01310100');
+    await userEvent.type(screen.getByPlaceholderText('00000-000'), '01310100');
     // sem crash e sem erro exibido
     expect(screen.queryByText(/Erro/)).not.toBeInTheDocument();
   });

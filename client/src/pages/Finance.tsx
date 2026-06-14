@@ -3,7 +3,7 @@ import { api } from '../lib/api.ts';
 import type { Activity, FinanceCategory, FinanceEntry, KanbanCard, RepresentedCompany } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, PageHeader, Segmented, Spinner, StatCard, cn, type Tone } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
-import { brl, fmtDate, todayStr } from '../lib/format.ts';
+import { brl, fmtDate, numStr, todayStr } from '../lib/format.ts';
 import { toast } from '../lib/toast.tsx';
 
 const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
@@ -459,7 +459,7 @@ function FinanceModal({ entry, companies, represented, activities, categories, o
 }): React.JSX.Element {
   const [kind, setKind] = useState<'receber' | 'pagar'>(entry?.kind ?? 'receber');
   const [descricao, setDescricao] = useState(entry?.descricao ?? '');
-  const [valor, setValor] = useState(entry ? String(entry.valor) : '');
+  const [valor, setValor] = useState(entry ? numStr(entry.valor) : '');
   const [vencimento, setVencimento] = useState(entry?.vencimento ?? todayStr());
   const [categoria, setCategoria] = useState(entry?.categoria ?? '');
   const [categoriaId, setCategoriaId] = useState<number | null>(entry?.categoria_id ?? null);

@@ -125,7 +125,7 @@ describe('Orders', () => {
     expect(screen.getByLabelText('Representada *')).toHaveValue('5');
   });
 
-  it('transição: enviar rascunho; faturar pede NF no prompt', async () => {
+  it('transição: enviar rascunho; faturar pede NF em modal', async () => {
     m.post.mockResolvedValue({ order: order({ id: 1, status: 'enviado' }) });
     mount();
     await screen.findByText('Cliente Um LTDA');
@@ -133,8 +133,11 @@ describe('Orders', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Enviar' }));
     await waitFor(() => expect(m.post).toHaveBeenCalledWith('/api/orders/1/transition', { status: 'enviado', nf_numero: undefined }));
 
-    vi.stubGlobal('prompt', vi.fn(() => 'NF-99'));
-    await userEvent.click(screen.getByRole('button', { name: 'Faturar' })); // pedido 2? não: o 1 virou enviado
+    // faturar abre modal de NF (substitui prompt nativo)
+    await userEvent.click(screen.getByRole('button', { name: 'Faturar' })); // botão da linha (pedido 1 virou enviado)
+    await userEvent.type(await screen.findByPlaceholderText('Número da NF'), 'NF-99');
+    // segundo "Faturar" = submit do modal
+    await userEvent.click(screen.getAllByRole('button', { name: 'Faturar' }).at(-1)!);
     await waitFor(() => expect(m.post).toHaveBeenCalledWith('/api/orders/1/transition', { status: 'faturado', nf_numero: 'NF-99' }));
   });
 

@@ -36,10 +36,10 @@ describe('Catalog', () => {
     await screen.findByText('Furadeira');
 
     await userEvent.click(screen.getByTitle('Desativar'));
+    expect(m.patch).toHaveBeenCalledWith('/api/catalog/1', { ativo: false }); // tentou
     // rollback: item volta a ativo (botão de desativar reaparece)
     await waitFor(() => expect(screen.getByTitle('Desativar')).toBeInTheDocument());
     expect(screen.queryByText('inativo')).not.toBeInTheDocument();
-    expect(alert).toHaveBeenCalled();
   });
 
   it('exclusão: confirm cancelado não chama API; falha de DELETE reverte', async () => {

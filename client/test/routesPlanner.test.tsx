@@ -1,6 +1,6 @@
 // Planejador de rota: seleção do funil, otimizar, salvar, rotas salvas, veículos.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { RoutePlanner } from '../src/pages/Routes.tsx';
 import { api, ApiError } from '../src/lib/api.ts';
@@ -80,7 +80,7 @@ describe('RoutePlanner', () => {
     expect(await screen.findByText(/Cadastre o endereço/)).toBeInTheDocument();
   });
 
-  it('salvar rota usa prompt e persiste; cancelar não chama POST /api/routes', async () => {
+  it('salvar rota usa modal e persiste; cancelar não chama POST /api/routes', async () => {
     m.post.mockResolvedValueOnce(RESULT); // optimize
     render(<RoutePlanner />);
     await screen.findByText('Alfa');
@@ -88,13 +88,18 @@ describe('RoutePlanner', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Otimizar rota' }));
     await screen.findByText('Sequência de visitas');
 
-    vi.stubGlobal('prompt', vi.fn(() => null));
+    // abre o modal de nome e cancela — só o optimize foi chamado
     await userEvent.click(screen.getByRole('button', { name: 'Salvar rota' }));
-    expect(m.post).toHaveBeenCalledTimes(1); // só o optimize
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(m.post).toHaveBeenCalledTimes(1);
 
-    vi.stubGlobal('prompt', vi.fn(() => 'Rota Zona Sul'));
+    // reabre, troca o nome e confirma
     m.post.mockResolvedValueOnce({ route: { id: 9 } });
     await userEvent.click(screen.getByRole('button', { name: 'Salvar rota' }));
+    const nomeInput = screen.getByLabelText('Nome da rota');
+    await userEvent.clear(nomeInput);
+    await userEvent.type(nomeInput, 'Rota Zona Sul');
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' })); // submit do modal
     await waitFor(() => expect(m.post).toHaveBeenCalledTimes(2));
     expect(m.post).toHaveBeenLastCalledWith('/api/routes', expect.objectContaining({
       nome: 'Rota Zona Sul', stops: [expect.objectContaining({ company_id: 10, seq: 0 })],
@@ -143,21 +148,27 @@ describe('RoutePlanner: rotas salvas (Fase 5)', () => {
     vi.stubGlobal('alert', vi.fn());
   });
 
-  it('reusar: pede nome e chama /reuse', async () => {
-    vi.stubGlobal('prompt', vi.fn(() => 'Rota nova'));
+  it('reusar: pede nome em modal e chama /reuse', async () => {
     m.post.mockResolvedValueOnce({ skipped: [] });
     render(<RoutePlanner />);
     await screen.findByText('Rota seg');
     await userEvent.click(screen.getByRole('button', { name: 'Reusar rota' }));
+    const nomeInput = screen.getByLabelText('Nome da nova rota');
+    await userEvent.clear(nomeInput);
+    await userEvent.type(nomeInput, 'Rota nova');
+    await userEvent.click(screen.getByRole('button', { name: 'Reusar' })); // submit do modal
     await waitFor(() => expect(m.post).toHaveBeenCalledWith('/api/routes/7/reuse', { nome: 'Rota nova' }));
   });
 
-  it('criar compromissos: pede data e chama /agenda', async () => {
-    vi.stubGlobal('prompt', vi.fn(() => '2026-07-01'));
+  it('criar compromissos: pede data em modal e chama /agenda', async () => {
     m.post.mockResolvedValueOnce({ created: 2 });
     render(<RoutePlanner />);
     await screen.findByText('Rota seg');
     await userEvent.click(screen.getByRole('button', { name: 'Criar compromissos' }));
+    // input de data do modal (type=date) — define via change
+    fireEvent.change(screen.getByLabelText('Data da rota'), { target: { value: '2026-07-01' } });
+    // segundo "Criar compromissos" = submit do modal
+    await userEvent.click(screen.getAllByRole('button', { name: 'Criar compromissos' }).at(-1)!);
     await waitFor(() => expect(m.post).toHaveBeenCalledWith('/api/routes/7/agenda', { start_at: '2026-07-01T08:00:00' }));
   });
 

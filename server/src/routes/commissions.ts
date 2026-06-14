@@ -18,7 +18,7 @@ const SELECT = `
          c.razao_social AS company_nome,
          r.nome AS represented_nome,
          u.nome AS vendedor_nome, u.email AS vendedor_email,
-         round(COALESCE(e.valor_recebido, e.valor_previsto) * e.vendedor_split_pct / 100, 2) AS valor_vendedor
+         COALESCE(e.valor_recebido, e.valor_previsto) * e.vendedor_split_pct / 100 AS valor_vendedor
   FROM commission_entries e
   JOIN orders o ON o.id = e.order_id
   JOIN companies c ON c.id = o.company_id
@@ -41,8 +41,6 @@ const RULE_SELECT = `
 
 const RULE_FIELDS = ['represented_id', 'catalog_item_id', 'company_id', 'user_id',
   'percent', 'vendedor_split_pct', 'vigencia_inicio', 'vigencia_fim', 'ativo'] as const;
-
-const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 interface EntryRow {
   id: string; org_id: string; user_id: string | null; represented_id: string;
@@ -162,7 +160,8 @@ export function commissionRoutes(app: FastifyInstance): void {
     const entry = await findEntry(id, orgId);
     if (!entry) return reply.code(404).send({ error: 'não encontrada' });
     if (entry.status === 'cancelada') return reply.code(409).send({ error: 'comissão cancelada' });
-    await settleEntry(req, entry, round2(b.valor_recebido), b.recebida_em, b.observacao ?? null, b.tolerancia ?? 0.01);
+    // valor recebido gravado cru (sem arredondar) — fonte de verdade do extrato.
+    await settleEntry(req, entry, b.valor_recebido, b.recebida_em, b.observacao ?? null, b.tolerancia ?? 0.01);
     const updated = await one(`${SELECT} WHERE e.id = $1`, [id]);
     return { entry: updated };
   });
@@ -228,7 +227,7 @@ export function commissionRoutes(app: FastifyInstance): void {
       }
       usados.add(cid);
       const entry = (await findEntry(cid, orgId))!;
-      const status = await settleEntry(req, entry, round2(valor), data ?? new Date().toISOString().slice(0, 10), null, tol);
+      const status = await settleEntry(req, entry, valor, data ?? new Date().toISOString().slice(0, 10), null, tol);
       results.push({ linha: n + 1, ref, commission_id: cid, status });
     }
     return {

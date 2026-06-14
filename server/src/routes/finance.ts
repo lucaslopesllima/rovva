@@ -199,42 +199,46 @@ export function financeRoutes(app: FastifyInstance): void {
     const { months } = req.query as { months?: number };
     const horizonte = months ?? 3;
 
-    const fin = await query<{ semana: string; receber: string; pagar: string }>(
-      `SELECT to_char(date_trunc('week', vencimento), 'YYYY-MM-DD') AS semana,
-              COALESCE(sum(valor) FILTER (WHERE kind = 'receber'), 0) AS receber,
-              COALESCE(sum(valor) FILTER (WHERE kind = 'pagar'),   0) AS pagar
-       FROM finance_entries
-       WHERE org_id = $1 AND status = 'pendente'
-         AND vencimento >= current_date
-         AND vencimento < (date_trunc('month', current_date) + ($2 || ' months')::interval)
-       GROUP BY 1`,
+    // Agregação e saldo somados no banco em numeric exato (sem float JS).
+    // Comissões previstas: sem data de previsão, projeta no 1º dia da competência.
+    // Number() só na borda de saída (display) — valor cru fica no banco.
+    const rows = await query<{ semana: string; receber: string; pagar: string; comissao_prevista: string; saldo: string }>(
+      `SELECT semana,
+              SUM(receber)              AS receber,
+              SUM(pagar)                AS pagar,
+              SUM(comissao)             AS comissao_prevista,
+              SUM(receber + comissao - pagar) AS saldo
+       FROM (
+         SELECT to_char(date_trunc('week', vencimento), 'YYYY-MM-DD') AS semana,
+                COALESCE(sum(valor) FILTER (WHERE kind = 'receber'), 0) AS receber,
+                COALESCE(sum(valor) FILTER (WHERE kind = 'pagar'),   0) AS pagar,
+                0::numeric AS comissao
+         FROM finance_entries
+         WHERE org_id = $1 AND status = 'pendente'
+           AND vencimento >= current_date
+           AND vencimento < (date_trunc('month', current_date) + ($2 || ' months')::interval)
+         GROUP BY 1
+         UNION ALL
+         SELECT to_char(date_trunc('week', competencia), 'YYYY-MM-DD') AS semana,
+                0::numeric, 0::numeric,
+                COALESCE(sum(valor_previsto), 0) AS comissao
+         FROM commission_entries
+         WHERE org_id = $1 AND status = 'prevista'
+           AND competencia >= date_trunc('month', current_date)
+           AND competencia < (date_trunc('month', current_date) + ($2 || ' months')::interval)
+         GROUP BY 1
+       ) x
+       GROUP BY semana
+       ORDER BY semana`,
       [orgId, horizonte],
     );
-    // Comissões previstas: usa recebida_em prevista? Não há data de previsão —
-    // projeta no vencimento esperado = 1º dia da competência (mês de referência).
-    const com = await query<{ semana: string; comissao: string }>(
-      `SELECT to_char(date_trunc('week', competencia), 'YYYY-MM-DD') AS semana,
-              COALESCE(sum(valor_previsto), 0) AS comissao
-       FROM commission_entries
-       WHERE org_id = $1 AND status = 'prevista'
-         AND competencia >= date_trunc('month', current_date)
-         AND competencia < (date_trunc('month', current_date) + ($2 || ' months')::interval)
-       GROUP BY 1`,
-      [orgId, horizonte],
-    );
-
-    const map = new Map<string, { semana: string; receber: number; pagar: number; comissao_prevista: number }>();
-    const bucket = (s: string): { semana: string; receber: number; pagar: number; comissao_prevista: number } => {
-      let b = map.get(s);
-      if (!b) { b = { semana: s, receber: 0, pagar: 0, comissao_prevista: 0 }; map.set(s, b); }
-      return b;
-    };
-    for (const r of fin) { const b = bucket(r.semana); b.receber += Number(r.receber); b.pagar += Number(r.pagar); }
-    for (const r of com) bucket(r.semana).comissao_prevista += Number(r.comissao);
-
-    const semanas = [...map.values()]
-      .sort((a, b) => a.semana.localeCompare(b.semana))
-      .map((b) => ({ ...b, saldo: Number((b.receber + b.comissao_prevista - b.pagar).toFixed(2)) }));
+    const semanas = rows.map((r) => ({
+      semana: r.semana,
+      receber: Number(r.receber),
+      pagar: Number(r.pagar),
+      comissao_prevista: Number(r.comissao_prevista),
+      saldo: Number(r.saldo),
+    }));
     return { months: horizonte, semanas };
   });
 
@@ -249,17 +253,33 @@ export function financeRoutes(app: FastifyInstance): void {
     const { ano } = req.query as { ano?: number };
     const year = ano ?? new Date().getFullYear();
 
-    const receita = await query<{ mes: number; valor: string }>(
-      `SELECT extract(month FROM competencia)::int AS mes,
-              COALESCE(sum(valor_recebido), 0) AS valor
-       FROM commission_entries
-       WHERE org_id = $1 AND status IN ('recebida','divergente')
-         AND extract(year FROM competencia) = $2
-       GROUP BY 1`,
+    // Totais mensais (receita/despesa/resultado) somados no banco em numeric
+    // exato — receita = comissões recebidas; despesa = 'pagar' liquidado.
+    // Number() só na borda de saída (display).
+    const totais = await query<{ mes: number; receita: string; despesa: string; resultado: string }>(
+      `SELECT mes, SUM(receita) AS receita, SUM(despesa) AS despesa,
+              SUM(receita - despesa) AS resultado
+       FROM (
+         SELECT extract(month FROM competencia)::int AS mes,
+                COALESCE(sum(valor_recebido), 0) AS receita, 0::numeric AS despesa
+         FROM commission_entries
+         WHERE org_id = $1 AND status IN ('recebida','divergente')
+           AND extract(year FROM competencia) = $2
+         GROUP BY 1
+         UNION ALL
+         SELECT extract(month FROM COALESCE(f.liquidacao_data, f.vencimento))::int AS mes,
+                0::numeric, COALESCE(sum(f.valor), 0)
+         FROM finance_entries f
+         WHERE f.org_id = $1 AND f.kind = 'pagar' AND f.status = 'liquidado'
+           AND extract(year FROM COALESCE(f.liquidacao_data, f.vencimento)) = $2
+         GROUP BY 1
+       ) x
+       GROUP BY mes`,
       [orgId, year],
     );
-    // Agrupa por grupo_dre da categoria vinculada; sem vínculo, cai no texto
-    // livre `categoria` e, na falta, em 'sem categoria'.
+    // Quebra da despesa por grupo de DRE (apresentação). Agrupa por grupo_dre da
+    // categoria vinculada; sem vínculo, cai no texto livre `categoria` e, na
+    // falta, em 'sem categoria'. Cada (mês, grupo) é uma linha somada no banco.
     const despesas = await query<{ mes: number; grupo: string; valor: string }>(
       `SELECT extract(month FROM COALESCE(f.liquidacao_data, f.vencimento))::int AS mes,
               COALESCE(fc.grupo_dre, f.categoria, 'sem categoria') AS grupo,
@@ -276,15 +296,16 @@ export function financeRoutes(app: FastifyInstance): void {
       mes: i + 1, receita: 0, despesa: 0, resultado: 0,
       despesas_por_categoria: {} as Record<string, number>,
     }));
-    for (const r of receita) meses[r.mes - 1]!.receita = Number(r.valor);
-    for (const d of despesas) {
-      const m = meses[d.mes - 1]!;
-      const grupo = d.grupo || 'sem categoria';
-      const v = Number(d.valor);
-      m.despesa += v;
-      m.despesas_por_categoria[grupo] = (m.despesas_por_categoria[grupo] ?? 0) + v;
+    for (const t of totais) {
+      const m = meses[t.mes - 1]!;
+      m.receita = Number(t.receita);
+      m.despesa = Number(t.despesa);
+      m.resultado = Number(t.resultado);
     }
-    for (const m of meses) m.resultado = Number((m.receita - m.despesa).toFixed(2));
+    for (const d of despesas) {
+      const grupo = d.grupo || 'sem categoria';
+      meses[d.mes - 1]!.despesas_por_categoria[grupo] = Number(d.valor);
+    }
     return { ano: year, meses };
   });
 

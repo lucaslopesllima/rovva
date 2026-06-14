@@ -45,6 +45,12 @@ const TRANSITIONS: Record<string, string[]> = {
 // (exceto transições de status).
 const EDITABLE = new Set(['cotacao', 'rascunho']);
 
+// Total do pedido = soma crua dos itens (numeric, sem arredondar) + frete.
+// Sempre recalculado no banco a partir de order_items.total (coluna GENERATED).
+const RECOMPUTE_TOTAL =
+  `UPDATE orders SET total = COALESCE((SELECT SUM(total) FROM order_items WHERE order_id = $1), 0) + frete,
+     updated_at = now() WHERE id = $1`;
+
 const ITEM_SCHEMA = {
   type: 'object',
   required: ['qtd'],
@@ -86,14 +92,13 @@ interface ResolvedItem {
   catalog_item_id: number | null;
   descricao_snapshot: string;
   qtd: number;
-  preco_unit: number;
+  // preço cru: número do payload OU string vinda do banco (numeric). Mantido sem
+  // Number() pra não passar por float — o cálculo do total é feito no banco.
+  preco_unit: number | string;
   desconto_pct: number;
   ipi_pct: number;
   st_pct: number;
-  total: number;
 }
-
-const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 // Resolve itens do payload: preço explícito > tabela de preço > catálogo;
 // descrição explícita > nome do catálogo. Valida teto de desconto da tabela.
@@ -104,14 +109,16 @@ async function resolveItems(
   items: ItemInput[],
 ): Promise<string | ResolvedItem[]> {
   const catIds = items.map((i) => i.catalog_item_id).filter((v): v is number => v != null);
-  const catalog = new Map<number, { nome: string; preco: number | null }>();
+  // preço guardado como string crua (numeric do banco) — sem Number(), pra não
+  // introduzir float. O total é calculado no banco (coluna GENERATED).
+  const catalog = new Map<number, { nome: string; preco: string | null }>();
   if (catIds.length > 0) {
     const rows = await query<{ id: string; nome: string; preco: string | null }>(
       'SELECT id, nome, preco FROM catalog_items WHERE org_id = $1 AND id = ANY($2)', [orgId, catIds],
     );
-    for (const r of rows) catalog.set(Number(r.id), { nome: r.nome, preco: r.preco === null ? null : Number(r.preco) });
+    for (const r of rows) catalog.set(Number(r.id), { nome: r.nome, preco: r.preco });
   }
-  const tablePrices = new Map<number, { preco: number; desconto_max_pct: number | null }>();
+  const tablePrices = new Map<number, { preco: string; desconto_max_pct: number | null }>();
   if (priceTableId != null) {
     const rows = await query<{ catalog_item_id: string; preco: string; desconto_max_pct: string | null }>(
       'SELECT catalog_item_id, preco, desconto_max_pct FROM price_table_items WHERE price_table_id = $1',
@@ -119,7 +126,8 @@ async function resolveItems(
     );
     for (const r of rows) {
       tablePrices.set(Number(r.catalog_item_id), {
-        preco: Number(r.preco),
+        preco: r.preco,
+        // só usado p/ comparar com o desconto pedido (validação), não entra em cálculo gravado.
         desconto_max_pct: r.desconto_max_pct === null ? null : Number(r.desconto_max_pct),
       });
     }
@@ -148,7 +156,6 @@ async function resolveItems(
       desconto_pct: desconto,
       ipi_pct: ipi,
       st_pct: st,
-      total: round2(it.qtd * preco * (1 - desconto / 100) * (1 + (ipi + st) / 100)),
     });
   }
   return out;
@@ -361,7 +368,6 @@ export function orderRoutes(app: FastifyInstance): void {
     const resolved = await resolveItems(orgId, (b.price_table_id as number | undefined) ?? null, b.items ?? []);
     if (typeof resolved === 'string') return reply.code(400).send({ error: resolved });
     const frete = (b.frete as number | undefined) ?? 0;
-    const total = round2(resolved.reduce((s, i) => s + i.total, 0) + frete);
 
     const newId = await withClient(async (c) => {
       await c.query('BEGIN');
@@ -372,26 +378,28 @@ export function orderRoutes(app: FastifyInstance): void {
         const res = await c.query(
           `INSERT INTO orders (org_id, numero, relationship_id, company_id, represented_id,
              owner_user_id, price_table_id, status, validade, condicao_pagamento,
-             transportadora, carrier_id, frete, observacoes, total)
+             transportadora, carrier_id, frete, observacoes)
            VALUES ($1, (SELECT COALESCE(MAX(numero),0)+1 FROM orders WHERE org_id = $1),
                    $2, $3, $4, $5, $6, COALESCE($7,'rascunho')::order_status,
-                   $8, $9, $10, $11, $12, $13, $14)
+                   $8, $9, $10, $11, $12, $13)
            RETURNING id`,
           [orgId, b.relationship_id ?? null, b.company_id, b.represented_id,
             req.auth!.userId, b.price_table_id ?? null, b.status ?? null,
             b.validade ?? null, b.condicao_pagamento ?? null, b.transportadora ?? null,
-            b.carrier_id ?? null, frete, b.observacoes ?? null, total],
+            b.carrier_id ?? null, frete, b.observacoes ?? null],
         );
         const id = Number(res.rows[0].id);
         for (const it of resolved) {
+          // total NÃO entra no INSERT — é coluna GENERATED (calculada no banco).
           await c.query(
             `INSERT INTO order_items (order_id, catalog_item_id, descricao_snapshot, qtd,
-               preco_unit, desconto_pct, ipi_pct, st_pct, total)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+               preco_unit, desconto_pct, ipi_pct, st_pct)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
             [id, it.catalog_item_id, it.descricao_snapshot, it.qtd, it.preco_unit,
-              it.desconto_pct, it.ipi_pct, it.st_pct, it.total],
+              it.desconto_pct, it.ipi_pct, it.st_pct],
           );
         }
+        await c.query(RECOMPUTE_TOTAL, [id]);
         await c.query('COMMIT');
         return id;
       } catch (e) {
@@ -459,22 +467,18 @@ export function orderRoutes(app: FastifyInstance): void {
         if (resolved !== null) {
           await c.query('DELETE FROM order_items WHERE order_id = $1', [id]);
           for (const it of resolved) {
+            // total NÃO entra no INSERT — é coluna GENERATED (calculada no banco).
             await c.query(
               `INSERT INTO order_items (order_id, catalog_item_id, descricao_snapshot, qtd,
-                 preco_unit, desconto_pct, ipi_pct, st_pct, total)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+                 preco_unit, desconto_pct, ipi_pct, st_pct)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
               [id, it.catalog_item_id, it.descricao_snapshot, it.qtd, it.preco_unit,
-                it.desconto_pct, it.ipi_pct, it.st_pct, it.total],
+                it.desconto_pct, it.ipi_pct, it.st_pct],
             );
           }
         }
-        // total = soma dos itens + frete vigente, sempre recalculado no banco.
-        await c.query(
-          `UPDATE orders SET total = COALESCE(
-             (SELECT round(SUM(total), 2) FROM order_items WHERE order_id = $1), 0) + frete,
-           updated_at = now() WHERE id = $1`,
-          [id],
-        );
+        // total = soma crua dos itens + frete vigente, sempre recalculado no banco.
+        await c.query(RECOMPUTE_TOTAL, [id]);
         await c.query('COMMIT');
       } catch (e) {
         await c.query('ROLLBACK');

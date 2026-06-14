@@ -6,7 +6,7 @@ import { useSellers, SellerFilter } from '../lib/sellers.tsx';
 import type { Carrier, CatalogItem, CommissionEntry, KanbanCard, Order, OrderStatus, PriceTable, RepresentedCompany } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, PageHeader, Spinner, StatCard, cn, type Tone } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
-import { brl, csvNum, fmtDate, todayStr } from '../lib/format.ts';
+import { brl, csvNum, fmtDate, numStr, todayStr } from '../lib/format.ts';
 import { downloadCsv } from '../lib/export.ts';
 import { toast } from '../lib/toast.tsx';
 
@@ -312,12 +312,12 @@ function OrderModal({ order, reps, companies, catalog, carriers, prefill, onClos
   const [validade, setValidade] = useState(order?.validade?.slice(0, 10) ?? '');
   const [condicao, setCondicao] = useState(order?.condicao_pagamento ?? '');
   const [carrierId, setCarrierId] = useState<number | null>(order?.carrier_id ?? null);
-  const [frete, setFrete] = useState(order ? String(order.frete) : '');
+  const [frete, setFrete] = useState(order ? numStr(order.frete) : '');
   const [observacoes, setObservacoes] = useState(order?.observacoes ?? '');
   const [items, setItems] = useState<ItemDraft[]>(
     (order?.items ?? []).map((i) => ({
-      catalog_item_id: i.catalog_item_id, descricao: i.descricao_snapshot, qtd: String(i.qtd),
-      preco_unit: String(i.preco_unit), desconto_pct: String(Number(i.desconto_pct) || ''),
+      catalog_item_id: i.catalog_item_id, descricao: i.descricao_snapshot, qtd: numStr(i.qtd),
+      preco_unit: numStr(i.preco_unit), desconto_pct: String(Number(i.desconto_pct) || ''),
       ipi_pct: String(Number(i.ipi_pct) || ''), st_pct: String(Number(i.st_pct) || ''),
     })),
   );
@@ -351,7 +351,7 @@ function OrderModal({ order, reps, companies, catalog, carriers, prefill, onClos
 
   const tablePrice = (catalogItemId: number): string | null => {
     const it = table?.items?.find((x) => x.catalog_item_id === catalogItemId);
-    return it != null ? String(it.preco) : null;
+    return it != null ? numStr(it.preco) : null;
   };
 
   const addCatalogItem = (id: number): void => {
@@ -360,7 +360,7 @@ function OrderModal({ order, reps, companies, catalog, carriers, prefill, onClos
       ...EMPTY_ITEM,
       catalog_item_id: id,
       descricao: cat?.nome ?? '',
-      preco_unit: tablePrice(id) ?? (cat?.preco != null ? String(cat.preco) : ''),
+      preco_unit: tablePrice(id) ?? numStr(cat?.preco),
     }]);
   };
   const setItem = (idx: number, patch: Partial<ItemDraft>): void =>

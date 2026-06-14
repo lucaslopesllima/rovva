@@ -3,7 +3,7 @@ import { api } from '../lib/api.ts';
 import type { CatalogItem, PriceTable, RepresentedCompany } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, Spinner, cn } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
-import { brl, fmtDate } from '../lib/format.ts';
+import { brl, fmtDate, numStr } from '../lib/format.ts';
 import { toast } from '../lib/toast.tsx';
 
 const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
@@ -89,8 +89,8 @@ function TableForm({ reps, catalog, table, onClose, onSaved }: {
   const [ativo, setAtivo] = useState(table?.ativo ?? true);
   const [items, setItems] = useState<ItemDraft[]>(
     (table?.items ?? []).map((i) => ({
-      catalog_item_id: i.catalog_item_id, preco: String(i.preco),
-      desconto_max_pct: i.desconto_max_pct != null ? String(i.desconto_max_pct) : '',
+      catalog_item_id: i.catalog_item_id, preco: numStr(i.preco),
+      desconto_max_pct: numStr(i.desconto_max_pct),
     })),
   );
   const [busy, setBusy] = useState(false);
@@ -98,7 +98,7 @@ function TableForm({ reps, catalog, table, onClose, onSaved }: {
   const disponiveis = catalog.filter((c) => c.ativo && !items.some((i) => i.catalog_item_id === c.id));
   const addItem = (id: number): void => {
     const cat = catalog.find((c) => c.id === id);
-    setItems((xs) => [...xs, { catalog_item_id: id, preco: cat?.preco ?? '', desconto_max_pct: '' }]);
+    setItems((xs) => [...xs, { catalog_item_id: id, preco: numStr(cat?.preco), desconto_max_pct: '' }]);
   };
   const setItem = (idx: number, patch: Partial<ItemDraft>): void =>
     setItems((xs) => xs.map((x, i) => (i === idx ? { ...x, ...patch } : x)));

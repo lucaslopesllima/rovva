@@ -3,7 +3,7 @@ import { api } from '../lib/api.ts';
 import type { CatalogItem, RepresentedCompany } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, PageHeader, Segmented, Spinner, cn } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
-import { brl } from '../lib/format.ts';
+import { brl, numStr } from '../lib/format.ts';
 import { toast } from '../lib/toast.tsx';
 import { PriceTables } from './PriceTables.tsx';
 
@@ -13,7 +13,7 @@ type Form = { nome: string; codigo: string; descricao: string; preco: string; re
 const EMPTY: Form = { nome: '', codigo: '', descricao: '', preco: '', represented_id: '' };
 const toForm = (i: CatalogItem): Form => ({
   nome: i.nome, codigo: i.codigo ?? '', descricao: i.descricao ?? '',
-  preco: i.preco ?? '', represented_id: i.represented_id != null ? String(i.represented_id) : '',
+  preco: numStr(i.preco), represented_id: i.represented_id != null ? String(i.represented_id) : '',
 });
 function toBody(f: Form): Record<string, unknown> {
   const t = (s: string): string | null => (s.trim() === '' ? null : s.trim());

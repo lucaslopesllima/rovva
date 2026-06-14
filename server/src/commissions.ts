@@ -15,8 +15,6 @@ interface Rule {
   vendedor_split_pct: string;
 }
 
-const round2 = (n: number): number => Math.round(n * 100) / 100;
-
 // Especificidade da regra: produto vence cliente, que vence vendedor, que
 // vence a regra geral. Dimensões NULL são curinga (regra vale para todos).
 const rank = (r: Rule): number =>
@@ -56,32 +54,45 @@ export async function createCommissionForOrder(orderId: number): Promise<void> {
   );
   if (rules.length === 0) return;
 
-  let base = 0;          // soma dos itens (com ou sem regra)
-  let previsto = 0;      // comissão total
-  let vendedorParte = 0; // comissão × split, somada por item
+  // Por item: resolve a regra (precedência) e monta (total cru, percent, split).
+  // Item sem regra entra na base com percent/split = 0 (não comissiona, mas pesa
+  // na média ponderada do percent_aplicado). Aritmética monetária é feita no
+  // banco em numeric — JS só seleciona a regra, nunca multiplica dinheiro.
+  const totals: string[] = [];   // order_items.total cru (string numeric do banco)
+  const percents: string[] = []; // % da regra aplicável ('0' se nenhuma)
+  const splits: string[] = [];   // split vendedor da regra ('0' se nenhuma)
   for (const it of items) {
-    const total = Number(it.total);
-    base += total;
     const rule = rules
       .filter((r) => r.catalog_item_id === null || r.catalog_item_id === it.catalog_item_id)
       .sort((a, b) => rank(a) - rank(b))[0];
-    if (!rule) continue;
-    const comissao = total * Number(rule.percent) / 100;
-    previsto += comissao;
-    vendedorParte += comissao * Number(rule.vendedor_split_pct) / 100;
+    totals.push(it.total);
+    percents.push(rule ? rule.percent : '0');
+    splits.push(rule ? rule.vendedor_split_pct : '0');
   }
-  if (previsto <= 0) return;
 
-  const percentAplicado = base > 0 ? round2(previsto / base * 100) : 0;
-  const splitEfetivo = round2(vendedorParte / previsto * 100);
+  // Agrega em numeric exato e só insere se houver comissão (previsto > 0).
+  //   base     = Σ total
+  //   previsto = Σ total·percent/100
+  //   vendedor = Σ total·percent/100·split/100
+  // percent_aplicado = previsto/base·100 (média ponderada); split = vendedor/previsto·100.
   await query(
     `INSERT INTO commission_entries
        (org_id, order_id, user_id, represented_id, competencia,
         valor_previsto, percent_aplicado, vendedor_split_pct)
-     VALUES ($1, $2, $3, $4, date_trunc('month', $5::timestamptz)::date, $6, $7, $8)
+     SELECT $1, $2, $3, $4, date_trunc('month', $5::timestamptz)::date,
+            agg.previsto,
+            CASE WHEN agg.base > 0     THEN agg.previsto / agg.base * 100     ELSE 0 END,
+            CASE WHEN agg.previsto > 0 THEN agg.vendedor / agg.previsto * 100 ELSE 0 END
+     FROM (
+       SELECT COALESCE(SUM(t.total), 0)                              AS base,
+              COALESCE(SUM(t.total * t.percent / 100), 0)            AS previsto,
+              COALESCE(SUM(t.total * t.percent / 100 * t.split / 100), 0) AS vendedor
+       FROM unnest($6::numeric[], $7::numeric[], $8::numeric[]) AS t(total, percent, split)
+     ) agg
+     WHERE agg.previsto > 0
      ON CONFLICT (order_id) DO NOTHING`,
     [order.org_id, orderId, order.owner_user_id, order.represented_id,
-      order.faturado_em, round2(previsto), percentAplicado, splitEfetivo],
+      order.faturado_em, totals, percents, splits],
   );
 }
 

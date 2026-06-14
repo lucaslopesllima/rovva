@@ -7,7 +7,7 @@ import { CompanyFilterBar, useCompanyFilter } from '../lib/companyFilter.tsx';
 import { useSellers, SellerFilter } from '../lib/sellers.tsx';
 import { CompanyModal } from '../lib/companyModal.tsx';
 import { ActivityCreateModal } from '../lib/activityModal.tsx';
-import { brl0 as brl, maskPhone } from '../lib/format.ts';
+import { brl0 as brl, maskPhone, numStr } from '../lib/format.ts';
 import { toast } from '../lib/toast.tsx';
 
 const STATUS_TONE: Record<string, Tone> = {
@@ -271,7 +271,7 @@ function EditModal({ card, stages, reps, brands, scenarios, actions, catalog, on
 }): React.JSX.Element {
   const [stageId, setStageId] = useState<number | null>(card.stage_id);
   const [status, setStatus] = useState<string>(card.status);
-  const [valor, setValor] = useState<string>(card.valor_estimado ?? '');
+  const [valor, setValor] = useState<string>(numStr(card.valor_estimado));
   const [representadaId, setRepresentadaId] = useState<number | null>(card.represented_id);
   const [marcaId, setMarcaId] = useState<number | null>(card.marca_id);
   const [contatoIds, setContatoIds] = useState<number[]>(card.contatos.map((c) => c.id));

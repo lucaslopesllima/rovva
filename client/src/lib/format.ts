@@ -14,6 +14,13 @@ export const fmtDate = (iso: string): string =>
 
 export const todayStr = (): string => new Date().toISOString().slice(0, 10);
 
+// numeric cru do banco -> string limpa para input de edição. Tira zeros à
+// direita SEM arredondar (preserva precisão): '90.000000'->'90',
+// '10.330000'->'10.33', '10.333'->'10.333'. Mantém o valor cru editável; o
+// arredondamento acontece só na borda (NF/exibição via brl).
+export const numStr = (v: number | string | null | undefined): string =>
+  v == null || v === '' ? '' : String(Number(v));
+
 // número p/ célula de CSV no padrão pt-BR (vírgula decimal), sem símbolo —
 // o Excel pt-BR lê como número. Ex.: 1234.5 -> "1234,50".
 export const csvNum = (v: number | string): string => {

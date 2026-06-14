@@ -72,7 +72,7 @@ describe('Commissions · extrato', () => {
     render(<Commissions />);
     expect(await screen.findByText('Indústria X', { selector: 'h3' })).toBeInTheDocument();
     expect(screen.getByText('Indústria Y', { selector: 'h3' })).toBeInTheDocument();
-    expect(screen.getByText('Previsto no mês')).toBeInTheDocument();
+    expect(screen.getByText('Recebido no mês')).toBeInTheDocument();
     // previsto 200 (2×100), recebido 80
     expect(screen.getAllByText(/R\$\s?200,00/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/R\$\s?80,00/).length).toBeGreaterThan(0);

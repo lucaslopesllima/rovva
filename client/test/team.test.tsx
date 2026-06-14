@@ -84,16 +84,19 @@ describe('Team', () => {
     expect(m.patch).toHaveBeenCalledWith('/api/users/2', { role: 'admin' });
   });
 
-  it('redefinir senha usa prompt; cancelado não chama API', async () => {
-    vi.stubGlobal('prompt', vi.fn(() => null));
+  it('redefinir senha usa modal; cancelar não chama API', async () => {
     render(<Team />);
     await screen.findByText('rep@org.com');
+    // abre o modal e cancela — nenhuma chamada
     await userEvent.click(screen.getByRole('button', { name: 'Redefinir senha' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(m.post).not.toHaveBeenCalled();
 
-    vi.stubGlobal('prompt', vi.fn(() => 'novaprov1'));
-    m.post.mockResolvedValueOnce({ ok: true });
+    // reabre, digita senha provisória válida e confirma
     await userEvent.click(screen.getByRole('button', { name: 'Redefinir senha' }));
+    m.post.mockResolvedValueOnce({ ok: true });
+    await userEvent.type(screen.getByPlaceholderText('Nova senha provisória'), 'novaprov1');
+    await userEvent.click(screen.getByRole('button', { name: 'Redefinir' }));
     expect(m.post).toHaveBeenCalledWith('/api/users/2/password', { senha: 'novaprov1' });
   });
 });

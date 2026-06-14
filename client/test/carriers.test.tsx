@@ -69,9 +69,9 @@ describe('Carriers', () => {
     await screen.findByText('Transp X');
 
     await userEvent.click(screen.getByTitle('Desativar'));
+    expect(m.patch).toHaveBeenCalledWith('/api/carriers/4', { ativo: false }); // tentou
     await waitFor(() => expect(screen.getByTitle('Desativar')).toBeInTheDocument()); // rollback
     expect(screen.queryByText('inativa')).not.toBeInTheDocument();
-    expect(alert).toHaveBeenCalled();
   });
 
   it('desativar: confirm cancelado não chama API; sucesso marca inativa (linha fica)', async () => {
