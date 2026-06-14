@@ -9,7 +9,7 @@ import { ProfileForm } from './Profile.tsx';
 import { toast } from '../lib/toast.tsx';
 import { dec, maskCNPJ, maskPhone } from '../lib/format.ts';
 
-type Section = 'perfil' | 'empresas' | 'funil' | 'contatos' | 'cenarios' | 'acoes' | 'aliquotas' | 'alertas';
+type Section = 'perfil' | 'empresas' | 'funil' | 'contatos' | 'cenarios' | 'acoes' | 'aliquotas' | 'alertas' | 'smtp';
 const SECTIONS: { key: Section; label: string; icon: IconName; desc: string; admin?: boolean }[] = [
   { key: 'perfil', label: 'Perfil-alvo', icon: 'compass', desc: 'Quem o motor deve priorizar' },
   { key: 'empresas', label: 'Empresas representadas', icon: 'building', desc: 'Representadas e suas marcas' },
@@ -19,6 +19,7 @@ const SECTIONS: { key: Section; label: string; icon: IconName; desc: string; adm
   { key: 'funil', label: 'Funil', icon: 'columns', desc: 'Fases do seu pipeline de vendas' },
   { key: 'aliquotas', label: 'Alíquotas', icon: 'percent', desc: 'Impostos default dos pedidos', admin: true },
   { key: 'alertas', label: 'Alertas', icon: 'bell', desc: 'Inatividade no dashboard', admin: true },
+  { key: 'smtp', label: 'E-mail (SMTP)', icon: 'mail', desc: 'Servidor de envio dos e-mails agendados', admin: true },
 ];
 const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
@@ -62,6 +63,7 @@ export function Settings(): React.JSX.Element {
           {section === 'funil' && <FunilEditor inputCls={inputCls} />}
           {section === 'aliquotas' && <AliquotasEditor inputCls={inputCls} />}
           {section === 'alertas' && <AlertasEditor inputCls={inputCls} />}
+          {section === 'smtp' && <SmtpEditor inputCls={inputCls} />}
         </div>
       </div>
     </div>
@@ -106,6 +108,129 @@ function AlertasEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
       <div className="mt-4 flex items-center gap-3">
         <Btn icon="check" onClick={() => void save()}>Salvar</Btn>
         {saved && <span className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-600"><Icon name="check" size={16} /> Salvo</span>}
+      </div>
+    </Card>
+  );
+}
+
+// Config SMTP da org (admin). É o servidor que dispara os e-mails agendados.
+// A senha nunca volta do backend (só has_password); deixar o campo em branco
+// mantém a senha atual ao salvar.
+interface SmtpView {
+  host: string; port: number; secure: boolean; username: string | null;
+  from_email: string; from_name: string | null; enabled: boolean; has_password: boolean;
+}
+function SmtpEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState(587);
+  const [secure, setSecure] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [hasPassword, setHasPassword] = useState(false);
+  const [fromEmail, setFromEmail] = useState('');
+  const [fromName, setFromName] = useState('');
+  const [enabled, setEnabled] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  useEffect(() => {
+    void api.get<{ smtp: SmtpView | null }>('/api/settings/smtp')
+      .then((r) => {
+        const s = r.smtp;
+        if (s) {
+          setHost(s.host); setPort(s.port); setSecure(s.secure); setUsername(s.username ?? '');
+          setFromEmail(s.from_email); setFromName(s.from_name ?? ''); setEnabled(s.enabled);
+          setHasPassword(s.has_password);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async (): Promise<void> => {
+    if (!host.trim() || !fromEmail.trim()) { toast.error('Informe o host e o e-mail de origem.'); return; }
+    setBusy(true);
+    try {
+      await api.put('/api/settings/smtp', {
+        host: host.trim(), port, secure,
+        username: username.trim() || null,
+        // só envia password quando preenchida — branco mantém a atual.
+        password: password ? password : null,
+        from_email: fromEmail.trim(), from_name: fromName.trim() || null, enabled,
+      });
+      if (password) setHasPassword(true);
+      setPassword('');
+      toast.success('SMTP salvo.');
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Não foi possível salvar.'); }
+    finally { setBusy(false); }
+  };
+
+  const testar = async (): Promise<void> => {
+    setTesting(true);
+    try {
+      const r = await api.post<{ ok: boolean; to: string }>('/api/settings/smtp/test');
+      toast.success(`E-mail de teste enviado para ${r.to}.`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Falha no teste de envio.'); }
+    finally { setTesting(false); }
+  };
+
+  if (loading) return <Spinner />;
+  return (
+    <Card className="max-w-lg p-4">
+      <h3 className="text-sm font-semibold text-ink-900">Servidor de e-mail (SMTP)</h3>
+      <p className="mt-0.5 text-xs text-ink-400">
+        Os e-mails agendados são disparados por este servidor. A senha é guardada cifrada e não é exibida.
+      </p>
+
+      <div className="mt-4 space-y-3">
+        <div className="grid grid-cols-3 gap-3">
+          <label className="col-span-2 block">
+            <span className="mb-1 block text-xs font-medium text-ink-500">Host</span>
+            <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="smtp.seudominio.com" className={inputCls} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-ink-500">Porta</span>
+            <input type="number" min={1} max={65535} value={port} onChange={(e) => setPort(Number(e.target.value) || 587)} className={inputCls} />
+          </label>
+        </div>
+
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={secure} onChange={(e) => setSecure(e.target.checked)} className="h-4 w-4 rounded border-ink-300 text-brand-600" />
+          <span className="text-sm text-ink-700">Conexão segura (SSL/TLS — porta 465). Desmarcado usa STARTTLS (587).</span>
+        </label>
+
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-ink-500">Usuário</span>
+            <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="login do SMTP" className={inputCls} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-ink-500">Senha {hasPassword && <span className="text-emerald-600">(definida)</span>}</span>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder={hasPassword ? '•••••• (manter atual)' : 'senha do SMTP'} className={inputCls} />
+          </label>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-ink-500">E-mail de origem</span>
+            <input type="email" value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} placeholder="naoresponda@seudominio.com" className={inputCls} />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-ink-500">Nome de exibição</span>
+            <input value={fromName} onChange={(e) => setFromName(e.target.value)} placeholder="Sua Empresa" className={inputCls} />
+          </label>
+        </div>
+
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="h-4 w-4 rounded border-ink-300 text-brand-600" />
+          <span className="text-sm text-ink-700">Disparo ativo — sem isso os agendamentos ficam com erro "SMTP não configurado".</span>
+        </label>
+      </div>
+
+      <div className="mt-4 flex items-center gap-2">
+        <Btn icon="check" onClick={() => void save()} disabled={busy}>{busy ? '…' : 'Salvar'}</Btn>
+        <Btn variant="soft" icon="mail" onClick={() => void testar()} disabled={testing}>{testing ? 'Enviando…' : 'Enviar teste'}</Btn>
       </div>
     </Card>
   );

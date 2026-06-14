@@ -133,6 +133,20 @@ export interface Relationship {
   valor_estimado: string | null; notas: string | null; razao_social: string;
 }
 
+// Cliente = company_relationship com status='cliente'. NÃO duplica a empresa:
+// só referencia o registro global (company_id) e guarda o estado do tenant.
+// Os campos da empresa (razao_social, cnpj, uf…) vêm do JOIN, são read-only.
+export interface Cliente {
+  id: number; company_id: number; status: string; ativo: boolean;
+  valor_estimado: string | null; notas: string | null;
+  owner_user_id: number | null; represented_id: number | null;
+  representada: string | null; updated_at: string;
+  contatos: { id: number; nome: string; cargo: string | null }[];
+  // espelho da empresa global (apenas leitura)
+  razao_social: string; nome_fantasia: string | null; cnpj: string;
+  cnae_principal: number; municipio_id: number | null; uf: string;
+}
+
 export interface VisitReport { resultado: string; proximo_passo: string | null; texto: string | null }
 export interface Activity {
   id: number; tipo: string; titulo: string; start_at: string; end_at: string | null;
@@ -307,6 +321,40 @@ export interface FinanceCategory {
   kind: 'pagar' | 'receber' | null;
   ativo: boolean;
   created_at: string;
+}
+
+// Modelo de e-mail reutilizável (assunto + corpo) da org.
+export interface EmailTemplate {
+  id: number;
+  nome: string;
+  assunto: string;
+  corpo: string;
+  owner_user_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type EmailScheduleStatus = 'pendente' | 'enviado' | 'cancelado' | 'erro';
+
+// E-mail agendado. company_id/empresa preenchidos quando o destinatário foi
+// puxado de uma empresa da base; senão destinatario é digitado manual.
+export interface EmailSchedule {
+  id: number;
+  template_id: number | null;
+  company_id: number | null;
+  empresa: string | null;
+  remetente: string | null;
+  destinatario: string;
+  assunto: string;
+  corpo: string;
+  agendado_para: string;
+  recorrencia: string | null;
+  status: EmailScheduleStatus;
+  enviado_em: string | null;
+  erro: string | null;
+  owner_user_id: number | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Notification {

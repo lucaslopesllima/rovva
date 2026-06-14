@@ -14,11 +14,11 @@ import { scopeOwner, canWriteOwned, invalidOwnerAssignment } from '../scope.ts';
 const EDITABLE = [
   'stage_id', 'status', 'valor_estimado', 'notas', 'owner_user_id',
   'represented_id', 'marca_id', 'cenario_id', 'acao_id',
-  'data_contato', 'previsao_data', 'motivo_descarte',
+  'data_contato', 'previsao_data', 'motivo_descarte', 'ativo',
 ] as const;
 
 // Columns returned to the client. Dates cast to text so pg keeps 'YYYY-MM-DD' (no TZ shift).
-const REL_COLS = `r.id, r.company_id, r.stage_id, r.status, r.valor_estimado, r.notas,
+const REL_COLS = `r.id, r.company_id, r.stage_id, r.status, r.valor_estimado, r.notas, r.ativo,
   r.represented_id, r.marca_id, r.cenario_id, r.acao_id,
   r.data_contato::text AS data_contato, r.previsao_data::text AS previsao_data,
   r.motivo_descarte`;
@@ -62,12 +62,13 @@ const EDITABLE_SCHEMA = {
   data_contato: { type: ['string', 'null'] },
   previsao_data: { type: ['string', 'null'] },
   motivo_descarte: { type: ['string', 'null'] },
+  ativo: { type: 'boolean' },
   contato_ids: { type: 'array', items: { type: 'integer' } },
   catalogo_ids: { type: 'array', items: { type: 'integer' } },
 } as const;
 
 // RETURNING list (no table alias — used in INSERT/UPDATE), dates cast to text.
-const RET_COLS = `id, company_id, stage_id, status, valor_estimado, notas, owner_user_id,
+const RET_COLS = `id, company_id, stage_id, status, valor_estimado, notas, ativo, owner_user_id,
   represented_id, marca_id, cenario_id, acao_id,
   data_contato::text AS data_contato, previsao_data::text AS previsao_data, motivo_descarte`;
 
@@ -217,6 +218,73 @@ export function relationshipRoutes(app: FastifyInstance): void {
       }
       throw e;
     }
+  });
+
+  // Importação em lote de clientes por CNPJ (CSV na tela de Clientes). Aceita
+  // CNPJ com ou sem máscara — normaliza p/ 14 dígitos e casa na base global.
+  // Empresa inexistente na base ou já vinculada não cria — devolve o resumo
+  // (created/alreadyExists/notFound/invalid) p/ a UI orientar o usuário.
+  app.post('/api/relationships/import', {
+    preHandler: requireAuth,
+    schema: {
+      body: {
+        type: 'object',
+        required: ['cnpjs'],
+        properties: { cnpjs: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 2000 } },
+      },
+    },
+  }, async (req, reply) => {
+    const orgId = req.auth!.orgId;
+    const { cnpjs } = req.body as { cnpjs: string[] };
+
+    // Normaliza: só dígitos. 14 dígitos = válido; o resto vira `invalid`. Dedup.
+    const invalid: string[] = [];
+    const seen = new Set<string>();
+    const valid: string[] = [];
+    for (const raw of cnpjs) {
+      const d = String(raw).replace(/\D/g, '');
+      if (d.length !== 14) { if (raw.trim() !== '') invalid.push(raw.trim()); continue; }
+      if (seen.has(d)) continue;
+      seen.add(d);
+      valid.push(d);
+    }
+    if (valid.length === 0) {
+      return reply.send({ created: 0, alreadyExists: [], notFound: [], invalid });
+    }
+
+    // Quais CNPJs existem na base global. cnpj é char(14) — TRIM no retorno.
+    const foundRows = await query<{ id: string; cnpj: string }>(
+      `SELECT id, TRIM(cnpj) AS cnpj FROM companies WHERE cnpj = ANY($1::char(14)[])`,
+      [valid],
+    );
+    const foundCnpjs = new Set(foundRows.map((r) => r.cnpj));
+    const notFound = valid.filter((d) => !foundCnpjs.has(d));
+    if (foundRows.length === 0) {
+      return reply.send({ created: 0, alreadyExists: [], notFound, invalid });
+    }
+
+    // stage default = primeiro stage da org (mesmo critério do POST único).
+    const s = await one<{ id: number }>('SELECT id FROM stages WHERE org_id = $1 ORDER BY ordem LIMIT 1', [orgId]);
+    const stageId = s?.id ?? null;
+    const companyIds = foundRows.map((r) => Number(r.id));
+
+    // INSERT em lote; ON CONFLICT (org_id, company_id) pula quem já tem vínculo.
+    // RETURNING só traz os criados — o resto dos found vira `alreadyExists`.
+    const created = await query<{ company_id: string }>(
+      `INSERT INTO company_relationships (org_id, company_id, owner_user_id, stage_id, status)
+       SELECT $1, cid, $2, $3, 'cliente'::rel_status
+       FROM unnest($4::bigint[]) AS cid
+       ON CONFLICT ON CONSTRAINT company_relationships_uq DO NOTHING
+       RETURNING company_id`,
+      [orgId, req.auth!.userId, stageId, companyIds],
+    );
+    const createdIds = new Set(created.map((r) => Number(r.company_id)));
+    const alreadyExists = foundRows.filter((r) => !createdIds.has(Number(r.id))).map((r) => r.cnpj);
+
+    await audit(req, 'relationship', 0, 'import', {
+      created: created.length, alreadyExists: alreadyExists.length, notFound: notFound.length, invalid: invalid.length,
+    });
+    return reply.send({ created: created.length, alreadyExists, notFound, invalid });
   });
 
   // Update relationship state (kanban move, status, value, notes, owner).

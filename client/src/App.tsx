@@ -14,6 +14,8 @@ const Dashboard = lazy(() => import('./pages/Dashboard.tsx').then((m) => ({ defa
 const Recommend = lazy(() => import('./pages/Recommend.tsx').then((m) => ({ default: m.Recommend })));
 const Reports = lazy(() => import('./pages/Reports.tsx').then((m) => ({ default: m.Reports })));
 const Kanban = lazy(() => import('./pages/Kanban.tsx').then((m) => ({ default: m.Kanban })));
+const Clientes = lazy(() => import('./pages/Clientes.tsx').then((m) => ({ default: m.Clientes })));
+const Carteiras = lazy(() => import('./pages/Carteiras.tsx').then((m) => ({ default: m.Carteiras })));
 const Catalog = lazy(() => import('./pages/Catalog.tsx').then((m) => ({ default: m.Catalog })));
 const Agenda = lazy(() => import('./pages/Agenda.tsx').then((m) => ({ default: m.Agenda })));
 const Settings = lazy(() => import('./pages/Settings.tsx').then((m) => ({ default: m.Settings })));
@@ -25,6 +27,7 @@ const Orders = lazy(() => import('./pages/Orders.tsx').then((m) => ({ default: m
 const Carriers = lazy(() => import('./pages/Carriers.tsx').then((m) => ({ default: m.Carriers })));
 const Commissions = lazy(() => import('./pages/Commissions.tsx').then((m) => ({ default: m.Commissions })));
 const ChangePassword = lazy(() => import('./pages/ChangePassword.tsx').then((m) => ({ default: m.ChangePassword })));
+const EmailAgendado = lazy(() => import('./pages/EmailAgendado.tsx').then((m) => ({ default: m.EmailAgendado })));
 
 function FullScreenSpinner(): React.JSX.Element {
   return (
@@ -56,6 +59,8 @@ const NAV: { to: string; label: string; icon: IconName; admin?: boolean }[] = [
   { to: '/', label: 'Dashboard', icon: 'gauge' },
   { to: '/prospeccao', label: 'Prospecção', icon: 'target' },
   { to: '/funil', label: 'Funil', icon: 'columns' },
+  { to: '/clientes', label: 'Clientes', icon: 'users' },
+  { to: '/carteiras', label: 'Carteiras', icon: 'layers', admin: true },
   { to: '/pedidos', label: 'Pedidos', icon: 'list' },
   { to: '/comissoes', label: 'Comissões', icon: 'percent' },
   { to: '/relatorios', label: 'Relatórios', icon: 'barChart' },
@@ -63,6 +68,7 @@ const NAV: { to: string; label: string; icon: IconName; admin?: boolean }[] = [
   { to: '/rotas', label: 'Rotas', icon: 'route' },
   { to: '/catalogo', label: 'Catálogo', icon: 'box' },
   { to: '/agenda', label: 'Agenda', icon: 'calendar' },
+  { to: '/email', label: 'E-mail', icon: 'mail' },
   { to: '/financeiro', label: 'Financeiro', icon: 'wallet' },
   { to: '/equipe', label: 'Equipe', icon: 'users', admin: true },
   { to: '/config', label: 'Config', icon: 'settings' },
@@ -367,6 +373,8 @@ export function App(): React.JSX.Element {
       <Route path="/prospeccao" element={<RequireAuth><Shell><Recommend /></Shell></RequireAuth>} />
       <Route path="/perfil" element={<Navigate to="/config" replace />} />
       <Route path="/funil" element={<RequireAuth><Shell><Kanban /></Shell></RequireAuth>} />
+      <Route path="/clientes" element={<RequireAuth><Shell><Clientes /></Shell></RequireAuth>} />
+      <Route path="/carteiras" element={<RequireAuth><RequireAdmin><Shell><Carteiras /></Shell></RequireAdmin></RequireAuth>} />
       <Route path="/pedidos" element={<RequireAuth><Shell><Orders /></Shell></RequireAuth>} />
       <Route path="/comissoes" element={<RequireAuth><Shell><Commissions /></Shell></RequireAuth>} />
       <Route path="/relatorios" element={<RequireAuth><Shell><Reports /></Shell></RequireAuth>} />
@@ -374,6 +382,7 @@ export function App(): React.JSX.Element {
       <Route path="/rotas" element={<RequireAuth><Shell><RoutePlanner /></Shell></RequireAuth>} />
       <Route path="/catalogo" element={<RequireAuth><Shell><Catalog /></Shell></RequireAuth>} />
       <Route path="/agenda" element={<RequireAuth><Shell><Agenda /></Shell></RequireAuth>} />
+      <Route path="/email" element={<RequireAuth><Shell><EmailAgendado /></Shell></RequireAuth>} />
       <Route path="/financeiro" element={<RequireAuth><Shell><Finance /></Shell></RequireAuth>} />
       <Route path="/equipe" element={<RequireAuth><RequireAdmin><Shell><Team /></Shell></RequireAdmin></RequireAuth>} />
       <Route path="/trocar-senha" element={<RequireAuth><ChangePassword /></RequireAuth>} />
