@@ -5,7 +5,11 @@ type Cell = string | number | boolean | null | undefined;
 
 export function downloadCsv(filename: string, headers: string[], rows: Cell[][]): void {
   const esc = (v: Cell): string => {
-    const s = v == null ? '' : String(v);
+    let s = v == null ? '' : String(v);
+    // Neutraliza CSV/formula injection: célula começando com = + - @ (ou tab/CR)
+    // é interpretada como fórmula pelo Excel/Sheets. Prefixa aspa simples para
+    // forçar texto. Razão social / nome vêm de dados externos (RFB) e de input.
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
     return `"${s.replace(/"/g, '""')}"`;
   };
   const linhas = [headers, ...rows].map((r) => r.map(esc).join(';'));

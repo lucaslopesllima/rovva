@@ -58,6 +58,14 @@ async function remove(id: number): Promise<void> {
   await tx('readwrite', (s) => s.delete(id));
 }
 
+// Esvazia a fila — chamado no logout para não vazar ações de campo de um
+// usuário para a conta seguinte no mesmo dispositivo (campo compartilhado).
+export async function clearQueue(): Promise<void> {
+  try { await tx('readwrite', (s) => s.clear() as unknown as IDBRequest<undefined>); }
+  catch { /* fila já inacessível: nada a limpar */ }
+  notify();
+}
+
 // Erro de rede (offline/servidor inalcançável) não é ApiError — o fetch rejeita.
 function isNetworkError(e: unknown): boolean {
   return !(e instanceof ApiError);

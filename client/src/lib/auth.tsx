@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, setToken, getToken } from './api.ts';
+import { clearQueue } from './offline.ts';
 
 export interface User {
   id: number | string;
@@ -57,6 +58,9 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
   const logout = (): void => {
     setToken(null);
     setUser(null);
+    // Limpa a fila offline antes de sair: em dispositivo compartilhado a próxima
+    // conta não pode reenviar ações de campo enfileiradas por este usuário.
+    void clearQueue();
     location.href = '/login';
   };
 

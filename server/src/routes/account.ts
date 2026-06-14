@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { one, query } from '../db.ts';
 import { requireAuth, hashPassword, verifyPassword, signToken } from '../auth.ts';
 import { geocodeAddr } from '../geocode.ts';
+import { config } from '../config.ts';
 
 const ADDR_FIELDS = ['cep', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade', 'uf'];
 
@@ -101,6 +102,9 @@ export function accountRoutes(app: FastifyInstance): void {
 
   app.post('/api/account/password', {
     preHandler: requireAuth,
+    // Throttle por IP: verifica senha_atual com scrypt — sem limite, um token
+    // válido permite brute-force online da senha atual.
+    config: { rateLimit: { max: app.authRateLimitMax, timeWindow: config.authRateLimitWindow } },
     schema: {
       body: {
         type: 'object',

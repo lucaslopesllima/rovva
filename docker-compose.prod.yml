@@ -52,7 +52,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-rs}
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@db:5432/${POSTGRES_DB:-rs}
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
       PORT: 8080
       RECOMMEND_WORK_MEM: ${RECOMMEND_WORK_MEM:-64MB}

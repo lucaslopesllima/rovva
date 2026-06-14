@@ -12,6 +12,11 @@ import { audit, pick } from '../audit.ts';
 const TPL_COLS = 'id, nome, assunto, corpo, owner_user_id, created_at, updated_at';
 const SCHED_STATUS = ['pendente', 'enviado', 'cancelado', 'erro'] as const;
 const RECORRENCIA = ['nenhuma', 'diaria', 'semanal', 'mensal'] as const;
+// Valida formato de e-mail e barra CR/LF (header injection) — `pattern` é
+// sempre aplicado pelo ajv, ao contrário de `format:'email'` que exige plugin.
+const EMAIL_PATTERN = '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$';
+// remetente pode vir vazio (cai no e-mail do usuário logado) ou um e-mail válido.
+const EMAIL_OR_EMPTY_PATTERN = '^([^@\\s]+@[^@\\s]+\\.[^@\\s]+)?$';
 
 const SCHED_SELECT = `
   SELECT e.id, e.template_id, e.company_id, e.remetente, e.destinatario, e.assunto, e.corpo,
@@ -159,8 +164,8 @@ export function emailScheduleRoutes(app: FastifyInstance): void {
         properties: {
           template_id: { type: ['integer', 'null'] },
           company_id: { type: ['integer', 'null'] },
-          remetente: { type: ['string', 'null'] },
-          destinatario: { type: 'string', minLength: 3 },
+          remetente: { type: ['string', 'null'], pattern: EMAIL_OR_EMPTY_PATTERN },
+          destinatario: { type: 'string', pattern: EMAIL_PATTERN },
           assunto: { type: 'string', minLength: 1 },
           corpo: { type: 'string', minLength: 1 },
           agendado_para: { type: 'string', minLength: 1 },
@@ -209,8 +214,8 @@ export function emailScheduleRoutes(app: FastifyInstance): void {
       body: {
         type: 'object',
         properties: {
-          remetente: { type: 'string', minLength: 3 },
-          destinatario: { type: 'string', minLength: 3 },
+          remetente: { type: 'string', pattern: EMAIL_OR_EMPTY_PATTERN },
+          destinatario: { type: 'string', pattern: EMAIL_PATTERN },
           assunto: { type: 'string', minLength: 1 },
           corpo: { type: 'string', minLength: 1 },
           agendado_para: { type: 'string', minLength: 1 },

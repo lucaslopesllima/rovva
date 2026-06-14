@@ -10,7 +10,7 @@ import {
 } from '../src/auth.ts';
 import { audit, pick } from '../src/audit.ts';
 import { invalidOrgRef } from '../src/orgRefs.ts';
-import { workMem, config } from '../src/config.ts';
+import { workMem, config, requireSecret, INSECURE_JWT_DEFAULT } from '../src/config.ts';
 import { pool, query, one, withClient } from '../src/db.ts';
 import { mail } from './helpers.ts';
 
@@ -174,6 +174,14 @@ describe('config', () => {
   it('config exporta defaults coerentes', () => {
     expect(config.recommendWorkMem).toMatch(/^\d+(?:kB|MB|GB)$/);
     expect(config.authRateLimitMax).toBeGreaterThan(0);
+  });
+
+  it('requireSecret aborta em produção com o default inseguro', () => {
+    expect(() => requireSecret(INSECURE_JWT_DEFAULT, 'production')).toThrow(/inseguro em produção/);
+    // segredo forte em produção passa; default fora de produção também (dev/test).
+    expect(requireSecret('um-segredo-forte', 'production')).toBe('um-segredo-forte');
+    expect(requireSecret(INSECURE_JWT_DEFAULT, 'development')).toBe(INSECURE_JWT_DEFAULT);
+    expect(requireSecret(INSECURE_JWT_DEFAULT, undefined)).toBe(INSECURE_JWT_DEFAULT);
   });
 });
 

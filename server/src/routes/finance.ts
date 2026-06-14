@@ -1,9 +1,20 @@
-import type { FastifyInstance } from 'fastify';
-import { query } from '../db.ts';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { one, query } from '../db.ts';
 import { requireAuth, requireAdmin } from '../auth.ts';
 import { audit, pick } from '../audit.ts';
 import { invalidOrgRef } from '../orgRefs.ts';
+import { scopeOwner, canWriteOwned, invalidOwnerAssignment } from '../scope.ts';
 import { materializeRecurrences } from '../recurrence.ts';
+
+// Cláusula de dono para as agregações com SQL inline (cashflow/DRE), mesmo
+// critério do dashboard: rep só os próprios lançamentos; admin vê tudo e pode
+// focar um vendedor via ?user_id. `col` permite escopar finance_entries
+// (owner_user_id) e commission_entries (user_id) com a mesma regra.
+function ownerClause(req: FastifyRequest, userIdQ: number | undefined, col: string, params: unknown[]): string {
+  if (req.auth!.role !== 'admin') { params.push(req.auth!.userId); return ` AND ${col} = $${params.length}`; }
+  if (userIdQ !== undefined) { params.push(userIdQ); return ` AND ${col} = $${params.length}`; }
+  return '';
+}
 
 // Módulo financeiro: contas a pagar/receber, org-scoped. SQL parametrizado, sem ORM.
 // Vínculos opcionais: empresa prospect (companies), empresa representada
@@ -47,14 +58,18 @@ export function financeRoutes(app: FastifyInstance): void {
           status: { type: 'string', enum: ['pendente', 'liquidado', 'cancelado'] },
           from: { type: 'string' },
           to: { type: 'string' },
+          user_id: { type: 'integer' },
         },
       },
     },
   }, async (req) => {
     const orgId = req.auth!.orgId;
     const { kind, status, from, to } = req.query as Record<string, string | undefined>;
+    const userIdQ = (req.query as { user_id?: number }).user_id;
     const where: string[] = ['f.org_id = $1'];
     const params: unknown[] = [orgId];
+    // Escopo por carteira: rep vê só os próprios lançamentos; admin filtra por ?user_id.
+    scopeOwner(req, where, params, 'f.owner_user_id', userIdQ);
     if (kind) { params.push(kind); where.push(`f.kind = $${params.length}::finance_kind`); }
     if (status) { params.push(status); where.push(`f.status = $${params.length}::finance_status`); }
     if (from) { params.push(from); where.push(`f.vencimento >= $${params.length}`); }
@@ -94,6 +109,7 @@ export function financeRoutes(app: FastifyInstance): void {
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
     const b = req.body as Record<string, unknown>;
+    if (invalidOwnerAssignment(req, b)) return reply.code(403).send({ error: 'não pode atribuir a outro vendedor' });
     const badRef = await invalidOrgRef(orgId, b, ['represented_id', 'activity_id', 'owner_user_id', 'route_id', 'categoria_id']);
     if (badRef) return reply.code(400).send({ error: `${badRef} inválido` });
     const rows = await query(
@@ -147,6 +163,13 @@ export function financeRoutes(app: FastifyInstance): void {
     const orgId = req.auth!.orgId;
     const { id } = req.params as { id: number };
     const b = req.body as Record<string, unknown>;
+    // Escopo de escrita: rep só mexe no próprio lançamento e não realoca dono.
+    const current = await one<{ owner_user_id: number | null }>(
+      'SELECT owner_user_id FROM finance_entries WHERE id = $1 AND org_id = $2', [id, orgId],
+    );
+    if (!current) return reply.code(404).send({ error: 'não encontrado' });
+    if (!canWriteOwned(req, current.owner_user_id)) return reply.code(403).send({ error: 'sem permissão' });
+    if (invalidOwnerAssignment(req, b)) return reply.code(403).send({ error: 'não pode atribuir a outro vendedor' });
     const badRef = await invalidOrgRef(orgId, b, ['represented_id', 'activity_id', 'owner_user_id', 'route_id', 'categoria_id']);
     if (badRef) return reply.code(400).send({ error: `${badRef} inválido` });
     const sets: string[] = [];
@@ -173,6 +196,11 @@ export function financeRoutes(app: FastifyInstance): void {
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
     const { id } = req.params as { id: number };
+    const current = await one<{ owner_user_id: number | null }>(
+      'SELECT owner_user_id FROM finance_entries WHERE id = $1 AND org_id = $2', [id, orgId],
+    );
+    if (!current) return reply.code(404).send({ error: 'não encontrado' });
+    if (!canWriteOwned(req, current.owner_user_id)) return reply.code(403).send({ error: 'sem permissão' });
     const rows = await query('DELETE FROM finance_entries WHERE id = $1 AND org_id = $2 RETURNING id', [id, orgId]);
     if (rows.length === 0) return reply.code(404).send({ error: 'não encontrado' });
     await audit(req, 'finance', id, 'delete');
@@ -193,15 +221,19 @@ export function financeRoutes(app: FastifyInstance): void {
   // segunda) nos próximos N meses. Saldo = receber + comissão − pagar.
   app.get('/api/finance/cashflow', {
     preHandler: requireAuth,
-    schema: { querystring: { type: 'object', properties: { months: { type: 'integer', minimum: 1, maximum: 12 } } } },
+    schema: { querystring: { type: 'object', properties: { months: { type: 'integer', minimum: 1, maximum: 12 }, user_id: { type: 'integer' } } } },
   }, async (req) => {
     const orgId = req.auth!.orgId;
-    const { months } = req.query as { months?: number };
+    const { months, user_id: userIdQ } = req.query as { months?: number; user_id?: number };
     const horizonte = months ?? 3;
 
     // Agregação e saldo somados no banco em numeric exato (sem float JS).
     // Comissões previstas: sem data de previsão, projeta no 1º dia da competência.
     // Number() só na borda de saída (display) — valor cru fica no banco.
+    // Escopo por carteira: rep só os próprios; admin filtra por ?user_id.
+    const params: unknown[] = [orgId, horizonte];
+    const finOwner = ownerClause(req, userIdQ, 'owner_user_id', params);
+    const comOwner = ownerClause(req, userIdQ, 'user_id', params);
     const rows = await query<{ semana: string; receber: string; pagar: string; comissao_prevista: string; saldo: string }>(
       `SELECT semana,
               SUM(receber)              AS receber,
@@ -216,7 +248,7 @@ export function financeRoutes(app: FastifyInstance): void {
          FROM finance_entries
          WHERE org_id = $1 AND status = 'pendente'
            AND vencimento >= current_date
-           AND vencimento < (date_trunc('month', current_date) + ($2 || ' months')::interval)
+           AND vencimento < (date_trunc('month', current_date) + ($2 || ' months')::interval)${finOwner}
          GROUP BY 1
          UNION ALL
          SELECT to_char(date_trunc('week', competencia), 'YYYY-MM-DD') AS semana,
@@ -225,12 +257,12 @@ export function financeRoutes(app: FastifyInstance): void {
          FROM commission_entries
          WHERE org_id = $1 AND status = 'prevista'
            AND competencia >= date_trunc('month', current_date)
-           AND competencia < (date_trunc('month', current_date) + ($2 || ' months')::interval)
+           AND competencia < (date_trunc('month', current_date) + ($2 || ' months')::interval)${comOwner}
          GROUP BY 1
        ) x
        GROUP BY semana
        ORDER BY semana`,
-      [orgId, horizonte],
+      params,
     );
     const semanas = rows.map((r) => ({
       semana: r.semana,
@@ -247,15 +279,19 @@ export function financeRoutes(app: FastifyInstance): void {
   // = receita − despesa total. Ano default = corrente.
   app.get('/api/finance/dre', {
     preHandler: requireAuth,
-    schema: { querystring: { type: 'object', properties: { ano: { type: 'integer', minimum: 2000, maximum: 2100 } } } },
+    schema: { querystring: { type: 'object', properties: { ano: { type: 'integer', minimum: 2000, maximum: 2100 }, user_id: { type: 'integer' } } } },
   }, async (req) => {
     const orgId = req.auth!.orgId;
-    const { ano } = req.query as { ano?: number };
+    const { ano, user_id: userIdQ } = req.query as { ano?: number; user_id?: number };
     const year = ano ?? new Date().getFullYear();
 
     // Totais mensais (receita/despesa/resultado) somados no banco em numeric
     // exato — receita = comissões recebidas; despesa = 'pagar' liquidado.
     // Number() só na borda de saída (display).
+    // Escopo por carteira: rep só os próprios; admin filtra por ?user_id.
+    const totaisParams: unknown[] = [orgId, year];
+    const totComOwner = ownerClause(req, userIdQ, 'user_id', totaisParams);
+    const totFinOwner = ownerClause(req, userIdQ, 'f.owner_user_id', totaisParams);
     const totais = await query<{ mes: number; receita: string; despesa: string; resultado: string }>(
       `SELECT mes, SUM(receita) AS receita, SUM(despesa) AS despesa,
               SUM(receita - despesa) AS resultado
@@ -264,22 +300,24 @@ export function financeRoutes(app: FastifyInstance): void {
                 COALESCE(sum(valor_recebido), 0) AS receita, 0::numeric AS despesa
          FROM commission_entries
          WHERE org_id = $1 AND status IN ('recebida','divergente')
-           AND extract(year FROM competencia) = $2
+           AND extract(year FROM competencia) = $2${totComOwner}
          GROUP BY 1
          UNION ALL
          SELECT extract(month FROM COALESCE(f.liquidacao_data, f.vencimento))::int AS mes,
                 0::numeric, COALESCE(sum(f.valor), 0)
          FROM finance_entries f
          WHERE f.org_id = $1 AND f.kind = 'pagar' AND f.status = 'liquidado'
-           AND extract(year FROM COALESCE(f.liquidacao_data, f.vencimento)) = $2
+           AND extract(year FROM COALESCE(f.liquidacao_data, f.vencimento)) = $2${totFinOwner}
          GROUP BY 1
        ) x
        GROUP BY mes`,
-      [orgId, year],
+      totaisParams,
     );
     // Quebra da despesa por grupo de DRE (apresentação). Agrupa por grupo_dre da
     // categoria vinculada; sem vínculo, cai no texto livre `categoria` e, na
     // falta, em 'sem categoria'. Cada (mês, grupo) é uma linha somada no banco.
+    const despParams: unknown[] = [orgId, year];
+    const despFinOwner = ownerClause(req, userIdQ, 'f.owner_user_id', despParams);
     const despesas = await query<{ mes: number; grupo: string; valor: string }>(
       `SELECT extract(month FROM COALESCE(f.liquidacao_data, f.vencimento))::int AS mes,
               COALESCE(fc.grupo_dre, f.categoria, 'sem categoria') AS grupo,
@@ -287,9 +325,9 @@ export function financeRoutes(app: FastifyInstance): void {
        FROM finance_entries f
        LEFT JOIN finance_categories fc ON fc.id = f.categoria_id AND fc.org_id = f.org_id
        WHERE f.org_id = $1 AND f.kind = 'pagar' AND f.status = 'liquidado'
-         AND extract(year FROM COALESCE(f.liquidacao_data, f.vencimento)) = $2
+         AND extract(year FROM COALESCE(f.liquidacao_data, f.vencimento)) = $2${despFinOwner}
        GROUP BY 1, 2`,
-      [orgId, year],
+      despParams,
     );
 
     const meses = Array.from({ length: 12 }, (_, i) => ({

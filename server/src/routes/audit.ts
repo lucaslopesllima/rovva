@@ -1,12 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { query } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requireAdmin } from '../auth.ts';
 
-// Consulta da trilha de auditoria (org-scoped, read-only). A escrita acontece
-// nos handlers de mutação via src/audit.ts.
+// Consulta da trilha de auditoria (org-scoped, admin-only, read-only). Expõe
+// ações de todos os usuários da org (criação de user, troca de role, reset de
+// senha, SMTP) — não é informação para um rep. A escrita acontece nos handlers
+// de mutação via src/audit.ts.
 export function auditRoutes(app: FastifyInstance): void {
   app.get('/api/audit', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requireAdmin],
     schema: {
       querystring: {
         type: 'object',

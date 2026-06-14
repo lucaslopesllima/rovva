@@ -213,11 +213,22 @@ const canWrite = (req: FastifyRequest, ownerUserId: number | null): boolean =>
 
 interface OrderRow {
   id: number; status: string; owner_user_id: string | null;
-  price_table_id: string | null; frete: string; numero: number;
+  price_table_id: string | null; represented_id: string | null; frete: string; numero: number;
 }
 
 const findOrder = (id: number, orgId: number): Promise<OrderRow | null> =>
-  one<OrderRow>('SELECT id, status, owner_user_id, price_table_id, frete, numero FROM orders WHERE id = $1 AND org_id = $2', [id, orgId]);
+  one<OrderRow>('SELECT id, status, owner_user_id, price_table_id, represented_id, frete, numero FROM orders WHERE id = $1 AND org_id = $2', [id, orgId]);
+
+// Integridade: a tabela de preço escolhida tem de ser global (sem representada)
+// ou da MESMA representada do pedido — senão aplicaria preços/teto de desconto
+// da representada errada. org já validado por invalidOrgRef; aqui só a representada.
+async function priceTableMismatch(orgId: number, priceTableId: number | null, representedId: number | null): Promise<boolean> {
+  if (priceTableId == null || representedId == null) return false;
+  const pt = await one<{ represented_id: string | null }>(
+    'SELECT represented_id FROM price_tables WHERE id = $1 AND org_id = $2', [priceTableId, orgId],
+  );
+  return !!pt && pt.represented_id !== null && Number(pt.represented_id) !== Number(representedId);
+}
 
 // Escapa para interpolar com segurança no HTML do print (sem libs de template).
 const esc = (v: unknown): string => String(v ?? '')
@@ -400,6 +411,9 @@ export function orderRoutes(app: FastifyInstance): void {
     const b = req.body as Record<string, unknown> & { items?: ItemInput[]; status?: string };
     const badRef = await invalidOrgRef(orgId, b, ['represented_id', 'relationship_id', 'price_table_id', 'carrier_id']);
     if (badRef) return reply.code(400).send({ error: `${badRef} inválido` });
+    if (await priceTableMismatch(orgId, (b.price_table_id as number | undefined) ?? null, Number(b.represented_id))) {
+      return reply.code(400).send({ error: 'tabela de preço não pertence à representada do pedido' });
+    }
     const resolved = await resolveItems(orgId, (b.price_table_id as number | undefined) ?? null, b.items ?? []);
     if (typeof resolved === 'string') return reply.code(400).send({ error: resolved });
     const frete = (b.frete as number | undefined) ?? 0;
@@ -469,6 +483,18 @@ export function orderRoutes(app: FastifyInstance): void {
     }
     const badRef = await invalidOrgRef(orgId, b, ['represented_id', 'relationship_id', 'price_table_id', 'carrier_id']);
     if (badRef) return reply.code(400).send({ error: `${badRef} inválido` });
+
+    // Valida tabela×representada com os valores efetivos (o que o body muda, ou o
+    // que o pedido já tinha) — cobre trocar só a tabela OU só a representada.
+    const effPriceTable = 'price_table_id' in b
+      ? (b.price_table_id as number | null)
+      : (order.price_table_id === null ? null : Number(order.price_table_id));
+    const effRepresented = 'represented_id' in b
+      ? Number(b.represented_id)
+      : (order.represented_id === null ? null : Number(order.represented_id));
+    if (await priceTableMismatch(orgId, effPriceTable, effRepresented)) {
+      return reply.code(400).send({ error: 'tabela de preço não pertence à representada do pedido' });
+    }
 
     const sets: string[] = [];
     const params: unknown[] = [];

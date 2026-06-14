@@ -199,6 +199,27 @@ describe('orders: criação, numeração e resolução de preço', () => {
     expect((over.json() as { error: string }).error).toContain('desconto');
   });
 
+  it('400: tabela de preço de outra representada da mesma org (create e patch)', async () => {
+    const cid = await makeCompany();
+    const repA2 = Number(((await inj(a, 'POST', '/api/represented', { nome: 'Indústria A2' })).json() as { empresa: { id: number } }).empresa.id);
+    const tA2 = await mkTable(a, { represented_id: repA2, items: [{ catalog_item_id: prod1, preco: 90 }] });
+
+    // create: pedido da repA com tabela da repA2 → mismatch
+    const r = await inj(a, 'POST', '/api/orders', { company_id: cid, represented_id: repA, price_table_id: Number(tA2.id) });
+    expect(r.statusCode).toBe(400);
+    expect((r.json() as { error: string }).error).toContain('representada');
+
+    // patch: pedido válido sem tabela, depois aponta para a tabela divergente → 400
+    const ok = await mkOrder(a);
+    const patch = await inj(a, 'PATCH', `/api/orders/${ok.id}`, { price_table_id: Number(tA2.id) });
+    expect(patch.statusCode).toBe(400);
+    expect((patch.json() as { error: string }).error).toContain('representada');
+
+    // patch trocando representada E tabela juntas (coerentes) → ok
+    const okMove = await inj(a, 'PATCH', `/api/orders/${ok.id}`, { represented_id: repA2, price_table_id: Number(tA2.id) });
+    expect(okMove.statusCode).toBe(200);
+  });
+
   it('GET lista com filtros; GET :id com itens; cross-org 404', async () => {
     const o = await mkOrder(a, { items: [{ catalog_item_id: prod1, qtd: 1 }] });
 

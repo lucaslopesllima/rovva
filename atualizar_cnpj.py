@@ -192,10 +192,17 @@ def baixar_todos(s, mes, zips, saida, workers):
 def extrair_todos(saida, zips):
     pasta = os.path.join(saida, "csv")
     os.makedirs(pasta, exist_ok=True)
+    destino = os.path.realpath(pasta)
     for nome in zips:
         cz = os.path.join(saida, nome)
         try:
             with zipfile.ZipFile(cz) as z:
+                # Zip-slip: valida que cada membro fica dentro de `pasta` antes
+                # de extrair (nome com ../ ou caminho absoluto escaparia).
+                for membro in z.namelist():
+                    alvo = os.path.realpath(os.path.join(destino, membro))
+                    if alvo != destino and not alvo.startswith(destino + os.sep):
+                        sys.exit(f"[zip inseguro] {nome}: membro fora do destino: {membro}")
                 z.extractall(pasta)
         except zipfile.BadZipFile:
             sys.exit(f"[zip ruim] {nome} — abortando")
