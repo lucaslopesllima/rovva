@@ -51,6 +51,7 @@
     <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-ink">
       <a href="#valor" class="hover:text-primary">Soluções</a>
       <a href="#como" class="hover:text-primary">Como funciona</a>
+      <a href="#rotas" class="hover:text-primary">Rotas</a>
       <a href="#segmentos" class="hover:text-primary">Para quem é</a>
       <a href="#planos" class="hover:text-primary">Planos</a>
       <a href="#faq" class="hover:text-primary">Dúvidas</a>
@@ -223,6 +224,69 @@
         <h3 class="mt-2 text-xl font-semibold text-ink">Feche o mês</h3>
         <p class="mt-3">Pedido faturado já calcula a comissão. Confira o que a representada pagou, veja as diferenças, o resultado do mês e as metas batidas — sem planilha.</p>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- DEEP-DIVE: ROTAS + COMBUSTÍVEL -->
+<section id="rotas" class="bg-white border-b border-slate-200">
+  <div class="max-w-6xl mx-auto px-5 py-20 grid md:grid-cols-2 gap-12 items-center">
+    <!-- visual: mapa com rota otimizada + painel de custo -->
+    <div class="relative order-last md:order-first">
+      <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 p-3">
+        <div class="flex items-center gap-1.5 px-2 pb-2.5">
+          <span class="w-2.5 h-2.5 rounded-full bg-slate-300"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-slate-300"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-slate-300"></span>
+          <span class="ml-2 text-xs text-slate-400 font-medium">Vértice · Rota do dia</span>
+        </div>
+        <svg viewBox="0 0 520 360" class="w-full rounded-xl" xmlns="http://www.w3.org/2000/svg">
+          <rect width="520" height="360" fill="#EEF2F7"/>
+          <g stroke="#DCE3EC" stroke-width="1">
+            <path d="M0 90 H520 M0 180 H520 M0 270 H520 M130 0 V360 M260 0 V360 M390 0 V360"/>
+          </g>
+          <path d="M0 230 C120 210 160 250 250 235 S430 250 520 215" fill="none" stroke="#CBD5E1" stroke-width="8"/>
+          <!-- traçado da rota otimizada -->
+          <path d="M70 300 L150 120 L300 90 L420 180 L70 300" fill="none" stroke="#14B8A6" stroke-width="4" stroke-dasharray="2 0" stroke-linejoin="round"/>
+          <!-- origem -->
+          <circle cx="70" cy="300" r="11" fill="#1B2559"/>
+          <text x="70" y="304" text-anchor="middle" font-size="11" fill="#fff" font-family="Inter,sans-serif" font-weight="700">0</text>
+          <!-- paradas numeradas -->
+          <circle cx="150" cy="120" r="11" fill="#E8A23D"/>
+          <text x="150" y="124" text-anchor="middle" font-size="11" fill="#1B2559" font-family="Inter,sans-serif" font-weight="700">1</text>
+          <circle cx="300" cy="90" r="11" fill="#E8A23D"/>
+          <text x="300" y="94" text-anchor="middle" font-size="11" fill="#1B2559" font-family="Inter,sans-serif" font-weight="700">2</text>
+          <circle cx="420" cy="180" r="11" fill="#E8A23D"/>
+          <text x="420" y="184" text-anchor="middle" font-size="11" fill="#1B2559" font-family="Inter,sans-serif" font-weight="700">3</text>
+        </svg>
+        <div class="px-2 pt-3 pb-1 grid grid-cols-3 gap-2 text-center">
+          <div><p class="text-xs text-slate-400">Distância</p><p class="text-sm font-bold text-ink font-display">182 km</p></div>
+          <div><p class="text-xs text-slate-400">Tempo</p><p class="text-sm font-bold text-ink font-display">3 h 40</p></div>
+          <div><p class="text-xs text-slate-400">Paradas</p><p class="text-sm font-bold text-ink font-display">3</p></div>
+        </div>
+      </div>
+      <div class="absolute -bottom-5 -right-5 bg-white rounded-xl shadow-xl border border-slate-200 px-4 py-3 hidden sm:block">
+        <p class="text-xs text-slate-400 font-medium">Custo de combustível</p>
+        <p class="text-lg font-bold text-primary font-display">R$ 127,80 <span class="text-xs font-semibold text-teal-600">ida e volta</span></p>
+      </div>
+    </div>
+
+    <div>
+      <span class="text-xs font-bold uppercase tracking-wide text-teal-600">Logística e rota</span>
+      <h2 class="mt-3 text-3xl md:text-4xl font-bold text-ink tracking-tight">Menos quilômetro rodado, <span class="u-grad">mais visita no dia</span></h2>
+      <p class="mt-4 text-lg">O Vértice monta a <strong class="text-ink">melhor sequência de visitas</strong> a partir dos clientes que você
+      escolheu — calcula a rota real pelas estradas, ida e volta até a base, e mostra <strong class="text-ink">quanto vai
+      rodar, quanto tempo leva e quanto gasta de combustível</strong> antes de você dar a partida. Sem rodar à toa, sem
+      chutar despesa de viagem.</p>
+      <ul class="mt-6 grid sm:grid-cols-2 gap-3 text-sm">
+        <li class="flex gap-2"><span class="text-teal">✓</span> Ordem das paradas otimizada (menor trajeto)</li>
+        <li class="flex gap-2"><span class="text-teal">✓</span> Distância e tempo reais pelas estradas</li>
+        <li class="flex gap-2"><span class="text-teal">✓</span> Combustível pelo consumo do seu veículo</li>
+        <li class="flex gap-2"><span class="text-teal">✓</span> Ida e volta até a base, custo fechado</li>
+        <li class="flex gap-2"><span class="text-teal">✓</span> Vários veículos com consumo e preço próprios</li>
+        <li class="flex gap-2"><span class="text-teal">✓</span> Custo da viagem já vai pro financeiro</li>
+      </ul>
+      <a href="#planos" class="arrow inline-block mt-6 text-primary font-semibold hover:text-primary-600">Planeje a rota do dia</a>
     </div>
   </div>
 </section>
