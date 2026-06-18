@@ -1,11 +1,11 @@
-# Praça — Checklist de Lançamento
+# Vértice — Checklist de Lançamento
 
 Passos concretos para por a empresa no ar. Separado em **marca/marketing** (pronto aqui),
 **operacional** (configurar) e **falta construir no produto** (engenharia antes de cobrar).
 
 ---
 
-## ✅ Pronto neste pacote (`marca/`)
+## ✅ Pronto neste pacote (`Marketing/`)
 - Nome, posicionamento, tom de voz, personas — `MARCA.md`.
 - Logo (`logo.svg`, `logo-mono.svg`, `favicon.svg`) + guia visual — `IDENTIDADE.md`.
 - Planos e oferta — `PLANOS.md`, `planos.json`.
@@ -17,14 +17,14 @@ Passos concretos para por a empresa no ar. Separado em **marca/marketing** (pron
 ## 🔧 Operacional — colocar no ar (sem código novo)
 
 ### 1. Domínio + e-mail
-- Registrar `praca.com.br` (registro.br). Conferir disponibilidade; fallback `usepraca.com.br`.
-- E-mail profissional `ola@praca.com.br`, `vendas@`, `suporte@` (Google Workspace / Zoho).
+- Registrar `vertice.com.br` (registro.br). Conferir disponibilidade; fallback `usevertice.com.br`.
+- E-mail profissional `ola@vertice.com.br`, `vendas@`, `suporte@` (Google Workspace / Zoho).
 - Configurar SPF/DKIM/DMARC desde o início (entregabilidade dos e-mails de trial).
 
 ### 2. Publicar a landing
-- A landing é estática (`marca/landing/index.html`). Opções:
+- A landing é estática (`Marketing/landing/index.html`). Opções:
   - **Hospedar avulsa** (recomendado p/ velocidade de marketing): Vercel/Netlify/Cloudflare
-    Pages, apontando `praca.com.br` → app em `app.praca.com.br`.
+    Pages, apontando `vertice.com.br` → app em `app.vertice.com.br`.
   - **Servir pelo próprio app:** o Fastify já serve estáticos (ver README). Dá para colocar a
     landing como home pública e o sistema atrás de login — mas exige separar rota pública de
     rota autenticada. Mais acoplado; deixar para depois.

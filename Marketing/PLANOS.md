@@ -1,4 +1,4 @@
-# Praça — Planos e Oferta
+# Vértice — Planos e Oferta
 
 > Posição **premium**, público **escritório de representação**. Preço ancorado em valor
 > (comissão recuperada + horas de planilha eliminadas paga o plano), não em custo.
@@ -19,7 +19,7 @@
 | Representadas | até 2 | ilimitadas | ilimitadas |
 
 > Âncora de valor: um único acerto de comissão errado no mês costuma passar de R$ 1.490.
-> O plano se paga na primeira divergência que a Praça pega.
+> O plano se paga na primeira divergência que o Vértice pega.
 
 ---
 

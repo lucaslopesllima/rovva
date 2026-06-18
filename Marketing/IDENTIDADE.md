@@ -1,4 +1,4 @@
-# Praça — Identidade Visual
+# Vértice — Identidade Visual
 
 Guia para aplicar a marca com consistência. Stack já usa **Tailwind v4**; os tokens abaixo
 entram em `@theme`.
@@ -7,15 +7,16 @@ entram em `@theme`.
 
 ## 1. Logo
 
-Arquivos em `marca/`:
+Arquivos em `Marketing/`:
 
-- `logo.svg` — versão principal (colorida): badge índigo + radar âmbar/teal + pin branco + wordmark.
+- `logo.svg` — versão principal (colorida): badge índigo + radar âmbar/teal + pin branco + wordmark (o "é" em âmbar).
 - `logo-mono.svg` — monocromática (índigo sólido) para fundo claro / impressão 1 cor.
 - `favicon.svg` — só o símbolo, para aba do navegador / app icon (PWA).
 
-**Conceito:** o badge é a **praça** (território). Dentro, um **pin** (a empresa-alvo) cercado
-por **anéis de radar** (proximidade) e **nós** vizinhos (clientes da carteira). Resume o produto:
-encontrar a empresa certa, no lugar certo, dentro da sua praça.
+**Conceito:** o badge é o **vértice** — o ponto onde tudo converge. Dentro, um **pin**
+(a empresa-alvo) no centro de **anéis de radar** (proximidade) com **nós** vizinhos (clientes
+da carteira) apontando para ele. Resume a marca: prospecção, pedido, comissão e campo
+convergindo num só ponto — encontrar a empresa certa, no lugar certo, dentro da sua praça.
 
 ### Regras
 - **Área de proteção:** margem mínima = altura da letra "P" do wordmark em todos os lados.

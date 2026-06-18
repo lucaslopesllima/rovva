@@ -1,4 +1,4 @@
-# Praça — Estratégia de Marca
+# Vértice — Estratégia de Marca
 
 > ERP completo para escritórios de representação comercial.
 > Documento de marca. Público primário: **escritório / equipe de representação**. Posição: **premium**.
@@ -10,9 +10,11 @@
 Não é "um CRM de prospecção". É um **ERP de representação comercial** com todas as fases
 construídas (ver `docs/PLANEJAMENTO.md` — Fases 0 a 6 concluídas):
 
-- **Base nacional integrada** — **toda empresa do Brasil** está dentro do sistema: a base
-  completa da Receita Federal (+60 milhões de CNPJs, +20 milhões ativas) com CNAE, porte,
-  endereço e contato. É o grande diferencial — não é amostra, é o país inteiro.
+- **Base nacional integrada ao fluxo de venda** — **toda empresa do Brasil** dentro do sistema:
+  a base completa da Receita (+60 mi CNPJs, +20 mi ativas) com CNAE, porte, endereço e contato.
+  ⚠️ A base crua **não é o diferencial** (é pública, todo concorrente de mailing tem). O
+  diferencial é a base **integrada à recomendação e ao fluxo**: recomenda quem abordar por
+  território, exclui quem já está no funil, e leva do dado à comissão. Ver pilar 2.
 - **Prospecção inteligente** — sobre essa base, recomenda quais empresas abordar por
   **CNAE-alvo + proximidade + porte**, dentro do
   território, com lista explicável e mapa.
@@ -37,42 +39,52 @@ construídas (ver `docs/PLANEJAMENTO.md` — Fases 0 a 6 concluídas):
 
 ## 2. Nome
 
-### Recomendado: **Praça**
+### Escolhido: **Vértice**
 
-"Praça" é o jargão do próprio representante: a **praça** é o mercado/território onde ele
-vende ("abrir uma praça", "minha praça é o interior"). O produto inteiro gira em torno de
-trabalhar a praça com inteligência — território, cobertura, mapa, carteira. Nome curto,
-memorável, em português, com ressonância imediata no público. Premium sem ser pomposo.
+Vértice é o ponto onde as linhas convergem — e é exatamente o que o produto faz: faz
+**prospecção, pedido, comissão, financeiro e campo convergirem num só ponto**. O nome carrega
+o *wedge* do negócio (a integração que ninguém mais entrega) e transmite ápice/precisão — o
+topo da operação. Curto, premium, em português, fácil de falar e escrever, sem soar pomposo.
 
-- **Domínio sugerido:** `praca.com.br` (verificar; se ocupado → `usepraca.com.br`,
-  `praca.app`, `pracaerp.com.br`).
-- **Risco:** palavra comum (SEO genérico) — mitigado por marca forte + sempre usar
-  "Praça" capitalizado e com a tagline de categoria.
+- **Domínio sugerido:** `vertice.com.br` (verificar; fallback `usevertice.com.br`,
+  `vertice.app`, `verticeerp.com.br`).
+- **Conceito visual:** o símbolo (radar + pin convergindo num ponto) reforça o nome — tudo
+  aponta para o mesmo lugar. Ver `IDENTIDADE.md`.
+- **Risco:** palavra existente (SEO genérico) e possível disputa de domínio — mitigar com marca
+  forte, sempre "Vértice" capitalizado + tagline de categoria, e garantir o domínio cedo.
 
 ### Alternativas avaliadas
 
 | Nome | Significado | Prós | Contras | Domínio |
 |------|-------------|------|---------|---------|
-| **Praça** ✅ | Território/mercado de venda (jargão) | Ressoa no público, curto, BR, premium | Palavra comum p/ SEO | `praca.com.br` / `usepraca.com.br` |
-| **Reppo** | "representação" abreviada | Curto, ownable, fácil .com | Soa startup-cute, menos premium | `reppo.com.br` |
+| **Vértice** ✅ | Ponto de convergência / ápice | Premium, curto, casa com o wedge (tudo converge) | Palavra comum p/ SEO; domínio disputado | `vertice.com.br` / `usevertice.com.br` |
+| **Praça** | Território/mercado de venda (jargão do rep) | Ressoa forte no público, BR | "Praça" subdimensiona p/ um ERP; SEO genérico | `praca.com.br` |
 | **Comissio** | Comissão (o coração do negócio) | Liga no diferencial financeiro | Estreita o produto à comissão | `comissio.com.br` |
-| **Núcleo** | Núcleo de representação | Sólido, corporativo | Genérico, muitos homônimos | `nucleo.com.br` (provável ocupado) |
-| **Prospecta** | Nome atual (README) | Já existe no projeto | Subdimensiona: virou ERP, não só prospecção | — |
+| **Núcleo** | Núcleo da operação | Sólido, corporativo | Genérico, muitos homônimos | `nucleo.app` |
+| **Bússola** | Direção comercial | Evocativo, on-brand (mapa) | Soa mais "ferramenta" do que "ERP" | `bussola.app` |
 
-> Se preferir outro, é só trocar: o nome aparece em `logo.svg`/`logo-mono.svg` (wordmark),
-> `landing/index.html`, `planos.json` e nos criativos. Substituição mecânica.
+> Trocar de nome é mecânico: aparece em `logo.svg`/`logo-mono.svg`/`favicon.svg` (wordmark/aria),
+> `landing/index.html`, `criativos/` e este doc. O jargão "praça" (= território) segue em uso no
+> texto, independente do nome da marca.
 
 ---
 
 ## 3. Posicionamento
 
 > **Para escritórios de representação comercial que perdem dinheiro com planilha, lista fria
-> e comissão no escuro, a Praça é o ERP que conecta prospecção, pedidos, comissões e campo
+> e comissão no escuro, o Vértice é o ERP que conecta prospecção, pedidos, comissões e campo
 > num só lugar — diferente de CRMs genéricos que não entendem representação e de planilhas
 > que não escalam.**
 
 Categoria que reivindicamos: **"ERP de representação comercial"** (não "CRM"). É a diferença
 entre vender mais uma ferramenta e ser o sistema que roda o escritório.
+
+**O wedge (onde ninguém mais está):** ferramentas de dados (Econodata, Speedio) param na lista;
+softwares de pedido (Mercos, Meus Pedidos) começam depois da lista; CRMs genéricos começam com
+a base vazia. O Vértice é a única que junta **base nacional + recomendação por território + pedido
++ comissão + financeiro + campo** num fluxo só. Não vender "temos a maior base" (commodity,
+fácil de rebater) — vender "transformamos a base inteira do Brasil em carteira, do dado à
+comissão". O ângulo defensável é a **integração**, não os dados.
 
 ---
 
@@ -93,8 +105,12 @@ Três pilares (ordem de impacto para o gestor):
 
 1. **Comissão sob controle** — regras por precedência, split do vendedor, conciliação e
    divergência apontada. O escritório para de perder dinheiro no acerto com a representada.
-2. **Prospecção quente, não fria** — recomendação por CNAE + proximidade + porte sobre a base
-   da Receita, no mapa, dentro do território de cada vendedor. Carteira nova sem garimpo.
+2. **A base inteira do Brasil virando carteira** — ter os dados da Receita qualquer ferramenta
+   de mailing tem; o diferencial defensável é o que o Vértice faz com eles: **recomenda quem
+   abordar** por CNAE + proximidade + porte, no território de cada vendedor, e **exclui quem já
+   está no funil**. Do dado ao cliente ao pedido à comissão, num fluxo só — sem comprar mailing
+   nem pagar prospecção à parte (substitui Econodata/Speedio). É um diferencial difícil de copiar
+   porque exige todo o ERP por trás, não só a base.
 3. **O escritório inteiro num lugar** — pedidos, tabelas de preço, financeiro/DRE, metas,
    rota de campo com check-in. Sai da planilha, entra no controle.
 
@@ -120,14 +136,14 @@ Falamos como quem conhece representação — usamos "praça", "carteira", "repr
 - 48 anos, representa 5 indústrias, 6 vendedores na rua, ~R$ 4 mi/ano em pedidos.
 - **Dores:** comissão batida na planilha (e erra), não sabe a cobertura de cada vendedor,
   fecha o mês no escuro, perde tempo conciliando o que a representada pagou.
-- **Ganha com a Praça:** comissão conciliada e auditável, DRE do escritório, metas por
+- **Ganha com o Vértice:** comissão conciliada e auditável, DRE do escritório, metas por
   vendedor, mapa de cobertura. Compra pelo **controle financeiro**.
 
 ### Persona 2 — Júlia, vendedora externa (usuária diária)
 - 34 anos, roda 3 cidades, vive no carro e no celular.
 - **Dores:** lista fria, decide visita por achismo, faz pedido no papel/WhatsApp, esquece
   follow-up.
-- **Ganha com a Praça:** prospecção no mapa do território dela, rota do dia, check-in,
+- **Ganha com o Vértice:** prospecção no mapa do território dela, rota do dia, check-in,
   pedido no celular (até offline), agenda com alerta. Adota pela **facilidade no campo**.
 
 > Venda é assistida (premium): o **comprador é o dono (Marcos)**, mas a **adoção depende da

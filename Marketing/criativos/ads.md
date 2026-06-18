@@ -1,4 +1,4 @@
-# Praça — Anúncios pagos
+# Vértice — Anúncios pagos
 
 Respeitando limites de caracteres das plataformas.
 
@@ -15,7 +15,7 @@ Respeitando limites de caracteres das plataformas.
 - Toda empresa do Brasil na base. Prospecção, pedidos e comissão no mapa. Teste grátis. (85)
 - O sistema feito para escritório de representação comercial. Sem cartão. (70)
 
-**URL exibida:** praca.com.br/teste-gratis
+**URL exibida:** vertice.com.br/teste-gratis
 **Palavras-chave:** "sistema representante comercial", "software comissão representação",
 "crm representação comercial", "controle de pedidos representada".
 
@@ -25,8 +25,8 @@ Respeitando limites de caracteres das plataformas.
 
 **Headline (até 40):** Pare de prospectar no escuro (27)
 **Texto primário (até 125 recomendado):**
-> A Praça mostra as empresas mais quentes da sua praça — por ramo, porte e distância — sobre
-> toda empresa do Brasil (base completa da Receita). No mapa, pronto para visitar. 14 dias grátis.
+> A base do Brasil inteiro vira sua carteira: o Vértice recomenda quem abordar na sua praça — por
+> ramo, porte e distância — e já tira quem está no funil. Sem comprar mailing. Teste 14 dias grátis.
 
 **Descrição (até 30):** ERP de representação (20)
 **CTA:** Cadastre-se
@@ -39,7 +39,7 @@ Respeitando limites de caracteres das plataformas.
 
 **Headline (até 40):** Sua comissão sob controle (25)
 **Texto primário:**
-> Quanto você perde por mês em comissão errada na planilha? A Praça calcula por regra, aplica
+> Quanto você perde por mês em comissão errada na planilha? O Vértice calcula por regra, aplica
 > o split do vendedor e aponta divergência na conciliação. ERP feito para representação.
 > Teste 14 dias, sem cartão.
 

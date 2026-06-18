@@ -1,4 +1,4 @@
-# Praça — Posts de redes sociais
+# Vértice — Posts de redes sociais
 
 Tom: direto, de quem é do ramo. Emoji com parcimônia. CTA sempre claro.
 
@@ -11,12 +11,12 @@ Tom: direto, de quem é do ramo. Emoji com parcimônia. CTA sempre claro.
 > No escritório de representação, o acerto com a representada é onde mais se perde dinheiro
 > — e ninguém percebe, porque está tudo numa planilha que só você entende.
 >
-> A Praça calcula a comissão por regra (produto, cliente, vendedor), aplica o split e
+> O Vértice calcula a comissão por regra (produto, cliente, vendedor), aplica o split e
 > concilia o que a representada pagou. Divergência aparece em vermelho, não some no mês.
 >
 > É o ERP feito para representação — da prospecção ao fechamento.
 >
-> 👉 14 dias grátis: praca.com.br
+> 👉 14 dias grátis: vertice.com.br
 >
 > #representacaocomercial #vendas #ERP
 
@@ -28,10 +28,10 @@ Tom: direto, de quem é do ramo. Emoji com parcimônia. CTA sempre claro.
 
 > Você ainda escolhe quem visitar no achismo? 🗺️
 >
-> A Praça tem TODA empresa do Brasil na base (Receita completa) e te mostra as mais quentes
-> da SUA praça — por ramo (CNAE), porte e distância. No mapa. Prontas para abordar.
+> Lista de CNPJ qualquer um compra. O Vértice é diferente: ela te diz QUEM abordar na SUA praça
+> — por ramo (CNAE), porte e distância — e já tira quem já está no seu funil. No mapa, pronto.
 >
-> Lista quente > lista fria. Sempre.
+> Do dado ao cliente. Lista quente > lista fria. Sempre.
 >
 > Link na bio 👆
 
@@ -46,14 +46,14 @@ Tom: direto, de quem é do ramo. Emoji com parcimônia. CTA sempre claro.
 >
 > Por isso todo escritório de representação acaba com 4 planilhas e um WhatsApp bagunçado.
 >
-> A Praça é diferente: nasceu para representação comercial. Prospecção, pedidos, comissões,
+> O Vértice é diferente: nasceu para representação comercial. Prospecção, pedidos, comissões,
 > financeiro e campo — num sistema só.
 >
 > Pare de adaptar ferramenta dos outros ao seu negócio.
 >
-> 👉 praca.com.br
+> 👉 vertice.com.br
 
-**Visual:** comparativo simples "CRM genérico ❌ vs. Praça ✅" (representada, comissão split, praça/mapa, DRE).
+**Visual:** comparativo simples "CRM genérico ❌ vs. Vértice ✅" (representada, comissão split, praça/mapa, DRE).
 
 ---
 
@@ -61,7 +61,7 @@ Tom: direto, de quem é do ramo. Emoji com parcimônia. CTA sempre claro.
 
 > O escritório inteiro no seu bolso — até sem sinal. 📲
 >
-> Rota do dia, check-in na visita, pedido no celular. A Praça funciona offline e sincroniza
+> Rota do dia, check-in na visita, pedido no celular. O Vértice funciona offline e sincroniza
 > quando a internet volta. Você roda a praça, ela cuida do resto.
 >
 > #representantecomercial #vendaexterna
@@ -74,12 +74,12 @@ Tom: direto, de quem é do ramo. Emoji com parcimônia. CTA sempre claro.
 
 > "O sistema se pagou no primeiro mês."
 >
-> A primeira coisa que um escritório costuma encontrar na Praça é uma comissão divergente
+> A primeira coisa que um escritório costuma encontrar no Vértice é uma comissão divergente
 > que passou batido — quase sempre maior que a mensalidade.
 >
 > Não é custo. É a comissão que você estava deixando na mesa.
 >
-> Faça as contas: praca.com.br
+> Faça as contas: vertice.com.br
 >
 > #gestaocomercial #representacao
 

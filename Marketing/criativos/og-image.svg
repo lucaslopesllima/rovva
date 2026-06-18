@@ -21,7 +21,7 @@
     <path d="M48 22c-11 0-20 8.6-20 19.6 0 14 20 31 20 31s20-17 20-31C68 30.6 59 22 48 22Z" fill="#FFFFFF"/>
     <circle cx="48" cy="41" r="8" fill="#E8A23D"/>
   </g>
-  <text x="216" y="160" font-family="Sora, system-ui, sans-serif" font-size="56" font-weight="700" fill="#FFFFFF">Praça</text>
+  <text x="216" y="160" font-family="Sora, system-ui, sans-serif" font-size="56" font-weight="700" fill="#FFFFFF">V<tspan fill="#E8A23D">é</tspan>rtice</text>
 
   <!-- headline -->
   <text x="96" y="330" font-family="Sora, system-ui, sans-serif" font-size="74" font-weight="700" fill="#FFFFFF">Da prospecção à</text>
