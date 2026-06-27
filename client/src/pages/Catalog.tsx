@@ -8,7 +8,7 @@ import { toast } from '../lib/toast.tsx';
 import { PriceTables } from './PriceTables.tsx';
 import { UNIDADES_MEDIDA_GRUPOS } from '../lib/units.ts';
 
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
 // Alíquotas por produto. Vazio = não definido → o pedido cai no default da org.
 const TAX_FIELDS = [
@@ -144,7 +144,7 @@ export function Catalog(): React.JSX.Element {
                 <ItemForm reps={reps} initial={toForm(i)} onSave={(f) => update(i.id, f)} onCancel={() => setEditing(null)} />
               </Card>
             ) : (
-              <div key={i.id} className={cn('flex items-start gap-3 rounded-xl border border-ink-200/70 bg-white p-3', !i.ativo && 'opacity-60')}>
+              <div key={i.id} className={cn('flex items-start gap-3 rounded-xl border border-ink-200/70 bg-surface p-3', !i.ativo && 'opacity-60')}>
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink-100 text-ink-500"><Icon name="box" size={18} /></span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">

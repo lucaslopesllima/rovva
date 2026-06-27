@@ -9,8 +9,13 @@ export const brl0 = (v: number): string =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 
 // 'YYYY-MM-DD' -> data pt-BR (T00:00:00 evita shift de fuso)
-export const fmtDate = (iso: string): string =>
-  new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR');
+export const fmtDate = (iso: string | null | undefined): string => {
+  if (!iso) return '';
+  // data pura (YYYY-MM-DD): fixa meia-noite local p/ não recuar 1 dia por fuso.
+  // timestamp completo (created_at etc): parseia direto — senão vira Invalid Date.
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + 'T00:00:00') : new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('pt-BR');
+};
 
 export const todayStr = (): string => new Date().toISOString().slice(0, 10);
 

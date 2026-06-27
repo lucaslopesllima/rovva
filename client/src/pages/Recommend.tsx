@@ -449,7 +449,7 @@ export function Recommend(): React.JSX.Element {
           {loading && <Spinner />}
           {!loading && !done && !semTerritorio && (
             <Btn variant="ghost" onClick={() => load(offset)}
-              className="w-full border border-ink-200 bg-white text-ink-600 hover:bg-ink-50">
+              className="w-full border border-ink-200 bg-surface text-ink-600 hover:bg-ink-50">
               Carregar mais
             </Btn>
           )}

@@ -12,7 +12,7 @@ import { toast } from './toast.tsx';
 // Auto-suficiente — carrega representadas/clientes/catálogo/transportadoras
 // sozinho, então quem usa só passa order (edição) ou prefill (novo).
 
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
 type Opt = { id: number; label: string };
 
@@ -220,7 +220,7 @@ export function OrderModal({ order = null, prefill = null, onClose, onSaved }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[2000] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-2xl p-4 shadow-pop">
         <div onClick={(e) => e.stopPropagation()}>
           <div className="mb-3 flex items-center justify-between">
@@ -262,7 +262,7 @@ export function OrderModal({ order = null, prefill = null, onClose, onSaved }: {
               <span className="text-xs font-semibold text-ink-600">Itens *</span>
               {items.map((i, idx) => {
                 const err = tried ? itemErr(i) : { desc: false, qtd: false, preco: false };
-                const fieldCls = (bad: boolean): string => cn('rounded-lg border bg-white px-2 py-1.5 text-sm',
+                const fieldCls = (bad: boolean): string => cn('rounded-lg border bg-surface px-2 py-1.5 text-sm',
                   bad ? 'border-rose-400 ring-1 ring-rose-200' : 'border-ink-200');
                 return (
                 <div key={idx} className="space-y-1.5 rounded-xl border border-ink-200/70 bg-ink-50/50 p-2">
@@ -339,10 +339,11 @@ export function OrderModal({ order = null, prefill = null, onClose, onSaved }: {
               </label>
             </div>
 
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="flex items-center gap-2 text-sm text-ink-700">
+            <div className="grid items-end gap-2 sm:grid-cols-3">
+              <label className="flex h-[42px] items-center gap-2 text-sm font-medium text-ink-700">
                 <input type="checkbox" checked={cotacao} disabled={readOnly || order != null}
-                  onChange={(e) => { setCotacao(e.target.checked); if (e.target.checked && !validade) setValidade(todayStr()); }} />
+                  onChange={(e) => { setCotacao(e.target.checked); if (e.target.checked && !validade) setValidade(todayStr()); }}
+                  className="h-4 w-4 rounded border-ink-300 accent-brand-600" />
                 É cotação
               </label>
               {cotacao && (

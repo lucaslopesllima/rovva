@@ -6,7 +6,7 @@ import { Icon } from '../lib/icons.tsx';
 import { maskCNPJ, maskPhone, maskCEP } from '../lib/format.ts';
 import { toast } from '../lib/toast.tsx';
 
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 const t = (s: string): string | null => (s.trim() === '' ? null : s.trim());
 
 function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }): React.JSX.Element {

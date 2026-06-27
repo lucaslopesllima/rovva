@@ -17,7 +17,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, { error: E
     if (!this.state.error) return this.props.children;
     return (
       <div className="grid min-h-dvh place-items-center bg-ink-50 p-4">
-        <div className="w-full max-w-sm rounded-2xl border border-ink-200 bg-white p-6 text-center shadow-sm">
+        <div className="w-full max-w-sm rounded-2xl border border-ink-200 bg-surface p-6 text-center shadow-sm">
           <p className="text-lg font-bold text-ink-900">Algo deu errado</p>
           <p className="mt-1 text-sm text-ink-500">
             A tela encontrou um erro inesperado. Recarregue para continuar.

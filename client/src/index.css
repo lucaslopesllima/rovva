@@ -1,5 +1,9 @@
 @import 'tailwindcss';
 
+/* dark mode dirigido por classe `.dark` no <html> (não pela media query),
+   para o toggle manual + opção "sistema" controlarem o tema. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ─────────────────────────────────────────────────────────────
    Design system — "Prospecta" CRM & Analytics
    Inspired by modern analytics-SaaS conventions:
@@ -33,6 +37,10 @@
   --color-ink-900: #161a28;
   --color-ink-950: #0c0f1a;
 
+  /* surface — fundo de cartões/painéis/modais. Branco no claro, ink elevado
+     no escuro. Substitui `bg-white` para virar tema-aware automaticamente. */
+  --color-surface: #ffffff;
+
   --radius-xl: 0.875rem;
   --radius-2xl: 1.125rem;
 
@@ -44,6 +52,59 @@
 
 :root { color-scheme: light; }
 
+/* ─────────────────────────────────────────────────────────────
+   TEMA ESCURO
+   Estratégia: a escala `ink` é usada semanticamente no app inteiro
+   (ink-50 = canvas claro … ink-900 = texto escuro). No escuro a gente
+   INVERTE a curva (mão-tunada p/ contraste AA, não espelho cru), e tudo
+   que usa ink — 600+ classes de texto, bordas e superfícies claras —
+   passa a funcionar no escuro sem tocar em nenhum componente.
+   `--color-surface` cobre os antigos `bg-white`.
+   ───────────────────────────────────────────────────────────── */
+.dark {
+  color-scheme: dark;
+
+  /* escala ink invertida — lightness crescente 50→950, igual ao claro,
+     mas começando no quase-preto. Mid-tones (300–500) ajustados p/ texto
+     secundário legível, não pelo espelho matemático. */
+  --color-ink-50:  #0e111b;  /* canvas */
+  --color-ink-100: #171b29;  /* superfície sutilmente elevada / hover */
+  --color-ink-200: #232838;  /* bordas, divisores */
+  --color-ink-300: #475068;  /* borda forte / texto bem fraco */
+  --color-ink-400: #8b93ab;  /* texto secundário (uso mais comum) */
+  --color-ink-500: #9aa2ba;  /* texto secundário forte */
+  --color-ink-600: #b3bacd;
+  --color-ink-700: #cdd2e0;
+  --color-ink-800: #e2e5ee;  /* texto primário */
+  --color-ink-900: #eef0f6;
+  --color-ink-950: #f7f8fb;  /* contraste máximo */
+
+  --color-surface: #181c2b;  /* cartões/modais elevados sobre o canvas */
+
+  /* sombra rende pouco no escuro: aprofunda + serve de separador */
+  --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.40);
+  --shadow-pop:  0 12px 32px -12px rgb(0 0 0 / 0.65);
+}
+
+/* CHROME sempre-escuro (sidebar, header mobile, painel do Login).
+   Esses blocos já são escuros no tema claro e seus filhos foram escritos
+   p/ fundo escuro usando ink CLARO (text-ink-300/400). Dentro do escuro,
+   restauramos a escala ink clara nesse subárvore → o chrome fica
+   idêntico nos dois temas (tema-invariante), sem reescrever filhos. */
+.dark [data-chrome] {
+  --color-ink-50:  #f6f7fb;
+  --color-ink-100: #eceef5;
+  --color-ink-200: #d9dde9;
+  --color-ink-300: #b8bfd2;
+  --color-ink-400: #8c95b1;
+  --color-ink-500: #68708d;
+  --color-ink-600: #4e566f;
+  --color-ink-700: #3b425a;
+  --color-ink-800: #262b3d;
+  --color-ink-900: #161a28;
+  --color-ink-950: #0c0f1a;
+}
+
 html, body, #root { height: 100%; }
 body {
   margin: 0;
@@ -53,6 +114,19 @@ body {
   -webkit-tap-highlight-color: transparent;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Autofill do Chrome pinta o campo de branco e ignora o bg do Tailwind —
+   força a superfície/texto do tema (claro e escuro) via box-shadow inset. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--color-ink-800);
+  -webkit-box-shadow: 0 0 0 1000px var(--color-surface) inset;
+  caret-color: var(--color-ink-800);
+  transition: background-color 9999s ease-out 0s;
 }
 
 /* tabular figures for metrics / scores */

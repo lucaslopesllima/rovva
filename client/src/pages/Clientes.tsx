@@ -8,7 +8,7 @@ import { CompanyModal } from '../lib/companyModal.tsx';
 import { toast } from '../lib/toast.tsx';
 import { brl0, dec, maskCNPJ, maskSearchCNPJ, numStr } from '../lib/format.ts';
 
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
 // Tela de Clientes. Um cliente é um company_relationships com status='cliente':
 // NÃO copia dados da empresa, só referencia (company_id). Os campos da empresa
@@ -151,7 +151,7 @@ export function Clientes(): React.JSX.Element {
               <div className="relative mb-3">
                 <Icon name="search" size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
                 <input value={q} onChange={(e) => setQ(maskSearchCNPJ(e.target.value))} placeholder="Filtrar por nome ou CNPJ…"
-                  className="w-full rounded-xl border border-ink-200 bg-white py-2.5 pl-9 pr-3 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
+                  className="w-full rounded-xl border border-ink-200 bg-surface py-2.5 pl-9 pr-3 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
               </div>
             )}
 
@@ -168,7 +168,7 @@ export function Clientes(): React.JSX.Element {
                   <ClienteForm cliente={c} onSave={(p) => save(c.id, p)} onCancel={() => setEditing(null)} />
                 </Card>
               ) : (
-                <div key={c.id} className={cn('flex items-start gap-3 rounded-xl border border-ink-200/70 bg-white p-3', !c.ativo && 'opacity-60')}>
+                <div key={c.id} className={cn('flex items-start gap-3 rounded-xl border border-ink-200/70 bg-surface p-3', !c.ativo && 'opacity-60')}>
                   <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600"><Icon name="building" size={18} /></span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">

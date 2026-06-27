@@ -5,6 +5,7 @@ import { api } from './lib/api.ts';
 import type { Notification } from './lib/types.ts';
 import { Icon, type IconName } from './lib/icons.tsx';
 import { cn } from './lib/ui.tsx';
+import { ThemeToggle } from './lib/theme.tsx';
 import { onQueueChange, queued } from './lib/offline.ts';
 
 // Code splitting por rota: Leaflet e as páginas pesadas ficam fora do bundle
@@ -156,7 +157,7 @@ function Sidebar(): React.JSX.Element {
   const inicial = (user?.org_nome ?? user?.email ?? '?').charAt(0).toUpperCase();
 
   return (
-    <aside className={cn('hidden shrink-0 flex-col bg-ink-900 py-4 transition-[width,padding] duration-300 ease-in-out sm:flex',
+    <aside data-chrome className={cn('hidden shrink-0 flex-col bg-ink-900 py-4 transition-[width,padding] duration-300 ease-in-out sm:flex',
       collapsed ? 'w-16 px-2' : 'w-60 px-3')}>
       <div className={cn('flex items-center pb-5', collapsed ? 'justify-center' : 'justify-between px-2')}>
         {!collapsed && <Brand />}
@@ -281,7 +282,7 @@ export function NotificationBell({ variant }: { variant: 'light' | 'dark' }): Re
       {open && (
         <>
           <div className="fixed inset-0 z-[1500]" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-10 z-[1600] w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-ink-200 bg-white shadow-pop">
+          <div className="absolute right-0 top-10 z-[1600] w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-ink-200 bg-surface shadow-pop">
             <div className="flex items-center justify-between border-b border-ink-100 px-3 py-2">
               <span className="text-sm font-bold text-ink-800">Notificações</span>
               {unread > 0 && (
@@ -315,8 +316,8 @@ function MobileMoreSheet({ items, open, onClose }: { items: typeof NAV; open: bo
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[1100] sm:hidden" role="dialog" aria-modal="true" aria-label="Mais opções">
-      <div className="absolute inset-0 bg-ink-900/40" onClick={onClose} />
-      <div className="absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-ink-200 bg-white pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-pop animate-[toastIn_.18s_ease-out]">
+      <div className="absolute inset-0 bg-black/45" onClick={onClose} />
+      <div className="absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-ink-200 bg-surface pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 shadow-pop animate-[toastIn_.18s_ease-out]">
         <div className="mx-auto mb-1 h-1 w-10 rounded-full bg-ink-200" />
         <p className="px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400">Mais</p>
         <div className="grid grid-cols-3 gap-1 px-3 pb-3">
@@ -379,10 +380,11 @@ function Shell({ children }: { children: ReactNode }): React.JSX.Element {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* mobile top bar */}
-        <header className="flex items-center justify-between bg-ink-900 px-4 py-3 sm:hidden">
+        <header data-chrome className="flex items-center justify-between bg-ink-900 px-4 py-3 sm:hidden">
           <Brand />
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-ink-300">{title}</span>
+            <ThemeToggle variant="dark" />
             <NotificationBell variant="dark" />
             <NavLink to="/conta" aria-label="Meu perfil"
               className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-white/10 hover:text-white">
@@ -392,7 +394,8 @@ function Shell({ children }: { children: ReactNode }): React.JSX.Element {
         </header>
 
         {/* desktop top bar: só o sino, alinhado à direita */}
-        <header className="hidden items-center justify-end border-b border-ink-200 bg-white px-6 py-2 sm:flex">
+        <header className="hidden items-center justify-end gap-1 border-b border-ink-200 bg-surface px-6 py-2 sm:flex">
+          <ThemeToggle variant="light" />
           <NotificationBell variant="light" />
         </header>
 

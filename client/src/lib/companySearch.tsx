@@ -55,11 +55,11 @@ export function CompanySearch({ onPick, placeholder = 'Buscar empresa por CNPJ o
         <Icon name="search" size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
         <input value={q} onChange={(e) => setQ(maskSearchCNPJ(e.target.value))} onFocus={() => hits.length && setOpen(true)}
           placeholder={placeholder}
-          className="w-full rounded-xl border border-ink-200 bg-white py-2.5 pl-9 pr-3 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
+          className="w-full rounded-xl border border-ink-200 bg-surface py-2.5 pl-9 pr-3 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
         {loading && <span className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin rounded-full border-2 border-ink-200 border-t-brand-500" />}
       </div>
       {open && (
-        <div className="absolute z-[1600] mt-1 max-h-72 w-full overflow-auto rounded-xl border border-ink-200 bg-white shadow-pop">
+        <div className="absolute z-[1600] mt-1 max-h-72 w-full overflow-auto rounded-xl border border-ink-200 bg-surface shadow-pop">
           {hits.length === 0 ? (
             <p className="px-3 py-4 text-center text-sm text-ink-400">{loading ? 'Buscando…' : 'Nenhuma empresa encontrada.'}</p>
           ) : hits.map((c) => {

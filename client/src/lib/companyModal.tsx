@@ -115,8 +115,8 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
   const raw = data?.raw_data && Object.keys(data.raw_data).length > 0 ? data.raw_data : null;
 
   return (
-    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-ink-900/40 p-4" onClick={onClose}>
-      <div className="flex max-h-[90vh] w-full max-w-xl flex-col rounded-2xl border border-ink-200 bg-white shadow-pop"
+    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/45 p-4" onClick={onClose}>
+      <div className="flex max-h-[90vh] w-full max-w-xl flex-col rounded-2xl border border-ink-200 bg-surface shadow-pop"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 border-b border-ink-100 p-5">
           <h2 className="inline-flex items-center gap-2 text-base font-semibold text-ink-800">

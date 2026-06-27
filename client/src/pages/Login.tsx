@@ -38,7 +38,7 @@ export function Login(): React.JSX.Element {
   return (
     <div className="grid min-h-dvh lg:grid-cols-2">
       {/* brand panel */}
-      <div className="relative hidden flex-col justify-between overflow-hidden bg-ink-900 p-10 text-white lg:flex">
+      <div data-chrome className="relative hidden flex-col justify-between overflow-hidden bg-ink-900 p-10 text-white lg:flex">
         <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-brand-600/30 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-20 -left-10 h-72 w-72 rounded-full bg-brand-500/20 blur-3xl" />
         <div className="relative flex items-center gap-2.5">
@@ -88,7 +88,7 @@ export function Login(): React.JSX.Element {
           <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-ink-100 p-1 text-sm font-medium">
             {(['login', 'register'] as const).map((m) => (
               <button key={m} onClick={() => setMode(m)}
-                className={cn('rounded-lg py-2 transition-colors', mode === m ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500 hover:text-ink-700')}>
+                className={cn('rounded-lg py-2 transition-colors', mode === m ? 'bg-surface text-brand-700 shadow-sm' : 'text-ink-500 hover:text-ink-700')}>
                 {m === 'login' ? 'Entrar' : 'Criar conta'}
               </button>
             ))}
@@ -128,7 +128,7 @@ function Field(props: {
           placeholder={props.placeholder}
           required
           autoFocus={props.autoFocus}
-          className={cn('w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200',
+          className={cn('w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200',
             isPwd && 'pr-10')}
         />
         {isPwd && (

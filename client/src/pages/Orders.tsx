@@ -11,7 +11,7 @@ import { downloadCsv } from '../lib/export.ts';
 import { toast } from '../lib/toast.tsx';
 import { OrderModal } from '../lib/orderModal.tsx';
 
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
 const STATUS_META: Record<OrderStatus, { label: string; tone: Tone }> = {
   cotacao: { label: 'Cotação', tone: 'info' },
@@ -153,13 +153,13 @@ export function Orders(): React.JSX.Element {
 
       <Card className="flex flex-wrap items-center gap-3 p-3">
         <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label="Filtrar por status"
-          className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
+          className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
           <option value="todos">Todos os status</option>
           {Object.entries(STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
         <select value={representedId} onChange={(e) => setRepresentedId(e.target.value === 'todos' ? 'todos' : Number(e.target.value))}
           aria-label="Filtrar por representada"
-          className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
+          className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
           <option value="todos">Todas as representadas</option>
           {reps.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
         </select>
@@ -171,12 +171,26 @@ export function Orders(): React.JSX.Element {
       ) : filtered.length === 0 ? (
         <EmptyState icon="list" title="Nenhum pedido" hint="Crie uma cotação ou pedido para começar." />
       ) : (
-        <div className="min-h-0 flex-1 space-y-2 overflow-auto">
-          {filtered.map((o) => (
-            <Row key={o.id} o={o} showOwner={user?.role === 'admin'} onEdit={() => void openEdit(o)} onRemove={() => void remove(o)}
-              onTransition={(to) => void transition(o, to)} onPrint={() => void printOrder(o)} />
-          ))}
-        </div>
+        <Card className="min-h-0 flex-1 overflow-auto p-0">
+          <table className="w-full border-collapse text-sm">
+            <thead className="sticky top-0 z-10 bg-ink-100 text-left text-xs font-semibold uppercase tracking-wide text-ink-500 [&>tr>th]:border [&>tr>th]:border-ink-200">
+              <tr>
+                <th className="w-14 px-3 py-2.5">#</th>
+                <th className="px-3 py-2.5">Cliente</th>
+                {user?.role === 'admin' && <th className="px-3 py-2.5">Vendedor</th>}
+                <th className="px-3 py-2.5">Status</th>
+                <th className="px-3 py-2.5">Total</th>
+                <th className="px-3 py-2.5">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((o) => (
+                <Row key={o.id} o={o} showOwner={user?.role === 'admin'} onEdit={() => void openEdit(o)} onRemove={() => void remove(o)}
+                  onTransition={(to) => void transition(o, to)} onPrint={() => void printOrder(o)} />
+              ))}
+            </tbody>
+          </table>
+        </Card>
       )}
 
       {(adding || editing) && (
@@ -199,7 +213,7 @@ function NfModal({ order, onClose, onConfirm }: { order: Order; onClose: () => v
   const [nf, setNf] = useState('');
   const submit = (e: React.FormEvent): void => { e.preventDefault(); onConfirm(nf.trim() || null); };
   return (
-    <div className="fixed inset-0 z-[2100] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2100] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-sm p-4 shadow-pop" >
         <div onClick={(e) => e.stopPropagation()}>
           <h3 className="mb-1 text-sm font-bold text-ink-900">Faturar pedido #{order.numero}</h3>
@@ -225,44 +239,49 @@ function Row({ o, showOwner, onEdit, onRemove, onTransition, onPrint }: {
   const meta = STATUS_META[o.status];
   const next = NEXT[o.status];
   const editable = o.status === 'cotacao' || o.status === 'rascunho';
+  const owner = o.owner_nome ?? o.owner_email ?? '—';
+  const cancellable = o.status !== 'cancelado' && o.status !== 'entregue';
   return (
-    <Card className="flex items-center gap-3 p-3">
-      <button onClick={onEdit} className="flex min-w-0 flex-1 items-center gap-3 text-left" title={editable ? 'Editar pedido' : 'Ver pedido'}>
-        <span className="tabnums grid h-9 w-12 shrink-0 place-items-center rounded-xl bg-ink-100 text-xs font-bold text-ink-600">
-          #{o.numero}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-ink-800">{o.company_nome}</p>
-          <p className="truncate text-xs text-ink-400">
+    <tr className="transition-colors hover:bg-ink-50 [&>td]:border [&>td]:border-ink-100">
+      <td className="px-3 py-2.5 align-middle">
+        <span className="tabnums text-xs font-bold text-ink-500">#{o.numero}</span>
+      </td>
+      <td className="px-3 py-2.5 align-middle">
+        <button onClick={onEdit} className="block max-w-[460px] text-left" title={editable ? 'Editar pedido' : 'Ver pedido'}>
+          <span className="block truncate font-semibold text-ink-800">{o.company_nome}</span>
+          <span className="block truncate text-xs text-ink-400">
             {o.represented_nome}
             {o.carrier_nome ?? o.transportadora ? ` · ${o.carrier_nome ?? o.transportadora}` : ''}
             {o.nf_numero ? ` · NF ${o.nf_numero}` : ''}
             {o.status === 'cotacao' && o.validade ? ` · válida até ${fmtDate(o.validade)}` : ''}
-            {showOwner && (o.owner_nome || o.owner_email) ? ` · ${o.owner_nome ?? o.owner_email}` : ''}
             {` · ${fmtDate(o.created_at)}`}
-          </p>
+          </span>
+        </button>
+      </td>
+      {showOwner && (
+        <td className="max-w-[160px] truncate px-3 py-2.5 align-middle text-xs text-ink-500">{owner}</td>
+      )}
+      <td className="px-3 py-2.5 align-middle"><Badge tone={meta.tone}>{meta.label}</Badge></td>
+      <td className="tabnums whitespace-nowrap px-3 py-2.5 align-middle text-sm font-bold text-ink-800">{brl(Number(o.total))}</td>
+      <td className="px-3 py-2 align-middle">
+        {/* slots de largura fixa → ícones alinham em coluna entre as linhas */}
+        <div className="grid w-max grid-cols-[2rem_7rem_2rem_2rem] items-center justify-items-center gap-1">
+          <button onClick={onPrint} title="Imprimir / PDF"
+            className="grid h-8 w-8 place-items-center rounded-lg text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/15"><Icon name="download" size={16} /></button>
+          {next ? (
+            <Btn variant="soft" title={next.label} className="w-full justify-center truncate px-1 text-xs" onClick={() => onTransition(next.to)}>{next.label}</Btn>
+          ) : <span />}
+          {cancellable ? (
+            <button onClick={() => onTransition('cancelado')} title="Cancelar pedido"
+              className="grid h-8 w-8 place-items-center rounded-lg text-rose-500 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/15"><Icon name="x" size={16} /></button>
+          ) : <span />}
+          {editable ? (
+            <button onClick={onRemove} aria-label={`Excluir pedido ${o.numero}`} title="Excluir pedido"
+              className="grid h-8 w-8 place-items-center rounded-lg text-rose-500 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/15"><Icon name="trash" size={16} /></button>
+          ) : <span />}
         </div>
-      </button>
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        <span className="tabnums text-sm font-bold text-ink-800">{brl(Number(o.total))}</span>
-        <Badge tone={meta.tone}>{meta.label}</Badge>
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <button onClick={onPrint} title="Imprimir / PDF"
-          className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-brand-50 hover:text-brand-600"><Icon name="download" size={16} /></button>
-        {next && (
-          <Btn variant="ghost" className="px-2 py-1 text-xs" onClick={() => onTransition(next.to)}>{next.label}</Btn>
-        )}
-        {o.status !== 'cancelado' && o.status !== 'entregue' && (
-          <button onClick={() => onTransition('cancelado')} title="Cancelar pedido"
-            className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="x" size={16} /></button>
-        )}
-        {editable && (
-          <button onClick={onRemove} aria-label={`Excluir pedido ${o.numero}`}
-            className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
-        )}
-      </div>
-    </Card>
+      </td>
+    </tr>
   );
 }
 
@@ -284,7 +303,7 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
   };
 
   return (
-    <div className="fixed inset-0 z-[2000] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-lg p-4 shadow-pop">
         <div onClick={(e) => e.stopPropagation()}>
           <div className="mb-3 flex items-center justify-between">

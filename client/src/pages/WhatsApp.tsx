@@ -1,10 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import {
-  MainContainer, Sidebar, Search, ConversationList, Conversation, Avatar,
-  ChatContainer, ConversationHeader, MessageList, Message, MessageSeparator,
-  TypingIndicator, MessageInput,
-} from '@chatscope/chat-ui-kit-react';
-import '@chatscope/chat-ui-kit-styles/dist/default/styles.min.css';
 import './whatsapp-theme.css';
 import { useSearchParams } from 'react-router-dom';
 import { api, getToken, ApiError } from '../lib/api.ts';
@@ -140,13 +134,13 @@ function Tick({ m }: { m: WaMessage }): React.JSX.Element | null {
   return <span style={{ color: m.status === 'lido' ? '#53bdeb' : undefined }}>{two ? '✓✓' : '✓'}</span>;
 }
 
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
 // Shell de modal (mesmo padrão de sampleModal): overlay + card centralizado.
 function Overlay({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }): React.JSX.Element {
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-ink-900/40 p-4" onClick={onClose}>
-      <div className="flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border border-ink-200 bg-white shadow-pop" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/45 p-4" onClick={onClose}>
+      <div className="flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border border-ink-200 bg-surface shadow-pop" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-ink-100 p-4">
           <h2 className="text-base font-semibold text-ink-800">{title}</h2>
           <button onClick={onClose} className="rounded-lg p-1 text-ink-400 hover:bg-ink-100"><Icon name="x" size={18} /></button>
@@ -456,17 +450,17 @@ function ContactDetails({ chat, messages, onClose, onLink, onOrder, onNumber }: 
 
   return (
    <>
-    <aside className="absolute inset-y-0 right-0 z-30 flex w-full max-w-sm flex-col border-l border-ink-200 bg-white shadow-pop animate-[toastIn_.18s_ease-out]">
-      <div className="flex items-center gap-3 bg-[#f0f2f5] px-4 py-3">
-        <button onClick={onClose} aria-label="Fechar" className="grid h-8 w-8 place-items-center rounded-full text-[#54656f] hover:bg-black/5">
+    <aside className="absolute inset-y-0 right-0 z-30 flex w-full max-w-sm flex-col border-l border-ink-200 bg-surface shadow-pop animate-[toastIn_.18s_ease-out]">
+      <div className="flex items-center gap-3 bg-[var(--wa-panel)] px-4 py-3">
+        <button onClick={onClose} aria-label="Fechar" className="grid h-8 w-8 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-black/5 dark:hover:bg-white/10">
           <Icon name="x" size={18} />
         </button>
-        <span className="text-base font-semibold text-[#111b21]">{isGroup ? 'Dados do grupo' : 'Dados do contato'}</span>
+        <span className="text-base font-semibold text-[var(--wa-ink)]">{isGroup ? 'Dados do grupo' : 'Dados do contato'}</span>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-auto bg-[#f0f2f5] pb-6">
+      <div className="min-h-0 flex-1 space-y-2 overflow-auto bg-[var(--wa-bg)] pb-6">
         {/* Identidade */}
-        <div className="flex flex-col items-center gap-2 bg-white px-6 py-6">
+        <div className="flex flex-col items-center gap-2 bg-surface px-6 py-6">
           <img src={avatarSrc(chat)} alt="" className="h-32 w-32 rounded-full object-cover" />
           <h2 className="text-xl font-semibold text-ink-900">{nomeChat(chat)}</h2>
           <p className="text-sm text-ink-500">{isGroup ? (group?.size ? `${group.size} participantes` : 'Grupo') : chatIdent(chat)}</p>
@@ -478,7 +472,7 @@ function ContactDetails({ chat, messages, onClose, onLink, onOrder, onNumber }: 
         </div>
 
         {isGroup && group?.desc && (
-          <div className="bg-white px-6 py-4">
+          <div className="bg-surface px-6 py-4">
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-400">Descrição</p>
             <p className="whitespace-pre-wrap text-sm text-ink-700">{group.desc}</p>
           </div>
@@ -486,7 +480,7 @@ function ContactDetails({ chat, messages, onClose, onLink, onOrder, onNumber }: 
 
         {/* Empresa (domínio Prospecta) */}
         {!isGroup && (
-          <div className="bg-white px-6 py-4">
+          <div className="bg-surface px-6 py-4">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">Empresa</p>
             {chat.company_id != null ? (
               <div className="space-y-2">
@@ -507,7 +501,7 @@ function ContactDetails({ chat, messages, onClose, onLink, onOrder, onNumber }: 
 
         {/* Contatos da empresa (cria/edita) — exige empresa vinculada */}
         {!isGroup && chat.company_id != null && (
-          <div className="bg-white px-6 py-4">
+          <div className="bg-surface px-6 py-4">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Contatos</p>
               <button onClick={() => setContactModal({ contact: null })}
@@ -539,7 +533,7 @@ function ContactDetails({ chat, messages, onClose, onLink, onOrder, onNumber }: 
         )}
 
         {/* Mídia compartilhada */}
-        <div className="bg-white px-6 py-4">
+        <div className="bg-surface px-6 py-4">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">Mídia, links e docs</p>
           {media.length === 0 ? (
             <p className="text-sm text-ink-400">Nenhuma mídia.</p>
@@ -562,7 +556,7 @@ function ContactDetails({ chat, messages, onClose, onLink, onOrder, onNumber }: 
 
         {/* Participantes do grupo */}
         {isGroup && (
-          <div className="bg-white px-6 py-4">
+          <div className="bg-surface px-6 py-4">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">
               Participantes{group ? ` (${group.participants.length})` : ''}
             </p>
@@ -613,6 +607,7 @@ export function WhatsApp(): React.JSX.Element {
   const [sp] = useSearchParams();
   const activeRef = useRef<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const listEndRef = useRef<HTMLDivElement>(null);
   const openedParam = useRef(false);
   activeRef.current = activeId;
 
@@ -726,7 +721,7 @@ export function WhatsApp(): React.JSX.Element {
   }), [active]);
 
   const send = async (): Promise<void> => {
-    const text = draft.replace(/<[^>]*>/g, '').trim();
+    const text = draft.trim();
     if (!text || activeId == null) return;
     if (needsNumber) { setNumberOpen(true); return; } // pede o número antes de enviar
     setDraft('');
@@ -758,50 +753,62 @@ export function WhatsApp(): React.JSX.Element {
     }
   };
 
-  // Renderiza uma mensagem (texto ou mídia) no formato do @chatscope.
+  // Balão de mensagem nativo (texto ou mídia), cores via vars --wa-* (tema-aware).
   const renderMessage = (m: WaMessage): React.JSX.Element => {
-    const direction = m.from_me ? 'outgoing' : 'incoming';
-    const footer = <Message.Footer><span style={{ fontSize: 11, opacity: 0.65 }}>{hora(m.momento)} <Tick m={m} /></span></Message.Footer>;
-    if (m.tipo === 'texto') {
-      return <Message key={m.id} model={{ message: m.corpo ?? '', direction, position: 'single' }}>{footer}</Message>;
-    }
-    const url = mediaUrl(m);
-    let content: ReactNode;
+    const url = m.tipo === 'texto' ? '' : mediaUrl(m);
+    let media: ReactNode = null;
     if (m.tipo === 'imagem') {
-      content = <img src={url} alt="" style={{ maxWidth: 240, borderRadius: 8, cursor: 'pointer', display: 'block' }} onClick={() => setLightbox(url)} />;
+      media = <img src={url} alt="" className="block max-w-[240px] cursor-pointer rounded-md" onClick={() => setLightbox(url)} />;
     } else if (m.tipo === 'video') {
-      content = <video src={url} controls style={{ maxWidth: 260, borderRadius: 8, display: 'block' }} />;
+      media = <video src={url} controls className="block max-w-[260px] rounded-md" />;
     } else if (m.tipo === 'audio') {
-      content = <audio src={url} controls />;
-    } else {
-      content = (
-        <a href={url} target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'inherit' }}>
+      media = <audio src={url} controls className="max-w-[240px]" />;
+    } else if (m.tipo !== 'texto') {
+      media = (
+        <a href={url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-[var(--wa-ink)] underline-offset-2 hover:underline">
           <Icon name="mail" size={18} /> {m.file_name ?? 'arquivo'}
         </a>
       );
     }
     return (
-      <Message key={m.id} model={{ direction, position: 'single', type: 'custom' }}>
-        <Message.CustomContent>
-          {content}
-          {m.corpo && <div style={{ marginTop: 4 }}>{m.corpo}</div>}
-        </Message.CustomContent>
-        {footer}
-      </Message>
+      <div key={m.id} className={cn('flex px-[5%] py-0.5', m.from_me ? 'justify-end' : 'justify-start')}>
+        <div className={cn('max-w-[75%] rounded-lg px-2 py-1.5 text-[14.2px] leading-snug shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]',
+          m.from_me ? 'bg-[var(--wa-out)]' : 'bg-[var(--wa-in)]', 'text-[var(--wa-ink)]')}>
+          {media}
+          {m.tipo === 'texto'
+            ? <span className="whitespace-pre-wrap break-words">{m.corpo}</span>
+            : m.corpo && <div className="mt-1 whitespace-pre-wrap break-words">{m.corpo}</div>}
+          <span className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-[var(--wa-muted)]">
+            {hora(m.momento)} <Tick m={m} />
+          </span>
+        </div>
+      </div>
     );
   };
 
-  // Lista com separadores de data + indicador de digitação no fim.
+  // Lista com separadores de data entre dias.
   const listItems = useMemo(() => {
     const items: ReactNode[] = [];
     let lastDay = '';
     for (const m of messages) {
       const day = new Date(m.momento).toDateString();
-      if (day !== lastDay) { items.push(<MessageSeparator key={`sep-${m.id}`} content={dayLabel(m.momento)} />); lastDay = day; }
+      if (day !== lastDay) {
+        items.push(
+          <div key={`sep-${m.id}`} className="my-2.5 flex justify-center">
+            <span className="rounded-lg bg-[var(--wa-sep)] px-3 py-1 text-[12.5px] uppercase text-[var(--wa-muted)] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">
+              {dayLabel(m.momento)}
+            </span>
+          </div>,
+        );
+        lastDay = day;
+      }
       items.push(renderMessage(m));
     }
     return items;
   }, [messages]);
+
+  // Rola pro fim ao trocar de conversa ou chegar mensagem (a lib fazia sozinha).
+  useEffect(() => { listEndRef.current?.scrollIntoView({ block: 'end' }); }, [messages, activeId]);
 
   if (status === null) return <Spinner label="Carregando…" />;
   if (!enabled) {
@@ -823,89 +830,139 @@ export function WhatsApp(): React.JSX.Element {
   return (
     <div className="h-full">
       <input ref={fileRef} type="file" hidden onChange={(e) => void onFile(e)} />
-      <div className="wa-web relative h-full overflow-hidden">
-        <MainContainer responsive>
-          <Sidebar position="left" scrollable>
-            <div className="flex items-center justify-between gap-2 bg-[#f0f2f5] px-4 py-2.5">
-              <span className="text-base font-semibold text-[#111b21]">Conversas</span>
-              <button title="Nova conversa" onClick={() => setNewChatOpen(true)}
-                className="grid h-8 w-8 place-items-center rounded-full text-[#54656f] hover:bg-black/5">
-                <Icon name="pencil" size={18} />
-              </button>
+      <div className="wa relative flex h-full overflow-hidden">
+        {/* coluna de conversas — vira tela cheia no mobile quando não há chat aberto */}
+        <div className={cn('w-full shrink-0 flex-col border-r border-[var(--wa-border)] bg-[var(--wa-sidebar)] md:flex md:w-[360px]',
+          active ? 'hidden md:flex' : 'flex')}>
+          <div className="flex items-center justify-between gap-2 bg-[var(--wa-panel)] px-4 py-2.5">
+            <span className="text-base font-semibold text-[var(--wa-ink)]">Conversas</span>
+            <button title="Nova conversa" onClick={() => setNewChatOpen(true)}
+              className="grid h-9 w-9 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
+              <Icon name="pencil" size={18} />
+            </button>
+          </div>
+          <div className="px-3 py-2">
+            <div className="flex items-center gap-2 rounded-lg bg-[var(--wa-panel)] px-3 py-1.5">
+              <Icon name="search" size={16} className="shrink-0 text-[var(--wa-muted)]" />
+              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar conversa…"
+                className="min-w-0 flex-1 bg-transparent text-sm text-[var(--wa-ink)] outline-none placeholder:text-[var(--wa-muted)]" />
+              {busca && (
+                <button onClick={() => setBusca('')} aria-label="Limpar" className="shrink-0 text-[var(--wa-muted)] hover:text-[var(--wa-ink)]">
+                  <Icon name="x" size={14} />
+                </button>
+              )}
             </div>
-            <Search placeholder="Buscar conversa…" value={busca}
-              onChange={(v: string) => setBusca(v)} onClearClick={() => setBusca('')} />
-            <ConversationList>
-              {filtered.map((c) => (
-                <Conversation key={c.id} name={nomeChat(c)} info={c.last_preview ?? ''}
-                  active={c.id === activeId} unreadCnt={c.nao_lidas || undefined}
-                  lastActivityTime={c.last_message_at ? hora(c.last_message_at) : undefined}
-                  onClick={() => openChat(c.id)}>
-                  <Avatar src={avatarSrc(c)} name={nomeChat(c)} />
-                </Conversation>
-              ))}
-            </ConversationList>
-          </Sidebar>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-[var(--wa-muted)]">Nenhuma conversa.</p>
+            ) : filtered.map((c) => (
+              <button key={c.id} onClick={() => openChat(c.id)}
+                className={cn('flex w-full items-center gap-3 border-b border-[var(--wa-border)] px-3 py-2.5 text-left transition-colors',
+                  c.id === activeId ? 'bg-[var(--wa-active)]' : 'hover:bg-[var(--wa-hover)]')}>
+                <img src={avatarSrc(c)} alt="" className="h-12 w-12 shrink-0 rounded-full object-cover" />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium text-[var(--wa-ink)]">{nomeChat(c)}</span>
+                    {c.last_message_at && <span className="shrink-0 text-[11px] text-[var(--wa-muted)]">{hora(c.last_message_at)}</span>}
+                  </span>
+                  <span className="mt-0.5 flex items-center justify-between gap-2">
+                    <span className="truncate text-sm text-[var(--wa-muted)]">{c.last_preview ?? ''}</span>
+                    {c.nao_lidas > 0 && (
+                      <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-[var(--wa-green)] px-1.5 text-[11px] font-bold text-white">{c.nao_lidas}</span>
+                    )}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
 
+        {/* coluna do chat */}
+        <div className={cn('min-w-0 flex-1 flex-col', active ? 'flex' : 'hidden md:flex')}>
           {active ? (
-            <ChatContainer>
-              <ConversationHeader>
-                <Avatar src={avatarSrc(active)} name={nomeChat(active)}
-                  onClick={() => setDetailsOpen(true)} style={{ cursor: 'pointer' }} />
-                <ConversationHeader.Content userName={nomeChat(active)}
-                  onClick={() => setDetailsOpen(true)} style={{ cursor: 'pointer' }}
-                  info={isTyping ? 'digitando…'
-                    : needsNumber ? 'número oculto (LID) — informe o telefone'
-                    : active.company_id != null ? (active.company_fantasia || active.company_nome || '')
-                    : chatIdent(active)} />
-                <ConversationHeader.Actions>
+            <>
+              <div className="flex items-center gap-2 border-b border-[var(--wa-border)] bg-[var(--wa-panel)] px-3 py-2">
+                <button onClick={() => { setActiveId(null); setMessages([]); }} aria-label="Voltar"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)] md:hidden">
+                  <Icon name="chevronLeft" size={20} />
+                </button>
+                <button onClick={() => setDetailsOpen(true)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                  <img src={avatarSrc(active)} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold text-[var(--wa-ink)]">{nomeChat(active)}</span>
+                    <span className="block truncate text-xs text-[var(--wa-muted)]">
+                      {isTyping ? 'digitando…'
+                        : needsNumber ? 'número oculto (LID) — informe o telefone'
+                        : active.company_id != null ? (active.company_fantasia || active.company_nome || '')
+                        : chatIdent(active)}
+                    </span>
+                  </span>
+                </button>
+                <div className="flex shrink-0 items-center gap-0.5">
                   {needsNumber && (
                     <button title="Informar número do contato" onClick={() => setNumberOpen(true)}
-                      className="grid h-8 w-8 place-items-center rounded-lg text-amber-600 hover:bg-amber-50">
+                      className="grid h-9 w-9 place-items-center rounded-full text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10">
                       <Icon name="phone" size={18} />
                     </button>
                   )}
                   {active.company_id != null && (
                     <button title="Criar pedido" onClick={() => setOrderOpen(true)}
-                      className="grid h-8 w-8 place-items-center rounded-lg text-ink-500 hover:bg-ink-100">
+                      className="grid h-9 w-9 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
                       <Icon name="plus" size={18} />
                     </button>
                   )}
                   <button title="Conciliar conversas (telefone + LID)" onClick={() => setMergeOpen(true)}
-                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-500 hover:bg-ink-100">
+                    className="grid h-9 w-9 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
                     <Icon name="layers" size={18} />
                   </button>
                   <button title="Agendar mensagem" onClick={() => setSchedOpen(true)}
-                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-500 hover:bg-ink-100">
+                    className="grid h-9 w-9 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
                     <Icon name="clock" size={18} />
                   </button>
                   <button title={active.company_id != null ? 'Empresa vinculada' : 'Vincular empresa'} onClick={() => setLinkOpen(true)}
-                    className={cn('grid h-8 w-8 place-items-center rounded-lg hover:bg-ink-100', active.company_id != null ? 'text-emerald-600' : 'text-ink-500')}>
+                    className={cn('grid h-9 w-9 place-items-center rounded-full hover:bg-[var(--wa-hover)]', active.company_id != null ? 'text-emerald-600' : 'text-[var(--wa-muted)]')}>
                     <Icon name="users" size={18} />
                   </button>
                   <button title="Apagar conversa" onClick={() => void delChat(active)}
-                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-500 hover:bg-rose-50 hover:text-rose-600">
+                    className="grid h-9 w-9 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10">
                     <Icon name="trash" size={18} />
                   </button>
-                </ConversationHeader.Actions>
-              </ConversationHeader>
-              <MessageList typingIndicator={isTyping ? <TypingIndicator content="digitando…" /> : undefined}>
-                {listItems}
-              </MessageList>
-              <MessageInput placeholder="Digite uma mensagem…" value={draft}
-                onChange={(v: string) => setDraft(v)} onSend={() => void send()}
-                onAttachClick={() => fileRef.current?.click()} sendButton attachButton autoFocus />
-            </ChatContainer>
-          ) : (
-            <ChatContainer>
-              <MessageList>
-                <div className="grid h-full place-items-center text-sm text-ink-400">
-                  Selecione uma conversa
                 </div>
-              </MessageList>
-            </ChatContainer>
+              </div>
+
+              <div className="wa-canvas min-h-0 flex-1 overflow-y-auto py-3">
+                {listItems}
+                {isTyping && (
+                  <div className="flex justify-start px-[5%] py-0.5">
+                    <div className="rounded-lg bg-[var(--wa-in)] px-3 py-2 text-[13px] italic text-[var(--wa-muted)] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">digitando…</div>
+                  </div>
+                )}
+                <div ref={listEndRef} />
+              </div>
+
+              <div className="flex items-end gap-2 bg-[var(--wa-panel)] px-3 py-2">
+                <button onClick={() => fileRef.current?.click()} aria-label="Anexar"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
+                  <Icon name="paperclip" size={20} />
+                </button>
+                <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={1} autoFocus
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
+                  placeholder="Digite uma mensagem…"
+                  className="max-h-32 min-h-[40px] min-w-0 flex-1 resize-none rounded-lg bg-[var(--wa-in)] px-3 py-2 text-sm text-[var(--wa-ink)] outline-none placeholder:text-[var(--wa-muted)]" />
+                <button onClick={() => void send()} aria-label="Enviar"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[var(--wa-green)] hover:bg-[var(--wa-hover)]">
+                  <Icon name="send" size={20} />
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="wa-canvas grid h-full place-items-center text-sm text-[var(--wa-muted)]">
+              Selecione uma conversa
+            </div>
           )}
-        </MainContainer>
+        </div>
+
         {active && detailsOpen && (
           <ContactDetails chat={active} messages={messages} onClose={() => setDetailsOpen(false)}
             onLink={() => { setDetailsOpen(false); setLinkOpen(true); }}

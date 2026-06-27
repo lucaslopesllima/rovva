@@ -18,7 +18,7 @@ const STATUS_LABEL: Record<string, string> = {
   prospect: 'Prospect', cliente: 'Cliente', descartado: 'Descartado',
 };
 const STATUS_OPTS = ['prospect', 'cliente', 'descartado'] as const;
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 const FILTERS_OPEN_KEY = 'funil:filtersOpen';
 const KPIS_OPEN_KEY = 'funil:kpisOpen';
 
@@ -182,7 +182,7 @@ export function Kanban(): React.JSX.Element {
                 active ? 'border-brand-300 bg-brand-50/60' : 'border-ink-200/70 bg-ink-100/50')}>
               <div className="flex items-center justify-between px-2 py-1.5">
                 <span className="text-sm font-semibold text-ink-700">{col.nome}</span>
-                <span className="tabnums rounded-full bg-white px-2 py-0.5 text-xs font-medium text-ink-500 shadow-card">{colCards.length}</span>
+                <span className="tabnums rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-ink-500 shadow-card">{colCards.length}</span>
               </div>
               {valor > 0 && (
                 <p className="tabnums px-2 pb-1.5 text-xs font-medium text-ink-400">{brl(valor)}</p>
@@ -192,7 +192,7 @@ export function Kanban(): React.JSX.Element {
                   <div key={c.id} draggable
                     onDragStart={() => setDragId(c.id)}
                     onDragEnd={() => { setDragId(null); setOver(null); }}
-                    className={cn('group relative cursor-grab rounded-xl border border-ink-200/70 bg-white p-3 shadow-card transition active:cursor-grabbing',
+                    className={cn('group relative cursor-grab rounded-xl border border-ink-200/70 bg-surface p-3 shadow-card transition active:cursor-grabbing',
                       dragId === c.id && 'opacity-50')}>
                     <div className="absolute right-2 top-2 flex items-center gap-0.5">
                       <button type="button"
@@ -212,7 +212,7 @@ export function Kanban(): React.JSX.Element {
                     {moveFor === c.id && (
                       <>
                         <div className="fixed inset-0 z-[40]" onClick={() => setMoveFor(null)} />
-                        <div role="menu" className="absolute right-2 top-9 z-[50] w-44 overflow-hidden rounded-xl border border-ink-200 bg-white py-1 shadow-pop">
+                        <div role="menu" className="absolute right-2 top-9 z-[50] w-44 overflow-hidden rounded-xl border border-ink-200 bg-surface py-1 shadow-pop">
                           <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-400">Mover para</p>
                           {stages.map((s) => (
                             <button key={s.id} type="button" role="menuitem" disabled={c.stage_id === s.id}
@@ -423,9 +423,9 @@ function EditModal({ card, stages, reps, brands, scenarios, actions, catalog, on
 
   return (
    <>
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/40 p-4"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
       onClick={onClose}>
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-ink-200 bg-white shadow-pop"
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-ink-200 bg-surface shadow-pop"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-ink-100 p-5">
           <div>
@@ -621,8 +621,8 @@ function NovoContato({ companyId, onCreated, onCancel }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink-900/40 p-4" onClick={onCancel}>
-      <div className="w-full max-w-md rounded-2xl border border-ink-200 bg-white shadow-pop" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4" onClick={onCancel}>
+      <div className="w-full max-w-md rounded-2xl border border-ink-200 bg-surface shadow-pop" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 border-b border-ink-100 p-5">
           <h2 className="text-base font-semibold text-ink-800">Criar novo contato</h2>
           <button type="button" onClick={onCancel}
@@ -673,8 +673,8 @@ function NovoProduto({ reps, onCreated, onCancel }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink-900/40 p-4" onClick={onCancel}>
-      <div className="w-full max-w-md rounded-2xl border border-ink-200 bg-white shadow-pop" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4" onClick={onCancel}>
+      <div className="w-full max-w-md rounded-2xl border border-ink-200 bg-surface shadow-pop" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 border-b border-ink-100 p-5">
           <h2 className="text-base font-semibold text-ink-800">Criar novo produto</h2>
           <button type="button" onClick={onCancel}

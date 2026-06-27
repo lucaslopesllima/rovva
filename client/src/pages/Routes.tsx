@@ -17,7 +17,7 @@ function PromptModal({ state, onClose }: { state: PromptState; onClose: () => vo
   const [val, setVal] = useState(state.initial);
   const submit = (e: React.FormEvent): void => { e.preventDefault(); onClose(); state.onConfirm(val); };
   return (
-    <div className="fixed inset-0 z-[2000] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-sm p-4 shadow-pop">
         <div onClick={(e) => e.stopPropagation()}>
           <h3 className="mb-3 text-sm font-bold text-ink-900">{state.title}</h3>
@@ -28,7 +28,7 @@ function PromptModal({ state, onClose }: { state: PromptState; onClose: () => vo
                 type={state.kind === 'date' ? 'date' : 'text'}
                 inputMode={state.kind === 'decimal' ? 'decimal' : undefined}
                 placeholder={state.placeholder}
-                className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
+                className="w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
             </label>
             <div className="flex justify-end gap-2">
               <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
@@ -247,7 +247,7 @@ function Planner({ vehicles }: { vehicles: Vehicle[] }): React.JSX.Element {
           <div className="relative mb-2">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400"><Icon name="search" size={15} /></span>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar empresa…"
-              className="w-full rounded-xl border border-ink-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-400" />
+              className="w-full rounded-xl border border-ink-200 bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-400" />
           </div>
           <div className="max-h-[42vh] space-y-1 overflow-auto pr-1">
             {filtered.length === 0 && <p className="px-1 py-4 text-center text-xs text-ink-400">Nenhuma empresa no funil.</p>}
@@ -257,7 +257,7 @@ function Planner({ vehicles }: { vehicles: Vehicle[] }): React.JSX.Element {
               return (
                 <button key={c.id} onClick={() => toggle(c.company_id)}
                   className={cn('flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors',
-                    checked ? 'bg-brand-50' : 'hover:bg-ink-50')}>
+                    checked ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-ink-50')}>
                   <span className={cn('grid h-4 w-4 shrink-0 place-items-center rounded border',
                     checked ? 'border-brand-500 bg-brand-500 text-white' : 'border-ink-300')}>
                     {checked && <Icon name="check" size={11} />}
@@ -276,7 +276,7 @@ function Planner({ vehicles }: { vehicles: Vehicle[] }): React.JSX.Element {
           <div>
             <label className="mb-1 block text-xs font-medium text-ink-500">Veículo</label>
             <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400">
+              className="w-full rounded-xl border border-ink-200 bg-surface px-3 py-2 text-sm outline-none focus:border-brand-400">
               <option value="">Sem veículo (só distância)</option>
               {vehicles.filter((v) => v.ativo).map((v) => (
                 <option key={v.id} value={v.id}>{v.nome} · {Number(v.consumo_kml)} km/l</option>
@@ -286,7 +286,7 @@ function Planner({ vehicles }: { vehicles: Vehicle[] }): React.JSX.Element {
           <div>
             <label className="mb-1 block text-xs font-medium text-ink-500">Preço do litro (R$) — opcional</label>
             <input value={preco} onChange={(e) => setPreco(e.target.value)} inputMode="decimal" placeholder="ex.: 6,19"
-              className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400" />
+              className="w-full rounded-xl border border-ink-200 bg-surface px-3 py-2 text-sm outline-none focus:border-brand-400" />
             <p className="mt-1 text-[11px] text-ink-400">Vazio usa o preço cadastrado no veículo.</p>
           </div>
           <Btn icon="route" onClick={() => void optimize()} disabled={busy || sel.size < 1} className="w-full">
@@ -496,7 +496,7 @@ function Vehicles({ vehicles, reload }: { vehicles: Vehicle[]; reload: () => voi
           <div>
             <label className="mb-1 block text-xs font-medium text-ink-500">Combustível</label>
             <select value={form.combustivel} onChange={(e) => set('combustivel', e.target.value)}
-              className="w-full rounded-xl border border-ink-200 bg-white px-3 py-2 text-sm outline-none focus:border-brand-400">
+              className="w-full rounded-xl border border-ink-200 bg-surface px-3 py-2 text-sm outline-none focus:border-brand-400">
               {(['gasolina', 'etanol', 'diesel', 'flex'] as const).map((f) => <option key={f} value={f}>{FUEL_LABEL[f]}</option>)}
             </select>
           </div>

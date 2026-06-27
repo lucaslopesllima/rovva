@@ -185,7 +185,7 @@ export function Carteiras(): React.JSX.Element {
                 <label className="inline-flex items-center gap-2 text-xs text-ink-500">
                   Trocar vendedor:
                   <select value="" onChange={(e) => { if (e.target.value) void trocarVendedor(Number(e.target.value)); }}
-                    className="rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-xs">
+                    className="rounded-lg border border-ink-200 bg-surface px-2 py-1.5 text-xs">
                     <option value="">escolha…</option>
                     {ativos.filter((u) => u.id !== sel.ownerId).map((u) => <option key={u.id} value={u.id}>{u.nome ?? u.email}</option>)}
                   </select>
@@ -201,13 +201,13 @@ export function Carteiras(): React.JSX.Element {
               <div className="relative mb-2">
                 <Icon name="search" size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
                 <input value={pickQ} onChange={(e) => setPickQ(maskSearchCNPJ(e.target.value))} placeholder="Buscar cliente por nome ou CNPJ…"
-                  className="w-full rounded-xl border border-ink-200 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
+                  className="w-full rounded-xl border border-ink-200 bg-surface py-2 pl-9 pr-3 text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
               </div>
               <div className="max-h-60 space-y-1 overflow-auto">
                 {candidatos.length === 0 ? (
                   <p className="py-4 text-center text-xs text-ink-400">Nenhum cliente para adicionar.</p>
                 ) : candidatos.map((c) => (
-                  <div key={c.id} className="flex items-center gap-2 rounded-lg bg-white px-2.5 py-2">
+                  <div key={c.id} className="flex items-center gap-2 rounded-lg bg-surface px-2.5 py-2">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm text-ink-700">{c.nome_fantasia || c.razao_social}</p>
                       <p className="truncate text-[11px] text-ink-400">{maskCNPJ(c.cnpj)} · atual: {nomeVendedor(c.owner_user_id)}</p>
@@ -225,7 +225,7 @@ export function Carteiras(): React.JSX.Element {
             {sel.clientes.length === 0 ? (
               <EmptyState icon="building" title="Carteira vazia" hint="Use “Adicionar clientes” para alocar clientes a este vendedor." />
             ) : sel.clientes.map((c) => (
-              <div key={c.id} className="flex items-center gap-3 rounded-xl border border-ink-200/70 bg-white p-3">
+              <div key={c.id} className="flex items-center gap-3 rounded-xl border border-ink-200/70 bg-surface p-3">
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600"><Icon name="building" size={18} /></span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -243,7 +243,7 @@ export function Carteiras(): React.JSX.Element {
                   <Icon name="users" size={14} />
                   <select value={c.owner_user_id ?? ''} aria-label="Vendedor da carteira"
                     onChange={(e) => void moverCliente(c, e.target.value === '' ? null : Number(e.target.value))}
-                    className="rounded-lg border border-ink-200 bg-white px-2 py-1.5 text-xs text-ink-700">
+                    className="rounded-lg border border-ink-200 bg-surface px-2 py-1.5 text-xs text-ink-700">
                     <option value="">Sem vendedor</option>
                     {ativos.map((u) => <option key={u.id} value={u.id}>{u.nome ?? u.email}</option>)}
                   </select>

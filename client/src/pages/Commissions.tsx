@@ -12,7 +12,7 @@ import { Icon } from '../lib/icons.tsx';
 import { brl, csvNum, dec, fmtDate, maskPct, todayStr } from '../lib/format.ts';
 import { toast } from '../lib/toast.tsx';
 
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
 const STATUS_META: Record<CommissionStatus, { label: string; tone: Tone }> = {
   prevista: { label: 'Prevista', tone: 'info' },
@@ -107,15 +107,15 @@ function Extrato({ reps, admin }: { reps: RepresentedCompany[]; admin: boolean }
 
       <Card className="flex flex-wrap items-center gap-3 p-3">
         <input type="month" value={competencia} onChange={(e) => setCompetencia(e.target.value)} aria-label="Competência"
-          className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400" />
+          className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400" />
         <select value={representedId} onChange={(e) => setRepresentedId(e.target.value === 'todas' ? 'todas' : Number(e.target.value))}
           aria-label="Filtrar por representada"
-          className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
+          className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
           <option value="todas">Todas as representadas</option>
           {reps.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
         </select>
         <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label="Filtrar por status"
-          className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
+          className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
           <option value="todos">Todos os status</option>
           {Object.entries(STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
@@ -236,7 +236,7 @@ function SettleModal({ entry, onClose, onSaved }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[2000] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-md p-4 shadow-pop">
         <div onClick={(e) => e.stopPropagation()}>
           <div className="mb-3 flex items-center justify-between">
@@ -294,7 +294,7 @@ function ReconcileModal({ onClose, onDone }: { onClose: () => void; onDone: () =
   };
 
   return (
-    <div className="fixed inset-0 z-[2000] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-lg p-4 shadow-pop">
         <div onClick={(e) => e.stopPropagation()}>
           <div className="mb-3 flex items-center justify-between">
@@ -402,7 +402,7 @@ function Rules({ reps, admin }: { reps: RepresentedCompany[]; admin: boolean }):
       {rules.map((r) => {
         const alvo = alvoRegra(r);
         return (
-          <div key={r.id} className={cn('flex items-start gap-3 rounded-xl border border-ink-200/70 bg-white p-3', !r.ativo && 'opacity-60')}>
+          <div key={r.id} className={cn('flex items-start gap-3 rounded-xl border border-ink-200/70 bg-surface p-3', !r.ativo && 'opacity-60')}>
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink-100 text-ink-500"><Icon name="percent" size={18} /></span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">

@@ -10,7 +10,7 @@ import { Icon } from './icons.tsx';
 // (território, raio e pesos do score) — que antes vinha do perfil-alvo e agora
 // vive aqui, persistida no navegador e enviada ao /api/recommend a cada busca.
 
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 const onlyDigits = (s: string): string => s.replace(/\D/g, '');
 const parseCodes = (s: string): number[] => s.split(/[,\s]+/).map((x) => onlyDigits(x)).filter(Boolean).map(Number);
 const parseUfs = (s: string): string[] => s.split(/[,\s]+/).map((x) => x.trim().toUpperCase()).filter((x) => x.length === 2);
@@ -139,7 +139,7 @@ export function useCompanyFilter(storageKey = 'default'): CompanyFilter {
 export function CompanyFilterBar({ f, recommend = false }: { f: CompanyFilter; recommend?: boolean }): React.JSX.Element {
   return (
     <div className="space-y-3">
-      <div className="rounded-2xl border border-ink-200/70 bg-white p-3 shadow-card">
+      <div className="rounded-2xl border border-ink-200/70 bg-surface p-3 shadow-card">
         <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-ink-500">Nome / CNPJ</span>
@@ -226,7 +226,7 @@ function RecommendConfig({ f }: { f: CompanyFilter }): React.JSX.Element {
   return (
     <div className="grid gap-3 lg:grid-cols-2">
       {/* Território */}
-      <div className="rounded-2xl border border-ink-200/70 bg-white p-3 shadow-card">
+      <div className="rounded-2xl border border-ink-200/70 bg-surface p-3 shadow-card">
         <h4 className="text-sm font-semibold text-ink-900">Território</h4>
         <p className="mt-0.5 text-xs text-ink-400">Onde a recomendação busca. O raio (km) é opcional — recomenda por proximidade ao centro do território.</p>
 
@@ -252,7 +252,7 @@ function RecommendConfig({ f }: { f: CompanyFilter }): React.JSX.Element {
           <Icon name="search" size={17} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
           <input value={munQ} onChange={(e) => setMunQ(e.target.value)} placeholder="Buscar cidade (ex.: Blumenau)…" className={cn(inputCls, 'pl-9')} />
           {munResults.length > 0 && (
-            <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-ink-200 bg-white py-1 shadow-pop">
+            <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-ink-200 bg-surface py-1 shadow-pop">
               {munResults.map((m) => {
                 const on = sel.some((x) => x.id === m.id);
                 return (
@@ -266,7 +266,7 @@ function RecommendConfig({ f }: { f: CompanyFilter }): React.JSX.Element {
             </div>
           )}
           {munQ.trim().length >= 1 && munResults.length === 0 && (
-            <div className="absolute z-20 mt-1 w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-400 shadow-pop">
+            <div className="absolute z-20 mt-1 w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-400 shadow-pop">
               Nenhuma cidade encontrada para “{munQ.trim()}”.
             </div>
           )}
@@ -299,7 +299,7 @@ function RecommendConfig({ f }: { f: CompanyFilter }): React.JSX.Element {
       </div>
 
       {/* Pesos do score */}
-      <div className="rounded-2xl border border-ink-200/70 bg-white p-3 shadow-card">
+      <div className="rounded-2xl border border-ink-200/70 bg-surface p-3 shadow-card">
         <h4 className="text-sm font-semibold text-ink-900">Pesos do score</h4>
         <p className="mt-0.5 text-xs text-ink-400">Quanto cada fator influencia o ranqueamento.</p>
         {(['cnae', 'proximidade', 'porte'] as const).map((k) => (

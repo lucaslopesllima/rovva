@@ -19,7 +19,7 @@ const SECTIONS: { key: Section; label: string; icon: IconName; desc: string; adm
   { key: 'alertas', label: 'Alertas', icon: 'bell', desc: 'Inatividade no dashboard', admin: true },
   { key: 'smtp', label: 'E-mail (SMTP)', icon: 'mail', desc: 'Servidor de envio dos e-mails agendados', admin: true },
 ];
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
 export function Settings(): React.JSX.Element {
   const user = useOptionalUser();
@@ -36,7 +36,7 @@ export function Settings(): React.JSX.Element {
             return (
               <button key={s.key} onClick={() => setSection(s.key)}
                 className={cn('flex items-center gap-3 whitespace-nowrap sm:whitespace-normal rounded-xl px-3 py-2.5 text-left transition-colors',
-                  on ? 'bg-brand-600 text-white shadow-sm shadow-brand-600/20' : 'bg-white text-ink-600 shadow-card hover:bg-ink-50')}>
+                  on ? 'bg-brand-600 text-white shadow-sm shadow-brand-600/20' : 'bg-surface text-ink-600 shadow-card hover:bg-ink-50')}>
                 <Icon name={s.icon} size={18} className={cn('shrink-0', on ? 'text-white' : 'text-ink-400')} />
                 <span className="min-w-0 text-sm font-semibold">
                   {s.label}
@@ -366,20 +366,20 @@ function FunilEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
       <ul className="mt-4 space-y-2">
         {stages.map((st, i) => (
           <li key={st.id} className="flex items-center gap-2 rounded-xl border border-ink-200/70 bg-ink-50 p-2">
-            <span className="tabnums grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white text-xs font-bold text-ink-400 shadow-card">
+            <span className="tabnums grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-surface text-xs font-bold text-ink-400 shadow-card">
               {i + 1}
             </span>
             <input defaultValue={st.nome}
               onBlur={(e) => { if (e.target.value.trim() !== st.nome) void rename(st.id, e.target.value); }}
               onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-              className="min-w-0 flex-1 rounded-lg border border-transparent bg-white px-2 py-1.5 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
+              className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface px-2 py-1.5 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
             <div className="flex shrink-0 items-center gap-1">
               <button onClick={() => move(i, -1)} disabled={i === 0}
-                className="grid h-7 w-7 place-items-center rounded-lg text-ink-500 hover:bg-white disabled:opacity-30" aria-label="Subir">
+                className="grid h-7 w-7 place-items-center rounded-lg text-ink-500 hover:bg-surface disabled:opacity-30" aria-label="Subir">
                 <Icon name="arrowUp" size={15} />
               </button>
               <button onClick={() => move(i, 1)} disabled={i === stages.length - 1}
-                className="grid h-7 w-7 place-items-center rounded-lg text-ink-500 hover:bg-white disabled:opacity-30" aria-label="Descer">
+                className="grid h-7 w-7 place-items-center rounded-lg text-ink-500 hover:bg-surface disabled:opacity-30" aria-label="Descer">
                 <Icon name="arrowDown" size={15} />
               </button>
               <button onClick={() => remove(st.id)}
@@ -478,7 +478,7 @@ function RepresentadasEditor({ inputCls }: { inputCls: string }): React.JSX.Elem
             </div>
           </Card>
         ) : (
-          <div key={e.id} className={cn('flex items-start gap-3 rounded-xl border border-ink-200/70 bg-white p-3', !e.ativo && 'opacity-60')}>
+          <div key={e.id} className={cn('flex items-start gap-3 rounded-xl border border-ink-200/70 bg-surface p-3', !e.ativo && 'opacity-60')}>
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink-100 text-ink-500"><Icon name="building" size={18} /></span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
@@ -583,7 +583,7 @@ function BrandsEditor({ representedId, inputCls }: { representedId: number; inpu
       <p className="mt-0.5 text-xs text-ink-400">Aparecem no dropdown "Marca" da prospecção.</p>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {brands.map((b) => (
-          <span key={b.id} className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-ink-700 shadow-card">
+          <span key={b.id} className="inline-flex items-center gap-1 rounded-full bg-surface px-2.5 py-1 text-xs font-medium text-ink-700 shadow-card">
             {b.nome}
             <button type="button" onClick={() => void remove(b.id)} className="text-ink-300 hover:text-rose-500" aria-label="Remover">
               <Icon name="x" size={13} />
@@ -650,11 +650,11 @@ function NamedListEditor({ inputCls, path, titulo, desc, icon, placeholder }: {
       <ul className="mt-4 space-y-2">
         {items.map((it) => (
           <li key={it.id} className="flex items-center gap-2 rounded-xl border border-ink-200/70 bg-ink-50 p-2">
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white text-ink-400 shadow-card"><Icon name={icon} size={15} /></span>
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-surface text-ink-400 shadow-card"><Icon name={icon} size={15} /></span>
             <input defaultValue={it.nome}
               onBlur={(e) => { if (e.target.value.trim() !== it.nome) void rename(it.id, e.target.value); }}
               onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-              className="min-w-0 flex-1 rounded-lg border border-transparent bg-white px-2 py-1.5 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
+              className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface px-2 py-1.5 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
             <button onClick={() => void remove(it.id)}
               className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500" aria-label="Excluir">
               <Icon name="x" size={15} />
@@ -755,7 +755,7 @@ function ContatosEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
             <ContatoForm inputCls={inputCls} reps={reps} initial={toContactForm(c)} onSave={(f) => update(c.id, f)} onCancel={() => setEditing(null)} />
           </Card>
         ) : (
-          <div key={c.id} className="flex items-start gap-3 rounded-xl border border-ink-200/70 bg-white p-3">
+          <div key={c.id} className="flex items-start gap-3 rounded-xl border border-ink-200/70 bg-surface p-3">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink-100 text-ink-500"><Icon name="users" size={18} /></span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">

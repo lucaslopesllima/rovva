@@ -7,7 +7,7 @@ import { toast } from './toast.tsx';
 import type { Activity } from './types.ts';
 
 // Modal de criação de atividade/compromisso. Reutilizado na Agenda e no Funil.
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
 const TIPOS: { v: string; label: string; icon: IconName; chip: string }[] = [
   { v: 'tarefa', label: 'Tarefa', icon: 'check', chip: 'bg-brand-50 text-brand-700' },
@@ -78,7 +78,7 @@ export function ActivityCreateModal({ preset, funnel, represented, presetCompany
   };
 
   return (
-    <div className="fixed inset-0 z-[2000] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-md p-4 shadow-pop">
         <div onClick={(e) => e.stopPropagation()}>
           <div className="mb-3 flex items-center justify-between">
@@ -181,7 +181,7 @@ export function VisitModal({ activity, onClose, onSaved }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[2000] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-md p-4 shadow-pop">
         <div onClick={(e) => e.stopPropagation()}>
           <div className="mb-3 flex items-center justify-between">

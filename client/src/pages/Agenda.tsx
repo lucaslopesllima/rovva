@@ -209,7 +209,7 @@ export function Agenda(): React.JSX.Element {
             })}
           </div>
           <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}
-            className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
+            className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
             <option value="todos">Todos</option>
             <option value="pendente">Pendentes</option>
             <option value="feito">Concluídos</option>
@@ -455,7 +455,7 @@ function Row({ a, onToggle, onRemove, onEdit, onVisit }: {
 /* ── modal shell ────────────────────────────────────────── */
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }): React.JSX.Element {
   return (
-    <div className="fixed inset-0 z-[2000] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-md p-4 shadow-pop" >
         <div onClick={(e) => e.stopPropagation()}>
           <div className="mb-3 flex items-center justify-between">

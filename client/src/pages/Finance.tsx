@@ -6,7 +6,7 @@ import { Icon } from '../lib/icons.tsx';
 import { brl, fmtDate, numStr, todayStr } from '../lib/format.ts';
 import { toast } from '../lib/toast.tsx';
 
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
 const mesLabel = (ym: string): string => {
   const [y, m] = ym.split('-').map(Number);
@@ -157,20 +157,20 @@ export function Finance(): React.JSX.Element {
         ]} />
         <div className="flex flex-wrap items-center gap-2">
           <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label="Filtrar por status"
-            className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
+            className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
             <option value="todos">Todos os status</option>
             <option value="pendente">Pendentes</option>
             <option value="liquidado">Liquidados</option>
             <option value="cancelado">Cancelados</option>
           </select>
           <select value={periodo} onChange={(e) => setPeriodo(e.target.value as typeof periodo)} aria-label="Período"
-            className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
+            className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
             <option value="mes">Por mês</option>
             <option value="todos">Todo período</option>
           </select>
           {periodo === 'mes' && (
             <input type="month" value={mesRef} onChange={(e) => setMesRef(e.target.value)} aria-label="Mês de referência"
-              className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400" />
+              className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400" />
           )}
         </div>
       </Card>
@@ -284,7 +284,7 @@ function CashflowView(): React.JSX.Element {
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-ink-700">Projeção: próximos meses</p>
         <select value={months} onChange={(e) => setMonths(Number(e.target.value))}
-          className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
+          className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
           {[1, 2, 3, 6, 12].map((m) => <option key={m} value={m}>{m} {m === 1 ? 'mês' : 'meses'}</option>)}
         </select>
       </div>
@@ -344,7 +344,7 @@ function DreView(): React.JSX.Element {
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-ink-700">Resultado por mês</p>
         <select value={ano} onChange={(e) => setAno(Number(e.target.value))}
-          className="rounded-lg border border-ink-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
+          className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
           {[anoAtual, anoAtual - 1, anoAtual - 2].map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
       </div>
@@ -409,7 +409,7 @@ function CategoriesModal({ categories, onClose, onChanged }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[2000] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-md p-4 shadow-pop">
         <div onClick={(e) => e.stopPropagation()}>
           <div className="mb-3 flex items-center justify-between">
@@ -508,7 +508,7 @@ function FinanceModal({ entry, companies, represented, activities, categories, o
   );
 
   return (
-    <div className="fixed inset-0 z-[2000] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-md p-4 shadow-pop">
         <div onClick={(e) => e.stopPropagation()}>
           <div className="mb-3 flex items-center justify-between">

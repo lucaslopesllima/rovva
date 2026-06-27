@@ -40,9 +40,9 @@ export const toast = {
 };
 
 const STYLE: Record<ToastKind, { icon: IconName; ring: string; fg: string }> = {
-  success: { icon: 'check', ring: 'border-emerald-200 bg-emerald-50', fg: 'text-emerald-700' },
-  error: { icon: 'alertTriangle', ring: 'border-rose-200 bg-rose-50', fg: 'text-rose-700' },
-  info: { icon: 'bell', ring: 'border-sky-200 bg-sky-50', fg: 'text-sky-700' },
+  success: { icon: 'check', ring: 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10', fg: 'text-emerald-700 dark:text-emerald-300' },
+  error: { icon: 'alertTriangle', ring: 'border-rose-200 bg-rose-50 dark:border-rose-500/30 dark:bg-rose-500/10', fg: 'text-rose-700 dark:text-rose-300' },
+  info: { icon: 'bell', ring: 'border-sky-200 bg-sky-50 dark:border-sky-500/30 dark:bg-sky-500/10', fg: 'text-sky-700 dark:text-sky-300' },
 };
 
 // Montado uma vez em main.tsx. Renderiza a pilha num portal, fixo no topo.
@@ -65,7 +65,7 @@ export function ToastHost(): React.JSX.Element {
             <Icon name={s.icon} size={18} className={cn('mt-0.5 shrink-0', s.fg)} />
             <span className="min-w-0 flex-1 text-sm font-medium text-ink-800">{t.msg}</span>
             <button onClick={() => dismiss(t.id)} aria-label="Fechar"
-              className={cn('shrink-0 rounded-md p-0.5 transition-colors hover:bg-black/5', s.fg)}>
+              className={cn('shrink-0 rounded-md p-0.5 transition-colors hover:bg-black/5 dark:hover:bg-white/10', s.fg)}>
               <Icon name="x" size={15} />
             </button>
           </div>

@@ -9,7 +9,7 @@ import type { CatalogItem, Contact, SampleRequest, SampleStatus } from './types.
 // Modais de amostra do funil: criar/editar uma solicitação e listar as da
 // prospecção. Amostra escolhe um produto do catálogo, opcionalmente um contato
 // (criado na hora) e um follow-up na agenda.
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 const txt = (s: string): string | null => (s.trim() === '' ? null : s.trim());
 
 const STATUS: SampleStatus[] = ['solicitada', 'enviada', 'recebida', 'cancelada'];
@@ -104,8 +104,8 @@ export function SampleRequestModal({ card, catalog, sample, onClose, onSaved }: 
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink-900/40 p-4" onClick={onClose}>
-      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-ink-200 bg-white shadow-pop"
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-4" onClick={onClose}>
+      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border border-ink-200 bg-surface shadow-pop"
         onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-ink-100 p-5">
           <div>
@@ -248,8 +248,8 @@ export function SampleListModal({ card, catalog, onClose, onChanged }: {
 
   return (
     <>
-      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-ink-900/40 p-4" onClick={onClose}>
-        <div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-ink-200 bg-white shadow-pop"
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4" onClick={onClose}>
+        <div className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-ink-200 bg-surface shadow-pop"
           onClick={(e) => e.stopPropagation()}>
           <div className="flex items-start justify-between gap-3 border-b border-ink-100 p-5">
             <div>

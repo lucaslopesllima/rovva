@@ -7,7 +7,7 @@ import { Icon } from '../lib/icons.tsx';
 import { brl, todayStr } from '../lib/format.ts';
 import { toast } from '../lib/toast.tsx';
 
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
   return (
@@ -167,7 +167,7 @@ function Usuarios(): React.JSX.Element {
                         value={u.role}
                         disabled={self}
                         onChange={(e) => void patch(u.id, { role: e.target.value as 'admin' | 'rep' })}
-                        className="rounded-lg border border-ink-200 bg-white px-2 py-1 text-xs disabled:cursor-not-allowed disabled:bg-ink-50"
+                        className="rounded-lg border border-ink-200 bg-surface px-2 py-1 text-xs disabled:cursor-not-allowed disabled:bg-ink-50"
                       >
                         <option value="rep">Vendedor</option>
                         <option value="admin">Administrador</option>
@@ -222,7 +222,7 @@ function ResetPwdModal({ user, onClose, onConfirm }: { user: OrgUser; onClose: (
   const ok = senha.length >= 6;
   const submit = (e: React.FormEvent): void => { e.preventDefault(); if (ok) onConfirm(senha); };
   return (
-    <div className="fixed inset-0 z-[2000] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-sm p-4 shadow-pop">
         <div onClick={(e) => e.stopPropagation()}>
           <h3 className="mb-1 text-sm font-bold text-ink-900">Redefinir senha</h3>
@@ -266,7 +266,7 @@ function NameCell({ u, self, onSave }: { u: OrgUser; self: boolean; onSave: (nom
           if (e.key === 'Escape') { setVal(u.nome ?? ''); setEditing(false); }
         }}
         aria-label={`Editar nome de ${u.email}`}
-        className="w-40 rounded-lg border border-brand-300 bg-white px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-brand-200" />
+        className="w-40 rounded-lg border border-brand-300 bg-surface px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-brand-200" />
     );
   }
   return (
@@ -303,7 +303,7 @@ function TransferModal({ from, users, onClose, onDone }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[2000] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-md p-4 shadow-pop">
         <div onClick={(e) => e.stopPropagation()}>
           <div className="mb-3 flex items-center justify-between">

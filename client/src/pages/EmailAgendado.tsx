@@ -7,7 +7,7 @@ import { CompanySearch } from '../lib/companySearch.tsx';
 import { useAuth } from '../lib/auth.tsx';
 import { toast } from '../lib/toast.tsx';
 
-const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
+const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 
 // Status do envio → rótulo/cor do badge.
 const STATUS_META: Record<EmailScheduleStatus, { label: string; tone: Tone }> = {
@@ -146,7 +146,7 @@ function SchedulesTab(): React.JSX.Element {
           {filtered.map((e) => {
             const meta = STATUS_META[e.status];
             return (
-              <div key={e.id} className="flex items-start gap-3 rounded-xl border border-ink-200/70 bg-white p-3">
+              <div key={e.id} className="flex items-start gap-3 rounded-xl border border-ink-200/70 bg-surface p-3">
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600"><Icon name="mail" size={18} /></span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -272,7 +272,7 @@ function ScheduleModal({ schedule, templates, onClose, onSaved }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[2000] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-lg p-0" >
         <div onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3">
@@ -294,7 +294,7 @@ function ScheduleModal({ schedule, templates, onClose, onSaved }: {
             </div>
             <div>
               <label className="mb-1 block text-xs font-semibold text-ink-500">Destinatários</label>
-              <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-ink-200 bg-white p-2 transition focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-200">
+              <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-ink-200 bg-surface p-2 transition focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-200">
                 {recipients.map((r, i) => (
                   <span key={r} className="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-2 py-1 text-xs font-medium text-brand-700">
                     {r}
@@ -392,7 +392,7 @@ function TemplatesTab(): React.JSX.Element {
           <EmptyState icon="mail" title="Nenhum modelo ainda" hint="Crie modelos reutilizáveis para agilizar os agendamentos." />
         )}
         {list.map((t) => (
-          <div key={t.id} className="flex items-start gap-3 rounded-xl border border-ink-200/70 bg-white p-3">
+          <div key={t.id} className="flex items-start gap-3 rounded-xl border border-ink-200/70 bg-surface p-3">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-600"><Icon name="mail" size={18} /></span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-ink-800">{t.nome}</p>
@@ -446,7 +446,7 @@ function TemplateModal({ template, onClose, onSaved }: {
   };
 
   return (
-    <div className="fixed inset-0 z-[2000] grid place-items-center bg-ink-950/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/45 p-4" onClick={onClose}>
       <Card className="w-full max-w-lg p-0">
         <div onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between border-b border-ink-100 px-4 py-3">

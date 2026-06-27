@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { registerSW } from 'virtual:pwa-register';
 import { AuthProvider } from './lib/auth.tsx';
+import { ThemeProvider } from './lib/theme.tsx';
 import { ErrorBoundary } from './lib/ErrorBoundary.tsx';
 import { ToastHost } from './lib/toast.tsx';
 import { App } from './App.tsx';
@@ -19,10 +20,12 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <BrowserRouter>
-        <AuthProvider>
-          <App />
-          <ToastHost />
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <App />
+            <ToastHost />
+          </AuthProvider>
+        </ThemeProvider>
       </BrowserRouter>
     </ErrorBoundary>
   </StrictMode>,

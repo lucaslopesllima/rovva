@@ -7,7 +7,7 @@ export const cn = (...xs: (string | false | null | undefined)[]): string => xs.f
 
 /* ── Card ─────────────────────────────────────────────── */
 export function Card({ className, children }: { className?: string; children: ReactNode }): React.JSX.Element {
-  return <div className={cn('rounded-2xl border border-ink-200/70 bg-white shadow-card', className)}>{children}</div>;
+  return <div className={cn('rounded-2xl border border-ink-200/70 bg-surface shadow-card', className)}>{children}</div>;
 }
 
 /* ── Button ───────────────────────────────────────────── */
@@ -88,7 +88,7 @@ export function Segmented<T extends string>(
       {options.map((o) => (
         <button key={o.value} onClick={() => onChange(o.value)}
           className={cn('inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition-colors',
-            value === o.value ? 'bg-white text-brand-700 shadow-sm' : 'text-ink-500 hover:text-ink-700')}>
+            value === o.value ? 'bg-surface text-brand-700 shadow-sm' : 'text-ink-500 hover:text-ink-700')}>
           {o.icon && <Icon name={o.icon} size={15} />}{o.label}
         </button>
       ))}
