@@ -1,5 +1,5 @@
-// Prospecção (lista): estado vazio sem filtro, busca com debounce, paginação,
-// adicionar ao funil, erro de perfil. Leaflet mockado (jsdom não renderiza mapa).
+// Prospecção (lista): tela vazia sem território, busca por território com debounce,
+// paginação, adicionar ao funil, erro genérico. Leaflet mockado (jsdom não renderiza mapa).
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -31,39 +31,45 @@ const rec = (over: Record<string, unknown>): Record<string, unknown> => ({
   }, ...over,
 });
 
+// A busca só dispara com território definido (município selecionado).
+const comTerritorio = (): void =>
+  localStorage.setItem('companyFilter:reco', JSON.stringify({
+    munis: [{ id: 100, nome: 'São Paulo', uf: 'SP', regiao: 'Sudeste' }],
+    raio: '', pesos: { cnae: 0.5, proximidade: 0.3, porte: 0.2 },
+  }));
+
 const mount = (): ReturnType<typeof render> =>
   render(<MemoryRouter><Recommend /></MemoryRouter>);
 
 beforeEach(() => {
+  localStorage.clear();
   vi.mocked(m.get).mockReset();
   vi.mocked(m.post).mockReset();
   m.get.mockImplementation(async (p: string) => {
     if (p.startsWith('/api/recommend')) return { results: [rec({})], page: { count: 1 } };
-    if (p === '/api/profile') return { profile: { cnaes_alvo: [], territorio_municipios: [], origem_lat: null, origem_lon: null } };
+    if (p === '/api/municipios/ufs') return { ufs: [] };
     return {};
   });
 });
 
 describe('Recommend', () => {
-  it('sem filtro: tela vazia, sem consultar a base', async () => {
+  it('sem território: tela vazia, sem consultar a base', async () => {
     mount();
-    expect(await screen.findByText('Selecione um filtro')).toBeInTheDocument();
+    expect(await screen.findByText('Defina o território')).toBeInTheDocument();
     expect(m.get.mock.calls.some((c) => String(c[0]).startsWith('/api/recommend'))).toBe(false);
   });
 
-  it('filtro salvo dispara a busca (debounce) e lista resultados com score', async () => {
-    localStorage.setItem('companyFilter:prospeccao',
-      JSON.stringify({ fq: 'alvo', fCnae: '', fUf: '', fPorte: '', usarAlvo: false }));
+  it('com território dispara a busca (debounce) e lista resultados com score', async () => {
+    comTerritorio();
     mount();
     expect(await screen.findByText('Loja Alvo', undefined, { timeout: 2000 })).toBeInTheDocument();
     expect(screen.getAllByText('82').length).toBeGreaterThan(0); // score no card e no KPI
     const url = m.get.mock.calls.map((c) => String(c[0])).find((u) => u.startsWith('/api/recommend'))!;
-    expect(url).toContain('q=alvo');
+    expect(url).toContain('munis=100');
   });
 
   it('adicionar ao funil marca o card como adicionado', async () => {
-    localStorage.setItem('companyFilter:prospeccao',
-      JSON.stringify({ fq: 'alvo', fCnae: '', fUf: '', fPorte: '', usarAlvo: false }));
+    comTerritorio();
     m.post.mockResolvedValueOnce({ relationship: { id: 1 } });
     mount();
     await screen.findByText('Loja Alvo', undefined, { timeout: 2000 });
@@ -72,28 +78,27 @@ describe('Recommend', () => {
     expect(await screen.findByText('Adicionado ao funil')).toBeInTheDocument();
   });
 
-  it('erro de perfil (400) mostra card com link para configurar', async () => {
-    localStorage.setItem('companyFilter:prospeccao',
-      JSON.stringify({ fq: 'alvo', fCnae: '', fUf: '', fPorte: '', usarAlvo: false }));
+  it('erro da busca (400) mostra card com ação de ajustar filtros', async () => {
+    comTerritorio();
     m.get.mockImplementation(async (p: string) => {
-      if (p.startsWith('/api/recommend')) throw new ApiError(400, 'perfil-alvo não configurado');
-      if (p === '/api/profile') return { profile: null };
+      if (p.startsWith('/api/recommend')) throw new ApiError(400, 'parâmetros inválidos');
+      if (p === '/api/municipios/ufs') return { ufs: [] };
       return {};
     });
     mount();
-    expect(await screen.findByText('perfil-alvo não configurado', undefined, { timeout: 2000 })).toBeInTheDocument();
-    expect(screen.getByText(/Configurar perfil-alvo/)).toBeInTheDocument();
+    expect(await screen.findByText('parâmetros inválidos', undefined, { timeout: 2000 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Ajustar filtros/ })).toBeInTheDocument();
   });
 
   it('"Carregar mais" pagina com offset', async () => {
-    localStorage.setItem('companyFilter:prospeccao',
-      JSON.stringify({ fq: 'alvo', fCnae: '', fUf: '', fPorte: '', usarAlvo: false }));
-    // primeira página cheia (20) habilita o botão
+    comTerritorio();
+    // primeira página cheia (20) habilita o botão; cada página traz ids distintos
     m.get.mockImplementation(async (p: string) => {
       if (p.startsWith('/api/recommend')) {
-        return { results: Array.from({ length: 20 }, (_, i) => rec({ id: String(i + 1), razao_social: `Empresa ${i + 1}`, nome_fantasia: `Empresa ${i + 1}` })), page: { count: 20 } };
+        const off = Number(new URLSearchParams(p.split('?')[1]).get('offset') ?? '0');
+        return { results: Array.from({ length: 20 }, (_, i) => { const n = off + i + 1; return rec({ id: String(n), razao_social: `Empresa ${n}`, nome_fantasia: `Empresa ${n}` }); }), page: { count: 20 } };
       }
-      if (p === '/api/profile') return { profile: null };
+      if (p === '/api/municipios/ufs') return { ufs: [] };
       return {};
     });
     mount();

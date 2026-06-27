@@ -5,13 +5,11 @@ import { Badge, Btn, Card, EmptyState, PageHeader, Spinner, cn } from '../lib/ui
 import { Icon, type IconName } from '../lib/icons.tsx';
 import { useOptionalUser } from '../lib/auth.tsx';
 import { CompanySearch } from '../lib/companySearch.tsx';
-import { ProfileForm } from './Profile.tsx';
 import { toast } from '../lib/toast.tsx';
 import { dec, maskCNPJ, maskPct, maskPhone } from '../lib/format.ts';
 
-type Section = 'perfil' | 'empresas' | 'funil' | 'contatos' | 'cenarios' | 'acoes' | 'aliquotas' | 'alertas' | 'smtp';
+type Section = 'empresas' | 'funil' | 'contatos' | 'cenarios' | 'acoes' | 'aliquotas' | 'alertas' | 'smtp';
 const SECTIONS: { key: Section; label: string; icon: IconName; desc: string; admin?: boolean }[] = [
-  { key: 'perfil', label: 'Perfil-alvo', icon: 'compass', desc: 'Quem o motor deve priorizar' },
   { key: 'empresas', label: 'Empresas representadas', icon: 'building', desc: 'Representadas e suas marcas' },
   { key: 'contatos', label: 'Contatos', icon: 'users', desc: 'Pessoas para vincular na prospecção' },
   { key: 'cenarios', label: 'Cenários', icon: 'list', desc: 'Opções de "cenário atual"' },
@@ -26,7 +24,7 @@ const inputCls = 'w-full rounded-xl border border-ink-200 bg-white px-3 py-2.5 t
 export function Settings(): React.JSX.Element {
   const user = useOptionalUser();
   const sections = SECTIONS.filter((s) => !s.admin || user?.role === 'admin');
-  const [section, setSection] = useState<Section>('perfil');
+  const [section, setSection] = useState<Section>('empresas');
   return (
     <div className="space-y-4 p-4 sm:p-6">
       <PageHeader title="Configurações" subtitle="Ajuste como o Prospecta funciona para a sua operação." />
@@ -49,7 +47,6 @@ export function Settings(): React.JSX.Element {
           })}
         </nav>
         <div className="min-w-0 flex-1">
-          {section === 'perfil' && <ProfileForm />}
           {section === 'empresas' && <RepresentadasEditor inputCls={inputCls} />}
           {section === 'contatos' && <ContatosEditor inputCls={inputCls} />}
           {section === 'cenarios' && (

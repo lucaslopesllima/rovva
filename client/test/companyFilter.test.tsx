@@ -1,40 +1,35 @@
-// useCompanyFilter: filtragem client-side, persistência e prefill do público-alvo.
+// useCompanyFilter: filtragem client-side e persistência do filtro de empresas.
+// O perfil-alvo foi removido; o território (municípios) agora vive no filtro,
+// persistido no navegador (companyFilter:reco) e aplicado ao client-side.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useCompanyFilter, type FilterableCompany } from '../src/lib/companyFilter.tsx';
-import { api } from '../src/lib/api.ts';
+import type { Municipio } from '../src/lib/types.ts';
 
-vi.mock('../src/lib/api.ts', () => ({
-  api: { get: vi.fn() },
-}));
-const apiGet = vi.mocked(api.get);
+// O hook não consulta a API; mock evita rede caso o módulo seja exercitado.
+vi.mock('../src/lib/api.ts', () => ({ api: { get: vi.fn().mockResolvedValue({ ufs: [], municipios: [] }) } }));
 
 const co = (over: Partial<FilterableCompany>): FilterableCompany => ({
   razao_social: 'Empresa Padrão LTDA', nome_fantasia: null, cnpj: '11222333000144',
   cnae_principal: 4781400, uf: 'SP', municipio_id: 100, porte: 'pequeno', ...over,
 });
+const mun = (id: number, uf = 'SP'): Municipio => ({ id, nome: `Cidade ${id}`, uf, regiao: 'Sudeste' });
 
-beforeEach(() => {
-  apiGet.mockReset();
-  apiGet.mockResolvedValue({ profile: { cnaes_alvo: [4781400], territorio_municipios: [100] } });
-});
+beforeEach(() => { localStorage.clear(); });
 
 describe('useCompanyFilter', () => {
-  it('prefill do CNAE-alvo quando não há estado salvo; usa território', async () => {
+  it('restringe ao território (municipio_id) com usarAlvo ligado por padrão', () => {
     const { result } = renderHook(() => useCompanyFilter('t1'));
-    await waitFor(() => expect(result.current.alvoCnaes).toEqual([4781400]));
-    expect(result.current.fCnae).toBe('4781400');
-
+    expect(result.current.usarAlvo).toBe(true);
+    act(() => result.current.setTerritorio([mun(100)]));
     const dentro = co({});
     const fora = co({ municipio_id: 999 });
-    expect(result.current.apply([dentro, fora])).toEqual([dentro]); // usarAlvo default true
+    expect(result.current.apply([dentro, fora])).toEqual([dentro]);
   });
 
-  it('filtra por texto (razão/fantasia/cnpj), cnae e porte', async () => {
+  it('filtra por texto (razão/fantasia/cnpj), cnae e porte', () => {
     const { result } = renderHook(() => useCompanyFilter('t2'));
-    await waitFor(() => expect(result.current.alvoCnaes.length).toBe(1));
-
-    act(() => { result.current.setUsarAlvo(false); result.current.setFCnae(''); });
+    act(() => result.current.setUsarAlvo(false));
 
     act(() => result.current.setFq('padaria'));
     const padaria = co({ razao_social: 'Padaria Pão Quente' });
@@ -50,39 +45,41 @@ describe('useCompanyFilter', () => {
     expect(result.current.apply([co({ porte: 'micro' }), co({})])).toHaveLength(1);
   });
 
-  it('UF da tela sobrescreve o território', async () => {
+  it('UF da tela sobrescreve o território', () => {
     const { result } = renderHook(() => useCompanyFilter('t3'));
-    await waitFor(() => expect(result.current.alvoMunis).toEqual([100]));
+    act(() => result.current.setTerritorio([mun(100)]));
     act(() => result.current.setFUf('sc, pr'));
     const sc = co({ uf: 'SC', municipio_id: 999 }); // fora do território, mas UF manda
     expect(result.current.apply([sc, co({ uf: 'SP' })])).toEqual([sc]);
   });
 
-  it('limpar zera tudo; aplicarAlvo restaura CNAEs; persiste no localStorage', async () => {
+  it('limpar zera os filtros e desliga o território', () => {
     const { result } = renderHook(() => useCompanyFilter('t4'));
-    await waitFor(() => expect(result.current.alvoCnaes.length).toBe(1));
-
-    act(() => { result.current.setFq('x'); result.current.limpar(); });
+    act(() => { result.current.setFq('x'); result.current.setTerritorio([mun(100)]); });
+    expect(result.current.filtroAtivo).toBe(true);
+    act(() => result.current.limpar());
     expect(result.current.fq).toBe('');
     expect(result.current.usarAlvo).toBe(false);
     expect(result.current.filtroAtivo).toBe(false);
+  });
 
-    act(() => result.current.aplicarAlvo());
-    expect(result.current.fCnae).toBe('4781400');
-    expect(result.current.usarAlvo).toBe(true);
-
+  it('persiste o filtro e o território no localStorage', async () => {
+    const { result } = renderHook(() => useCompanyFilter('t5'));
+    act(() => { result.current.setFCnae('4781400'); result.current.setTerritorio([mun(100)]); });
     await waitFor(() => {
-      const saved = JSON.parse(localStorage.getItem('companyFilter:t4')!) as { fCnae: string };
+      const saved = JSON.parse(localStorage.getItem('companyFilter:t5')!) as { fCnae: string };
       expect(saved.fCnae).toBe('4781400');
+      const reco = JSON.parse(localStorage.getItem('companyFilter:reco')!) as { munis: Municipio[] };
+      expect(reco.munis.map((mn) => mn.id)).toEqual([100]);
     });
   });
 
-  it('estado salvo tem precedência sobre o prefill', async () => {
-    localStorage.setItem('companyFilter:t5',
+  it('estado salvo tem precedência sobre o default', () => {
+    localStorage.setItem('companyFilter:t6',
       JSON.stringify({ fq: 'salvo', fCnae: '999', fUf: '', fPorte: '', usarAlvo: false }));
-    const { result } = renderHook(() => useCompanyFilter('t5'));
-    await waitFor(() => expect(result.current.alvoCnaes.length).toBe(1));
+    const { result } = renderHook(() => useCompanyFilter('t6'));
     expect(result.current.fq).toBe('salvo');
-    expect(result.current.fCnae).toBe('999'); // sem prefill por cima
+    expect(result.current.fCnae).toBe('999');
+    expect(result.current.usarAlvo).toBe(false);
   });
 });

@@ -3,7 +3,7 @@ import rateLimit from '@fastify/rate-limit';
 import { pool } from './db.ts';
 import { config } from './config.ts';
 import { authRoutes } from './routes/auth.ts';
-import { profileRoutes } from './routes/profile.ts';
+import { municipiosRoutes } from './routes/municipios.ts';
 import { recommendRoutes } from './routes/recommend.ts';
 import { cnaeRoutes } from './routes/cnae.ts';
 import { relationshipRoutes } from './routes/relationships.ts';
@@ -49,7 +49,7 @@ export async function buildApp(opts: { logger?: boolean; authRateLimitMax?: numb
   });
 
   authRoutes(app);
-  profileRoutes(app);
+  municipiosRoutes(app);
   recommendRoutes(app);
   cnaeRoutes(app);
   relationshipRoutes(app);

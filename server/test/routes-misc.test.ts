@@ -28,25 +28,7 @@ const inj = (s: Session, method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', ur
   ReturnType<FastifyInstance['inject']> =>
   app.inject({ method, url, headers: bearer(s.token), payload });
 
-describe('profile + municipios', () => {
-  it('GET devolve o perfil criado no register; PUT atualiza com e sem origem', async () => {
-    const before = await inj(a, 'GET', '/api/profile');
-    expect((before.json() as { profile: { cnaes_alvo: number[] } }).profile.cnaes_alvo).toEqual([]);
-
-    const put = await inj(a, 'PUT', '/api/profile', {
-      cnaes_alvo: [4781400], territorio_municipios: [SP], territorio_raio_km: null,
-      pesos: { cnae: 0.6, proximidade: 0.3, porte: 0.1 },
-    });
-    expect((put.json() as { profile: { cnaes_alvo: number[] } }).profile.cnaes_alvo).toEqual([4781400]);
-
-    const putOrigem = await inj(a, 'PUT', '/api/profile', {
-      origem_endereco: 'Av. Paulista, 1000', origem_lat: -23.56, origem_lon: -46.65,
-    });
-    const p = (putOrigem.json() as { profile: { origem_lat: number; cnaes_alvo: number[] } }).profile;
-    expect(p.origem_lat).toBeCloseTo(-23.56);
-    expect(p.cnaes_alvo).toEqual([4781400]); // COALESCE preserva o que não veio
-  });
-
+describe('municipios', () => {
   it('busca/labels/ufs/by-uf de municípios', async () => {
     const all = await inj(a, 'GET', '/api/municipios');
     expect((all.json() as { municipios: unknown[] }).municipios.length).toBeGreaterThan(100);
@@ -248,22 +230,20 @@ describe('audit (filtros)', () => {
 });
 
 describe('recommend', () => {
-  it('400 sem perfil e sem território; resultados no modo município; exclusão do funil', async () => {
+  it('400 sem território; resultados no modo município; exclusão do funil', async () => {
     const solo = await register(app, 'rec');
 
-    await query('DELETE FROM target_profiles WHERE org_id = $1', [solo.user.org_id]);
+    // território é obrigatório e vem do request (sem perfil server-side).
     expect((await inj(solo, 'GET', '/api/recommend')).statusCode).toBe(400);
-
-    await inj(solo, 'PUT', '/api/profile', { cnaes_alvo: [4781400], territorio_municipios: [] });
-    expect((await inj(solo, 'GET', '/api/recommend')).statusCode).toBe(400);
+    expect((await inj(solo, 'GET', '/api/recommend?munis=')).statusCode).toBe(400);
 
     const cid = await makeCompany({
       municipioId: SP, lat: -23.55, lon: -46.63, cnae: 4781400,
       razao: 'Recomendavel Vestuario LTDA', porte: 'pequeno',
     });
-    await inj(solo, 'PUT', '/api/profile', { cnaes_alvo: [4781400], territorio_municipios: [SP] });
 
-    const r = await inj(solo, 'GET', '/api/recommend?limit=100');
+    const url = `/api/recommend?munis=${SP}&cnae=4781400&limit=100`;
+    const r = await inj(solo, 'GET', url);
     expect(r.statusCode).toBe(200);
     interface Rec { id: string; reason: { cnae_match: string } }
     const results = (r.json() as { results: Rec[] }).results;
@@ -273,32 +253,31 @@ describe('recommend', () => {
 
     // entrou no funil -> some da recomendação
     await inj(solo, 'POST', '/api/relationships', { company_id: cid });
-    const after = await inj(solo, 'GET', '/api/recommend?limit=100');
+    const after = await inj(solo, 'GET', url);
     expect((after.json() as { results: Rec[] }).results.some((x) => Number(x.id) === cid)).toBe(false);
   });
 
-  it('filtros server-side (q, cnae, uf, porte) e modo raio', async () => {
+  it('filtros server-side (q, cnae-alvo, uf, porte) e modo raio', async () => {
     const solo = await register(app, 'rec2');
     const cid = await makeCompany({
       municipioId: SP, lat: -23.55, lon: -46.63, cnae: 4781400,
       razao: 'Filtrada Confeccoes LTDA', porte: 'micro',
     });
-    await inj(solo, 'PUT', '/api/profile', { cnaes_alvo: [4781400], territorio_municipios: [SP] });
+    const base = `munis=${SP}&cnae=4781400`;
 
     interface Page { results: { id: string }[] }
     const has = (j: Page): boolean => j.results.some((x) => Number(x.id) === cid);
 
-    expect(has((await inj(solo, 'GET', '/api/recommend?q=Filtrada Confeccoes&limit=100')).json() as Page)).toBe(true);
+    expect(has((await inj(solo, 'GET', `/api/recommend?${base}&q=Filtrada Confeccoes&limit=100`)).json() as Page)).toBe(true);
     // q curto (<3) é ignorado — não filtra nada
-    expect((await inj(solo, 'GET', '/api/recommend?q=ab&limit=100')).statusCode).toBe(200);
-    expect(has((await inj(solo, 'GET', '/api/recommend?cnae=4781400&limit=100')).json() as Page)).toBe(true);
-    expect(has((await inj(solo, 'GET', '/api/recommend?uf=SP&porte=micro&limit=100')).json() as Page)).toBe(true);
-    expect(has((await inj(solo, 'GET', '/api/recommend?porte=demais&limit=100')).json() as Page)).toBe(false);
+    expect((await inj(solo, 'GET', `/api/recommend?${base}&q=ab&limit=100`)).statusCode).toBe(200);
+    expect(has((await inj(solo, 'GET', `/api/recommend?${base}&limit=100`)).json() as Page)).toBe(true);
+    expect(has((await inj(solo, 'GET', `/api/recommend?${base}&uf=SP&porte=micro&limit=100`)).json() as Page)).toBe(true);
+    expect(has((await inj(solo, 'GET', `/api/recommend?${base}&porte=demais&limit=100`)).json() as Page)).toBe(false);
     // q com dígitos aciona a busca por prefixo de cnpj
-    expect((await inj(solo, 'GET', '/api/recommend?q=99 999&limit=100')).statusCode).toBe(200);
+    expect((await inj(solo, 'GET', `/api/recommend?${base}&q=99 999&limit=100`)).statusCode).toBe(200);
 
     // modo raio (50km do centroide do território)
-    await inj(solo, 'PUT', '/api/profile', { territorio_raio_km: 50 });
-    expect(has((await inj(solo, 'GET', '/api/recommend?limit=100')).json() as Page)).toBe(true);
+    expect(has((await inj(solo, 'GET', `/api/recommend?${base}&raio=50&limit=100`)).json() as Page)).toBe(true);
   });
 });

@@ -1,7 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { query } from '../db.ts';
 import { requireAuth } from '../auth.ts';
-import { resolveProfile } from '../targetProfile.ts';
 
 // Relatórios (Fase 4): vendas agregadas, curva ABC de clientes, mapa de
 // cobertura (potencial RFB vs. clientes por município) e perdas por motivo de
@@ -113,14 +112,12 @@ export function reportRoutes(app: FastifyInstance): void {
   // na base RFB) vs. clientes já conquistados (relationships status='cliente').
   app.get('/api/reports/coverage', {
     preHandler: requireAuth,
-    schema: { querystring: { type: 'object', properties: { user_id: { type: 'integer' } } } },
+    schema: { querystring: { type: 'object', properties: { user_id: { type: 'integer' }, munis: { type: 'string' } } } },
   }, async (req) => {
     const orgId = req.auth!.orgId;
-    const q = req.query as { user_id?: number };
-    // território do vendedor logado (own > org default); admin pode simular via ?user_id.
-    const scopeUser = req.auth!.role === 'admin' && q.user_id !== undefined ? q.user_id : req.auth!.userId;
-    const profile = await resolveProfile(orgId, scopeUser);
-    const municipios = profile?.territorio_municipios ?? [];
+    const q = req.query as { user_id?: number; munis?: string };
+    // território vem do filtro da tela de busca (csv de ids de município).
+    const municipios = (q.munis ?? '').split(/[,\s]+/).map((x) => parseInt(x, 10)).filter(Number.isFinite);
     if (municipios.length === 0) return { municipios: [] };
 
     const params: unknown[] = [orgId, municipios];

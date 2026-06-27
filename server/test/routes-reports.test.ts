@@ -75,10 +75,10 @@ describe('reports/abc', () => {
 
 describe('reports/coverage', () => {
   it('conta potencial RFB e clientes por município do território', async () => {
-    await inj(rep1, 'PUT', '/api/profile', { cnaes_alvo: [4781400], territorio_municipios: [SP] });
     await faturar(rep1, 500, SP); // vira cliente em SP
 
-    const cov = (await inj(rep1, 'GET', '/api/reports/coverage')).json() as {
+    // território vem na query (csv de municípios), não mais de um perfil server-side.
+    const cov = (await inj(rep1, 'GET', `/api/reports/coverage?munis=${SP}`)).json() as {
       municipios: { id: number; potencial: number; clientes: number }[];
     };
     const sp = cov.municipios.find((m) => m.id === SP);
@@ -87,7 +87,7 @@ describe('reports/coverage', () => {
     expect(sp!.clientes).toBeGreaterThanOrEqual(1);
   });
 
-  it('sem território configurado retorna vazio', async () => {
+  it('sem território no request retorna vazio', async () => {
     const solo = await register(app, 'rep.solo');
     const cov = (await inj(solo, 'GET', '/api/reports/coverage')).json() as { municipios: unknown[] };
     expect(cov.municipios).toHaveLength(0);

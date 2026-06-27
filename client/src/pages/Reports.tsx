@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Tooltip } from 'react-leaflet';
 import { api } from '../lib/api.ts';
 import { useSellers, SellerFilter } from '../lib/sellers.tsx';
+import { loadTerritorioIds } from '../lib/companyFilter.tsx';
 import { Btn, Card, EmptyState, PageHeader, Segmented, Spinner, cn } from '../lib/ui.tsx';
 import { brl, brl0, csvNum } from '../lib/format.ts';
 import { downloadCsv } from '../lib/export.ts';
@@ -171,14 +172,22 @@ function Cobertura({ ownerId }: { ownerId: 'todos' | number }): React.JSX.Elemen
   const [municipios, setMunicipios] = useState<CoverageMun[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // território vem do filtro da tela de busca (mesma config da recomendação).
+  const munis = loadTerritorioIds();
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    void api.get<{ municipios: CoverageMun[] }>(`/api/reports/coverage?${ownerQs(ownerId).slice(1)}`)
+    if (munis.length === 0) { setMunicipios([]); setLoading(false); return; }
+    const qs = new URLSearchParams(ownerQs(ownerId).slice(1));
+    qs.set('munis', munis.join(','));
+    void api.get<{ municipios: CoverageMun[] }>(`/api/reports/coverage?${qs.toString()}`)
       .then((r) => { if (!cancelled) setMunicipios(r.municipios); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [ownerId]);
+  // munis derivado de localStorage; recalcula por ownerId/quantidade de municípios.
+  /* eslint-disable-next-line react-hooks/exhaustive-deps */
+  }, [ownerId, munis.join(',')]);
 
   const center = useMemo<[number, number]>(() => {
     const m = municipios[0];
@@ -187,7 +196,7 @@ function Cobertura({ ownerId }: { ownerId: 'todos' | number }): React.JSX.Elemen
 
   if (loading) return <Spinner />;
   if (municipios.length === 0) {
-    return <EmptyState icon="map" title="Sem território" hint="Defina os municípios-alvo no perfil (Config → Perfil-alvo)." />;
+    return <EmptyState icon="map" title="Sem território" hint="Defina os municípios no filtro da tela de Empresas recomendadas." />;
   }
 
   const totPot = municipios.reduce((s, m) => s + m.potencial, 0);

@@ -44,7 +44,6 @@ export function authRoutes(app: FastifyInstance): void {
         'INSERT INTO users (org_id, email, senha_hash, role) VALUES ($1,$2,$3,$4) RETURNING id, role',
         [org.id, normEmail, senhaHash, 'admin'],
       )).rows[0];
-      await client.query('INSERT INTO target_profiles (org_id) VALUES ($1)', [org.id]);
       for (let i = 0; i < DEFAULT_STAGES.length; i++) {
         await client.query('INSERT INTO stages (org_id, nome, ordem) VALUES ($1,$2,$3)', [org.id, DEFAULT_STAGES[i], i + 1]);
       }

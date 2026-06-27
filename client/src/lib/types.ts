@@ -21,18 +21,6 @@ export interface Recommendation {
   };
 }
 
-export interface Profile {
-  org_id: string;
-  user_id: number | null;
-  cnaes_alvo: number[];
-  territorio_municipios: number[];
-  territorio_raio_km: number | null;
-  pesos: { cnae: number; proximidade: number; porte: number };
-  origem_endereco: string | null;
-  origem_lat: number | null;
-  origem_lon: number | null;
-}
-
 export interface Municipio { id: number; nome: string; uf: string; regiao: string }
 
 export interface CnaeItem { codigo: number; descricao: string; secao: string; divisao: number }

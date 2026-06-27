@@ -156,17 +156,17 @@ export function Kanban(): React.JSX.Element {
                       dragId === c.id && 'opacity-50')}>
                     <div className="absolute right-2 top-2 flex items-center gap-0.5">
                       <button type="button"
+                        onClick={() => setEditing(c)}
+                        title="Editar prospecção"
+                        className="rounded-lg p-1 text-ink-300 transition hover:bg-ink-100 hover:text-ink-600 focus:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                        <Icon name="pencil" size={14} />
+                      </button>
+                      <button type="button"
                         onClick={() => setMoveFor((m) => (m === c.id ? null : c.id))}
                         aria-label="Mover para outra etapa" aria-haspopup="menu" aria-expanded={moveFor === c.id}
                         title="Mover para…"
                         className="rounded-lg p-1 text-ink-300 transition hover:bg-ink-100 hover:text-ink-600 focus:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                         <Icon name="arrowRight" size={14} />
-                      </button>
-                      <button type="button"
-                        onClick={() => setEditing(c)}
-                        title="Editar prospecção"
-                        className="rounded-lg p-1 text-ink-300 transition hover:bg-ink-100 hover:text-ink-600 focus:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
-                        <Icon name="pencil" size={14} />
                       </button>
                     </div>
                     {moveFor === c.id && (
@@ -185,28 +185,26 @@ export function Kanban(): React.JSX.Element {
                         </div>
                       </>
                     )}
-                    <div className="flex items-center gap-1 pr-6">
-                      <p className="truncate text-sm font-semibold text-ink-800">{c.nome_fantasia || c.razao_social}</p>
-                      <button type="button"
-                        onClick={() => setViewing(c.company_id)}
+                    <div className="pr-12">
+                      <button type="button" onClick={() => setViewing(c.company_id)}
                         title="Ver dados da empresa"
-                        className="shrink-0 rounded-md p-0.5 text-ink-300 transition hover:bg-ink-100 hover:text-brand-600">
-                        <Icon name="eye" size={14} />
+                        className="block max-w-full truncate text-left text-sm font-semibold text-ink-800 transition-colors hover:text-brand-600 hover:underline">
+                        {c.nome_fantasia || c.razao_social}
                       </button>
                     </div>
                     <p className="truncate text-xs text-ink-400">{c.razao_social}</p>
-                    {(c.marca || c.contatos.length > 0) && (
+                    {(c.marca || (c.contatos?.length ?? 0) > 0) && (
                       <p className="mt-1 truncate text-xs text-ink-500">
-                        {[c.marca, c.contatos.map((x) => x.nome).join(', ')].filter(Boolean).join(' · ')}
+                        {[c.marca, (c.contatos ?? []).map((x) => x.nome).join(', ')].filter(Boolean).join(' · ')}
                       </p>
                     )}
-                    {c.catalogo.length > 0 && (
+                    {(c.catalogo?.length ?? 0) > 0 && (
                       <p className="mt-1 inline-flex max-w-full items-center gap-1 truncate text-xs text-ink-400">
                         <Icon name="box" size={12} className="shrink-0" />
                         <span className="truncate">{c.catalogo.map((x) => x.nome).join(', ')}</span>
                       </p>
                     )}
-                    {c.amostras.length > 0 && (
+                    {(c.amostras?.length ?? 0) > 0 && (
                       <button type="button" onClick={() => setSamplesView(c)}
                         title="Ver/editar amostras solicitadas"
                         className="mt-1 inline-flex max-w-full items-center gap-1 truncate rounded-lg bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-100">

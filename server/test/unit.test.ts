@@ -58,18 +58,11 @@ describe('buildRecommendQuery', () => {
     expect(params[4]).toBe(0.7);
   });
 
-  it('filtro cnae explícito dispensa a poda por divisão (e não deixa $ órfão)', () => {
-    const { text, params } = buildRecommendQuery({ ...base, filters: { cnae: [1111111] } });
-    expect(text).toContain('c.cnae_principal = ANY($13::int[])');
-    expect(params[12]).toEqual([1111111]);
-    // todo parâmetro precisa estar referenciado no SQL (42P18 se sobrar)
-    for (let i = 1; i <= params.length; i++) expect(text).toContain(`$${i}`);
-  });
-
-  it('sem filtro cnae, a poda por divisões entra como último parâmetro', () => {
+  it('a poda por divisões dos CNAEs-alvo entra como parâmetro (e não deixa $ órfão)', () => {
     const { text, params } = buildRecommendQuery(base);
     expect(text).toContain('c.cnae_divisao = ANY($13::smallint[])');
     expect(params[12]).toEqual(base.pruneDivisoes);
+    // todo parâmetro precisa estar referenciado no SQL (42P18 se sobrar)
     for (let i = 1; i <= params.length; i++) expect(text).toContain(`$${i}`);
   });
 

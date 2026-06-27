@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { MapContainer, TileLayer, CircleMarker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import type { LatLngBoundsExpression } from 'leaflet';
 import { api, ApiError } from '../lib/api.ts';
@@ -9,7 +8,6 @@ import { Icon } from '../lib/icons.tsx';
 import { CompanyFilterBar, useCompanyFilter } from '../lib/companyFilter.tsx';
 import { CompanyModal } from '../lib/companyModal.tsx';
 import { Cnae } from '../lib/cnae.tsx';
-import { useSellers, SellerFilter } from '../lib/sellers.tsx';
 import { toast } from '../lib/toast.tsx';
 
 const MATCH_COLOR: Record<string, string> = {
@@ -117,9 +115,6 @@ export function Recommend(): React.JSX.Element {
   const [done, setDone] = useState(false);
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [view, setView] = useState<'lista' | 'mapa'>('lista');
-  // simulação de vendedor (admin): vê a recomendação com o território/CNAEs do vendedor.
-  const [simUser, setSimUser] = useState<'todos' | number>('todos');
-  const sellers = useSellers();
   const [filtersOpen, setFiltersOpen] = useState(() => {
     try { return localStorage.getItem(FILTERS_OPEN_KEY) === '1'; } catch { return false; }
   });
@@ -127,7 +122,6 @@ export function Recommend(): React.JSX.Element {
   const [focus, setFocus] = useState<MapFocus | null>(null);
   const [route, setRoute] = useState<RouteInfo | null>(null);
   const [routingId, setRoutingId] = useState<string | null>(null);
-  const [origemFixa, setOrigemFixa] = useState<{ lat: number; lon: number } | null>(null);
   const [geoCache, setGeoCache] = useState<Record<string, { lat: number; lon: number; precisao: string }>>({});
   const filter = useCompanyFilter('prospeccao');
   const LIMIT = 20;
@@ -146,28 +140,18 @@ export function Recommend(): React.JSX.Element {
     }
   };
 
-  // origem fixa do perfil (config) p/ rotas
-  useEffect(() => {
-    void api.get<{ profile: { origem_lat: number | null; origem_lon: number | null } | null }>('/api/profile')
-      .then((r) => {
-        const p = r.profile;
-        if (p?.origem_lat != null && p?.origem_lon != null) setOrigemFixa({ lat: p.origem_lat, lon: p.origem_lon });
-      }).catch(() => undefined);
-  }, []);
-
   // Rota (OSRM público) da localização atual do rep até a empresa escolhida.
   const traceRoute = async (rec: Recommendation): Promise<void> => {
     if (rec.lat == null || rec.lon == null) { toast.error('Empresa sem localização geográfica.'); return; }
     setRoutingId(rec.id);
     try {
       // origem = endereço do usuário logado (org) no banco, geocodificado;
-      // fallbacks: origem do perfil-alvo -> geolocalização do navegador.
+      // fallback: geolocalização do navegador.
       let o: { lat: number; lon: number } | null = null;
       try {
         const r = await api.get<{ origem: { lat: number; lon: number } | null }>('/api/account/origem');
         if (r.origem) o = { lat: r.origem.lat, lon: r.origem.lon };
       } catch { /* ignora, tenta fallback */ }
-      if (!o) o = origemFixa;
       if (!o) {
         if (!navigator.geolocation) { toast.error('Cadastre seu endereço em Configurações (conta) para traçar rotas.'); return; }
         const pos = await new Promise<GeolocationPosition>((res, rej) =>
@@ -194,11 +178,10 @@ export function Recommend(): React.JSX.Element {
     } finally { setRoutingId(null); }
   };
 
-  // nº de filtros ativos. Regra: >=1 filtro busca na base; 0 filtros = tela vazia
-  // (não busca nada, evita varrer a base inteira sem critério).
-  const nFiltros = [filter.fq.trim(), filter.fCnae.trim(), filter.fUf.trim(), filter.fPorte]
-    .filter(Boolean).length;
-  const semFiltro = nFiltros === 0;
+  // O território é o critério obrigatório: ele delimita a varredura da base.
+  // Sem município definido, a tela fica vazia e pede a configuração.
+  const territorioIds = filter.territorio.map((m) => m.id);
+  const semTerritorio = territorioIds.length === 0;
 
   // Aborta a busca anterior antes de disparar a próxima — sem isso uma resposta
   // lenta de filtro antigo pode sobrescrever a da busca atual (race).
@@ -211,11 +194,15 @@ export function Recommend(): React.JSX.Element {
     setErr('');
     try {
       const qs = new URLSearchParams({ limit: String(LIMIT), offset: String(off) });
+      qs.set('munis', territorioIds.join(','));
+      if (filter.raio !== '' && Number(filter.raio) > 0) qs.set('raio', String(filter.raio));
+      qs.set('w_cnae', String(filter.pesos.cnae));
+      qs.set('w_prox', String(filter.pesos.proximidade));
+      qs.set('w_porte', String(filter.pesos.porte));
       if (filter.fq.trim()) qs.set('q', filter.fq.trim());
       if (filter.fCnae.trim()) qs.set('cnae', filter.fCnae.trim());
       if (filter.fUf.trim()) qs.set('uf', filter.fUf.trim());
       if (filter.fPorte) qs.set('porte', filter.fPorte);
-      if (simUser !== 'todos') qs.set('user_id', String(simUser));
       const r = await api.get<{ results: Recommendation[]; page: { count: number } }>(
         `/api/recommend?${qs.toString()}`, { signal: ac.signal },
       );
@@ -234,7 +221,7 @@ export function Recommend(): React.JSX.Element {
   // recarrega do servidor (página 0) ao mudar qualquer filtro — busca na BASE TODA,
   // com debounce p/ não disparar a cada tecla. Roda também no mount.
   useEffect(() => {
-    if (semFiltro) {  // sem filtro -> tela vazia, sem consultar
+    if (semTerritorio) {  // sem território -> tela vazia, sem consultar
       setRecs([]); setDone(true); setOffset(0); setErr('');
       setLoading(false); // sem isso o spinner inicial nunca dá lugar ao empty state
       return;
@@ -242,7 +229,8 @@ export function Recommend(): React.JSX.Element {
     const t = setTimeout(() => { void load(0); }, 350);
     return () => clearTimeout(t);
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [filter.fq, filter.fCnae, filter.fUf, filter.fPorte, simUser]);
+  }, [filter.fq, filter.fCnae, filter.fUf, filter.fPorte, territorioIds.join(','), filter.raio,
+    filter.pesos.cnae, filter.pesos.proximidade, filter.pesos.porte]);
 
   // No mapa, plota só o que já está carregado na lista — sem auto-paginar.
 
@@ -317,9 +305,10 @@ export function Recommend(): React.JSX.Element {
       <div className="p-4 sm:p-6">
         <Card className="border-amber-200 bg-amber-50 p-5">
           <p className="font-semibold text-amber-900">{err}</p>
-          <Link to="/config" className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:underline">
-            Configurar perfil-alvo <Icon name="chevronRight" size={15} />
-          </Link>
+          <button onClick={() => setFiltersOpen(true)}
+            className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:underline">
+            Ajustar filtros da busca <Icon name="chevronRight" size={15} />
+          </button>
         </Card>
       </div>
     );
@@ -330,13 +319,16 @@ export function Recommend(): React.JSX.Element {
       <div className="space-y-4 p-4 sm:p-6">
         <PageHeader
           title="Empresas recomendadas"
-          subtitle={semFiltro ? 'Selecione um filtro para buscar empresas' : `${recs.length} resultado(s) · ranqueados por fit`}
+          subtitle={semTerritorio ? 'Defina o território nos filtros para buscar empresas' : `${recs.length} resultado(s) · ranqueados por fit`}
           actions={
             <div className="flex items-center gap-2">
-              <SellerFilter value={simUser} onChange={setSimUser} sellers={sellers} />
               {view === 'lista' && (
-                <Btn variant={filter.filtroAtivo ? 'primary' : 'soft'} icon="search" onClick={() => setFiltersOpen((v) => !v)}>
+                <Btn variant={filter.filtroAtivo ? 'primary' : 'soft'} icon="search"
+                  aria-expanded={filtersOpen} title={filtersOpen ? 'Recolher filtros' : 'Expandir filtros'}
+                  onClick={() => setFiltersOpen((v) => !v)}>
                   Filtros{filter.filtroAtivo ? ' · ativos' : ''}
+                  <Icon name="chevronRight" size={15}
+                    className={cn('transition-transform duration-300 ease-out', filtersOpen ? 'rotate-90' : 'rotate-0')} />
                 </Btn>
               )}
               <Segmented value={view} onChange={(v) => { setFocus(null); setView(v); }} options={[
@@ -347,7 +339,15 @@ export function Recommend(): React.JSX.Element {
           }
         />
 
-        {view === 'lista' && filtersOpen && <CompanyFilterBar f={filter} />}
+        {view === 'lista' && (
+          <div className={cn('grid transition-[grid-template-rows] duration-[1500ms] ease-in-out',
+            filtersOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')}>
+            <div className={cn('overflow-hidden transition-opacity duration-[1500ms] ease-in-out',
+              filtersOpen ? 'opacity-100' : 'opacity-0')}>
+              <CompanyFilterBar f={filter} recommend />
+            </div>
+          </div>
+        )}
 
         {view === 'lista' && (
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -404,7 +404,7 @@ export function Recommend(): React.JSX.Element {
                 <>
                   <Polyline positions={route.coords} pathOptions={{ color: '#2563eb', weight: 5, opacity: 0.8 }} />
                   <CircleMarker center={route.origem} radius={7} pathOptions={{ color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 1 }}>
-                    <Popup>{origemFixa ? 'Origem (endereço do perfil)' : 'Sua localização'}</Popup>
+                    <Popup>Origem da rota</Popup>
                   </CircleMarker>
                   <FitRoute coords={route.coords} />
                 </>
@@ -423,15 +423,15 @@ export function Recommend(): React.JSX.Element {
             <p className="py-6 text-center text-sm text-ink-400">Nenhuma recomendação bate com os filtros.</p>
           )}
           {loading && <Spinner />}
-          {!loading && !done && !semFiltro && (
+          {!loading && !done && !semTerritorio && (
             <Btn variant="ghost" onClick={() => load(offset)}
               className="w-full border border-ink-200 bg-white text-ink-600 hover:bg-ink-50">
               Carregar mais
             </Btn>
           )}
-          {recs.length === 0 && !loading && (semFiltro
-            ? <EmptyState icon="search" title="Selecione um filtro"
-                hint="Use texto, CNAE, UF ou porte nos Filtros para buscar empresas na base." />
+          {recs.length === 0 && !loading && (semTerritorio
+            ? <EmptyState icon="mapPin" title="Defina o território"
+                hint="Abra os Filtros e selecione municípios (ou um estado inteiro) para buscar empresas." />
             : <EmptyState icon="building" title="Nenhuma empresa encontrada"
                 hint="Nenhuma empresa bate com os filtros aplicados. Ajuste os critérios." />)}
         </div>

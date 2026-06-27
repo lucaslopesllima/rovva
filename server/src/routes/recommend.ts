@@ -3,7 +3,6 @@ import { query, withClient } from '../db.ts';
 import { requireAuth } from '../auth.ts';
 import { config } from '../config.ts';
 import { buildRecommendQuery, type RecommendProfile, type RecommendFilters } from '../sql/recommend.ts';
-import { resolveProfile } from '../targetProfile.ts';
 
 const PORTES = new Set(['nao_informado', 'micro', 'pequeno', 'demais']);
 
@@ -32,18 +31,27 @@ async function cnaeTiers(cnaesAlvo: number[]): Promise<{
   return { divisoesAlvo, secoesAlvo, pruneDivisoes };
 }
 
-function parseFilters(q: { q?: string; cnae?: string; uf?: string; porte?: string }): RecommendFilters {
-  const cnae = (q.cnae ?? '').split(/[,\s]+/).map((x) => parseInt(x, 10)).filter(Number.isFinite);
+const parseInts = (s?: string): number[] =>
+  (s ?? '').split(/[,\s]+/).map((x) => parseInt(x, 10)).filter(Number.isFinite);
+
+function parseFilters(q: { q?: string; uf?: string; porte?: string }): RecommendFilters {
   const uf = (q.uf ?? '').split(/[,\s]+/).map((x) => x.trim().toUpperCase()).filter((x) => x.length === 2);
   const texto = (q.q ?? '').trim();
   return {
     // <3 chars: o GIN trgm não indexa o padrão -> ILIKE '%x%' vira seq scan
     // na base inteira a cada tecla. Ignora até o termo ficar utilizável.
     q: texto.length >= 3 ? texto : undefined,
-    cnae: cnae.length ? cnae : undefined,
     uf: uf.length ? uf : undefined,
     porte: q.porte && PORTES.has(q.porte) ? q.porte : undefined,
   };
+}
+
+// Pesos do score vêm do filtro (cliente). Mantém o default antigo do perfil-alvo
+// quando o cliente não envia o valor, p/ a recomendação não zerar um fator.
+function parsePesos(q: { w_cnae?: number; w_prox?: number; w_porte?: number }): RecommendProfile['pesos'] {
+  const num = (v: number | undefined, d: number): number =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : d;
+  return { cnae: num(q.w_cnae, 0.5), proximidade: num(q.w_prox, 0.3), porte: num(q.w_porte, 0.2) };
 }
 
 export function recommendRoutes(app: FastifyInstance): void {
@@ -56,28 +64,38 @@ export function recommendRoutes(app: FastifyInstance): void {
           limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
           offset: { type: 'integer', minimum: 0, default: 0 },
           q: { type: 'string' },
-          cnae: { type: 'string' },
+          cnae: { type: 'string' },   // CNAEs-alvo (fit em tiers) — csv
+          munis: { type: 'string' },  // território: ids de município — csv
+          raio: { type: 'integer', minimum: 0 }, // raio km (opcional)
           uf: { type: 'string' },
           porte: { type: 'string' },
-          user_id: { type: 'integer' }, // admin: simular a recomendação de um vendedor
+          w_cnae: { type: 'number', minimum: 0, maximum: 1 },
+          w_prox: { type: 'number', minimum: 0, maximum: 1 },
+          w_porte: { type: 'number', minimum: 0, maximum: 1 },
         },
       },
     },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
-    const query = req.query as { limit?: number; offset?: number; q?: string; cnae?: string; uf?: string; porte?: string; user_id?: number };
+    const query = req.query as {
+      limit?: number; offset?: number; q?: string; cnae?: string; munis?: string;
+      raio?: number; uf?: string; porte?: string; w_cnae?: number; w_prox?: number; w_porte?: number;
+    };
     const { limit = 20, offset = 0 } = query;
     const filters = parseFilters(query);
 
-    // perfil efetivo do vendedor logado (own > org default); admin pode simular
-    // a recomendação de outro vendedor via ?user_id.
-    const scopeUser = req.auth!.role === 'admin' && query.user_id !== undefined
-      ? query.user_id : req.auth!.userId;
-    const profile = await resolveProfile(orgId, scopeUser) as RecommendProfile | null;
-    if (!profile) return reply.code(400).send({ error: 'perfil-alvo não configurado' });
-    if ((!profile.territorio_municipios || profile.territorio_municipios.length === 0)) {
-      return reply.code(400).send({ error: 'defina o território (municípios) no perfil-alvo' });
+    // Config da recomendação vem do filtro da tela (sem perfil server-side):
+    // território (municípios) + CNAEs-alvo + raio + pesos.
+    const municipios = parseInts(query.munis);
+    if (municipios.length === 0) {
+      return reply.code(400).send({ error: 'defina o território (municípios) na busca' });
     }
+    const profile: RecommendProfile = {
+      cnaes_alvo: parseInts(query.cnae),
+      territorio_municipios: municipios,
+      territorio_raio_km: typeof query.raio === 'number' && query.raio > 0 ? query.raio : null,
+      pesos: parsePesos(query),
+    };
 
     const tiers = await cnaeTiers(profile.cnaes_alvo ?? []);
     const { text, params } = buildRecommendQuery({ orgId, profile, limit, offset, filters, ...tiers });

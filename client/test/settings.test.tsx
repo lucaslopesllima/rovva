@@ -1,12 +1,11 @@
 // Configurações: navegação entre seções e editores de lista (cenários/funil).
-// ProfileForm tem teste próprio (profile.test.tsx); aqui entra mockado.
+// O perfil-alvo foi removido; a tela abre nas Empresas representadas.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Settings } from '../src/pages/Settings.tsx';
 import { api } from '../src/lib/api.ts';
 
-vi.mock('../src/pages/Profile.tsx', () => ({ ProfileForm: () => <div>PROFILE-FORM</div> }));
 vi.mock('../src/lib/api.ts', async (orig) => {
   const real = await orig() as Record<string, unknown>;
   return { ...real, api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), del: vi.fn() } };
@@ -28,9 +27,9 @@ beforeEach(() => {
 });
 
 describe('Settings', () => {
-  it('abre no perfil-alvo e navega entre as seções', async () => {
+  it('abre nas empresas representadas e navega entre as seções', async () => {
     render(<Settings />);
-    expect(screen.getByText('PROFILE-FORM')).toBeInTheDocument();
+    expect(await screen.findByText('Nenhuma empresa cadastrada')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: /Cenários/ }));
     expect(await screen.findByDisplayValue('Compra do concorrente')).toBeInTheDocument(); // item é um input editável
@@ -38,11 +37,11 @@ describe('Settings', () => {
     await userEvent.click(screen.getByRole('button', { name: /Funil/ }));
     expect(await screen.findByDisplayValue('Prospecção')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: /Empresas representadas/ }));
-    expect(await screen.findByText('Nenhuma empresa cadastrada')).toBeInTheDocument();
-
     await userEvent.click(screen.getByRole('button', { name: /Contatos/ }));
     expect(await screen.findByText('Nenhum contato')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /Empresas representadas/ }));
+    expect(await screen.findByText('Nenhuma empresa cadastrada')).toBeInTheDocument();
   });
 
   it('cenários: adiciona e remove item', async () => {

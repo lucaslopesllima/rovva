@@ -134,27 +134,11 @@ describe('pedidos: isolamento por vendedor', () => {
 });
 
 describe('perfil-alvo por vendedor', () => {
-  it('rep define o próprio território e o recommend o utiliza', async () => {
-    // org default sem território; rep1 define o próprio.
-    const put = await inj(rep1, 'PUT', '/api/profile', {
-      cnaes_alvo: [4781400], territorio_municipios: [3550308],
-    });
-    expect(put.statusCode).toBe(200);
-    const got = (await inj(rep1, 'GET', '/api/profile')).json() as { profile: { territorio_municipios: number[] }; own: boolean };
-    expect(got.own).toBe(true);
-    expect(got.profile.territorio_municipios).toContain(3550308);
-
-    // recommend do rep não dá erro de perfil ausente (território configurado).
-    const rec = await inj(rep1, 'GET', '/api/recommend?limit=1');
-    expect(rec.statusCode).toBe(200);
-  });
-
-  it('admin simula o perfil de um vendedor via ?user_id', async () => {
-    await inj(rep2, 'PUT', '/api/profile', { cnaes_alvo: [4781400], territorio_municipios: [3304557] });
-    const got = (await inj(a, 'GET', `/api/profile?user_id=${repId2}`)).json() as { profile: { territorio_municipios: number[] }; scope_user_id: number };
-    expect(got.scope_user_id).toBe(repId2);
-    expect(got.profile.territorio_municipios).toContain(3304557);
-    expect((await inj(a, 'GET', `/api/recommend?limit=1&user_id=${repId2}`)).statusCode).toBe(200);
+  it('recommend toma o território do request (sem perfil por vendedor)', async () => {
+    // território deixou de ser estado server-side: vem na query (mesma config p/ qualquer rep).
+    expect((await inj(rep1, 'GET', '/api/recommend?limit=1')).statusCode).toBe(400);
+    expect((await inj(rep1, 'GET', '/api/recommend?munis=3550308&cnae=4781400&limit=1')).statusCode).toBe(200);
+    expect((await inj(rep2, 'GET', '/api/recommend?munis=3304557&cnae=4781400&limit=1')).statusCode).toBe(200);
   });
 });
 

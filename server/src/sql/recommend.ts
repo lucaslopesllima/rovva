@@ -15,7 +15,6 @@ export interface RecommendProfile {
 
 export interface RecommendFilters {
   q?: string;            // texto: razão / fantasia / cnpj
-  cnae?: number[];       // cnae_principal exato (varre a base toda p/ esses CNAEs)
   uf?: string[];         // UFs
   porte?: string;        // porte_emp
 }
@@ -59,18 +58,14 @@ export function buildRecommendQuery(args: RecommendArgs): { text: string; params
     : `c.municipio_id = ANY($2::int[])`;
 
   // Filtros server-side: viram WHERE sobre TODA a base (dentro do território/alvo),
-  // não só a página carregada. CNAE explícito dispensa a poda por divisões-alvo.
+  // não só a página carregada.
   const f = args.filters ?? {};
   let p = params.length; // último índice usado (=12)
   const extra: string[] = [];
 
-  let cnaePredicate: string;
-  if (f.cnae && f.cnae.length > 0) {
-    params.push(f.cnae); cnaePredicate = `c.cnae_principal = ANY($${++p}::int[])`;
-  } else {
-    params.push(args.pruneDivisoes);
-    cnaePredicate = `(cardinality($1::int[]) = 0 OR c.cnae_divisao = ANY($${++p}::smallint[]))`;
-  }
+  // Candidatos podados pelas divisões das seções-alvo (sem CNAE-alvo, varre o território todo).
+  params.push(args.pruneDivisoes);
+  const cnaePredicate = `(cardinality($1::int[]) = 0 OR c.cnae_divisao = ANY($${++p}::smallint[]))`;
   if (f.uf && f.uf.length > 0) { params.push(f.uf); extra.push(`c.uf = ANY($${++p}::text[])`); }
   if (f.porte) { params.push(f.porte); extra.push(`c.porte = $${++p}::porte_emp`); }
   if (f.q) {
