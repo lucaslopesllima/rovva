@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { query } from '../db.ts';
-import { requireAuth, requireAdmin } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 
 // Consulta da trilha de auditoria (org-scoped, admin-only, read-only). Expõe
 // ações de todos os usuários da org (criação de user, troca de role, reset de
@@ -8,7 +8,7 @@ import { requireAuth, requireAdmin } from '../auth.ts';
 // de mutação via src/audit.ts.
 export function auditRoutes(app: FastifyInstance): void {
   app.get('/api/audit', {
-    preHandler: [requireAuth, requireAdmin],
+    preHandler: [requireAuth, requirePermission('audit.read')],
     schema: {
       querystring: {
         type: 'object',

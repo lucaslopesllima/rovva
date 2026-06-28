@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { one, query } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { scopeOwner, canWriteOwned } from '../scope.ts';
 import { audit, pick } from '../audit.ts';
 
@@ -38,7 +38,7 @@ export function emailScheduleRoutes(app: FastifyInstance): void {
 
   // Modelos são compartilhados na org: todos leem (planejar envio usa o catálogo
   // inteiro). owner_user_id registra o autor para o RBAC de escrita.
-  app.get('/api/email-templates', { preHandler: requireAuth }, async (req) => {
+  app.get('/api/email-templates', { preHandler: [requireAuth, requirePermission('email_templates.list')] }, async (req) => {
     const orgId = req.auth!.orgId;
     const rows = await query(
       `SELECT ${TPL_COLS} FROM email_templates WHERE org_id = $1 ORDER BY nome`, [orgId],
@@ -47,7 +47,7 @@ export function emailScheduleRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/email-templates', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('email_templates.create')],
     schema: {
       body: {
         type: 'object',
@@ -72,7 +72,7 @@ export function emailScheduleRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/email-templates/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('email_templates.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -112,7 +112,7 @@ export function emailScheduleRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/email-templates/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('email_templates.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -132,7 +132,7 @@ export function emailScheduleRoutes(app: FastifyInstance): void {
   /* ── Agendamentos ──────────────────────────────────────── */
 
   app.get('/api/email-schedules', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('email_schedules.list')],
     schema: {
       querystring: {
         type: 'object',
@@ -156,7 +156,7 @@ export function emailScheduleRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/email-schedules', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('email_schedules.create')],
     schema: {
       body: {
         type: 'object',
@@ -208,7 +208,7 @@ export function emailScheduleRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/email-schedules/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('email_schedules.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -258,7 +258,7 @@ export function emailScheduleRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/email-schedules/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('email_schedules.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;

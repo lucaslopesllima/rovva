@@ -31,7 +31,7 @@ const NEXT: Partial<Record<OrderStatus, { to: OrderStatus; label: string }>> = {
 };
 
 export function Orders(): React.JSX.Element {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [params, setParams] = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,11 +137,15 @@ export function Orders(): React.JSX.Element {
       <PageHeader title="Pedidos" subtitle="Cotações e pedidos de venda por representada"
         actions={
           <div className="flex gap-2">
-            <Btn variant="ghost" icon="download" onClick={exportar} disabled={filtered.length === 0}>Exportar</Btn>
-            {user?.role === 'admin' && (
+            {can('orders.print') && (
+              <Btn variant="ghost" icon="download" onClick={exportar} disabled={filtered.length === 0}>Exportar</Btn>
+            )}
+            {can('orders.import') && (
               <Btn variant="ghost" icon="arrowDown" onClick={() => setImporting(true)}>Importar NF</Btn>
             )}
-            <Btn icon="plus" onClick={() => setAdding(true)}>Novo pedido</Btn>
+            {can('orders.create') && (
+              <Btn icon="plus" onClick={() => setAdding(true)}>Novo pedido</Btn>
+            )}
           </div>
         } />
 
@@ -236,6 +240,7 @@ function Row({ o, showOwner, onEdit, onRemove, onTransition, onPrint }: {
   o: Order; showOwner: boolean; onEdit: () => void; onRemove: () => void;
   onTransition: (to: OrderStatus) => void; onPrint: () => void;
 }): React.JSX.Element {
+  const { can } = useAuth();
   const meta = STATUS_META[o.status];
   const next = NEXT[o.status];
   const editable = o.status === 'cotacao' || o.status === 'rascunho';
@@ -266,16 +271,18 @@ function Row({ o, showOwner, onEdit, onRemove, onTransition, onPrint }: {
       <td className="px-3 py-2 align-middle">
         {/* slots de largura fixa → ícones alinham em coluna entre as linhas */}
         <div className="grid w-max grid-cols-[2rem_7rem_2rem_2rem] items-center justify-items-center gap-1">
-          <button onClick={onPrint} title="Imprimir / PDF"
-            className="grid h-8 w-8 place-items-center rounded-lg text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/15"><Icon name="download" size={16} /></button>
-          {next ? (
+          {can('orders.print') ? (
+            <button onClick={onPrint} title="Imprimir / PDF"
+              className="grid h-8 w-8 place-items-center rounded-lg text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/15"><Icon name="download" size={16} /></button>
+          ) : <span />}
+          {next && can('orders.transition') ? (
             <Btn variant="soft" title={next.label} className="w-full justify-center truncate px-1 text-xs" onClick={() => onTransition(next.to)}>{next.label}</Btn>
           ) : <span />}
-          {cancellable ? (
+          {cancellable && can('orders.delete') ? (
             <button onClick={() => onTransition('cancelado')} title="Cancelar pedido"
               className="grid h-8 w-8 place-items-center rounded-lg text-rose-500 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/15"><Icon name="x" size={16} /></button>
           ) : <span />}
-          {editable ? (
+          {editable && can('orders.delete') ? (
             <button onClick={onRemove} aria-label={`Excluir pedido ${o.numero}`} title="Excluir pedido"
               className="grid h-8 w-8 place-items-center rounded-lg text-rose-500 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/15"><Icon name="trash" size={16} /></button>
           ) : <span />}

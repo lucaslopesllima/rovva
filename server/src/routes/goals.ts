@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { one, query } from '../db.ts';
-import { requireAuth, requireAdmin } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { audit } from '../audit.ts';
 import { invalidOrgRef } from '../orgRefs.ts';
 import { scopeOwner } from '../scope.ts';
@@ -24,7 +24,7 @@ const monthStart = (comp: string): string => `${comp}-01`;
 
 export function goalRoutes(app: FastifyInstance): void {
   app.get('/api/goals', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('goals.list')],
     schema: {
       querystring: {
         type: 'object',
@@ -52,7 +52,7 @@ export function goalRoutes(app: FastifyInstance): void {
   // Meta vs. realizado no mês. Realizado é calculado por meta (mesmo escopo de
   // vendedor/representada) a partir dos pedidos faturados no mês.
   app.get('/api/goals/progress', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('goals.list')],
     schema: {
       querystring: {
         type: 'object',
@@ -96,7 +96,7 @@ export function goalRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/goals', {
-    preHandler: [requireAuth, requireAdmin],
+    preHandler: [requireAuth, requirePermission('goals.create')],
     schema: {
       body: {
         type: 'object',
@@ -133,7 +133,7 @@ export function goalRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/goals/:id', {
-    preHandler: [requireAuth, requireAdmin],
+    preHandler: [requireAuth, requirePermission('goals.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: { type: 'object', required: ['valor_meta'], properties: { valor_meta: { type: 'number', minimum: 0 } } },
@@ -152,7 +152,7 @@ export function goalRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/goals/:id', {
-    preHandler: [requireAuth, requireAdmin],
+    preHandler: [requireAuth, requirePermission('goals.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;

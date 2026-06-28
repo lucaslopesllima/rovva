@@ -72,6 +72,7 @@ const STATUS_FILTERS: { value: EmailScheduleStatus | 'todos'; label: string }[] 
 ];
 
 function SchedulesTab(): React.JSX.Element {
+  const { can } = useAuth();
   const [list, setList] = useState<EmailSchedule[]>([]);
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,7 +133,7 @@ function SchedulesTab(): React.JSX.Element {
               </button>
             ))}
           </div>
-          <Btn icon="plus" onClick={() => setCreating(true)}>Novo agendamento</Btn>
+          {can('email_schedules.create') && <Btn icon="plus" onClick={() => setCreating(true)}>Novo agendamento</Btn>}
         </div>
 
         <div className="space-y-2">
@@ -165,16 +166,18 @@ function SchedulesTab(): React.JSX.Element {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  {(e.status === 'pendente' || e.status === 'cancelado') && (
+                  {(e.status === 'pendente' || e.status === 'cancelado') && can('email_schedules.update') && (
                     <button onClick={() => setEditing(e)} aria-label="Editar agendamento"
                       className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
                   )}
-                  {e.status === 'pendente' && (
+                  {e.status === 'pendente' && can('email_schedules.delete') && (
                     <button onClick={() => void cancelar(e)} title="Cancelar envio"
                       className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="x" size={16} /></button>
                   )}
-                  <button onClick={() => void remove(e)} aria-label="Remover agendamento"
-                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+                  {can('email_schedules.delete') && (
+                    <button onClick={() => void remove(e)} aria-label="Remover agendamento"
+                      className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+                  )}
                 </div>
               </div>
             );
@@ -359,6 +362,7 @@ function ScheduleModal({ schedule, templates, onClose, onSaved }: {
 /* ── Aba Modelos ────────────────────────────────────────── */
 
 function TemplatesTab(): React.JSX.Element {
+  const { can } = useAuth();
   const [list, setList] = useState<EmailTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<EmailTemplate | null>(null);
@@ -385,7 +389,7 @@ function TemplatesTab(): React.JSX.Element {
     <Card className="p-4">
       <div className="mb-3 flex items-center justify-between">
         <p className="text-sm font-semibold text-ink-700">Modelos de e-mail</p>
-        <Btn icon="plus" onClick={() => setCreating(true)}>Novo modelo</Btn>
+        {can('email_templates.create') && <Btn icon="plus" onClick={() => setCreating(true)}>Novo modelo</Btn>}
       </div>
       <div className="space-y-2">
         {list.length === 0 && (
@@ -399,10 +403,14 @@ function TemplatesTab(): React.JSX.Element {
               <p className="mt-0.5 truncate text-xs text-ink-400">{t.assunto}</p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              <button onClick={() => setEditing(t)} aria-label="Editar modelo"
-                className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
-              <button onClick={() => void remove(t)} aria-label="Remover modelo"
-                className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+              {can('email_templates.update') && (
+                <button onClick={() => setEditing(t)} aria-label="Editar modelo"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
+              )}
+              {can('email_templates.delete') && (
+                <button onClick={() => void remove(t)} aria-label="Remover modelo"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+              )}
             </div>
           </div>
         ))}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, Polyline, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import type { LatLngBoundsExpression } from 'leaflet';
 import { api, ApiError } from '../lib/api.ts';
+import { useAuth } from '../lib/auth.tsx';
 import type { Recommendation, GeocodeResult } from '../lib/types.ts';
 import { Btn, Badge, Card, EmptyState, PageHeader, ScoreBar, Segmented, Spinner, StatCard, cn, type Tone } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
@@ -109,6 +110,7 @@ function RecMarkers({ pontos, focus, renderMarker }: {
 }
 
 export function Recommend(): React.JSX.Element {
+  const { can } = useAuth();
   const [recs, setRecs] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -417,7 +419,7 @@ export function Recommend(): React.JSX.Element {
                         <button onClick={() => setViewing(Number(r.id))} className="whitespace-nowrap text-xs font-semibold text-brand-700 underline dark:text-brand-300">Ver dados da empresa</button>
                         {added.has(r.id)
                           ? <span className="whitespace-nowrap text-xs text-emerald-600 dark:text-emerald-300">✓ no funil</span>
-                          : <button onClick={() => addToFunnel(r)} className="whitespace-nowrap text-xs font-semibold text-brand-700 underline dark:text-brand-300">+ Adicionar ao funil</button>}
+                          : can('relationships.create') && <button onClick={() => addToFunnel(r)} className="whitespace-nowrap text-xs font-semibold text-brand-700 underline dark:text-brand-300">+ Adicionar ao funil</button>}
                         <button onClick={() => void traceRoute(r)} disabled={routingId === r.id}
                           className="whitespace-nowrap text-xs font-semibold text-blue-700 underline disabled:opacity-50 dark:text-blue-300">
                           {routingId === r.id ? 'Traçando…' : 'Traçar rota'}
@@ -471,6 +473,7 @@ export function Recommend(): React.JSX.Element {
 }
 
 function RecCard({ rec, added, onAdd, onView, onViewMap, onRoute, routing }: { rec: Recommendation; added: boolean; onAdd: () => void; onView: () => void; onViewMap: () => void; onRoute: () => void; routing: boolean }): React.JSX.Element {
+  const { can } = useAuth();
   const c = rec.reason.componentes;
   const score = rec.score * 100;
   return (
@@ -515,7 +518,7 @@ function RecCard({ rec, added, onAdd, onView, onViewMap, onRoute, routing }: { r
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {added
           ? <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-600"><Icon name="check" size={16} /> Adicionado ao funil</span>
-          : <Btn size="sm" icon="plus" onClick={onAdd}>Adicionar ao funil</Btn>}
+          : can('relationships.create') && <Btn size="sm" icon="plus" onClick={onAdd}>Adicionar ao funil</Btn>}
         {rec.lat != null && rec.lon != null && (
           <Btn size="sm" variant="soft" icon="map" onClick={onViewMap}>Ver no mapa</Btn>
         )}

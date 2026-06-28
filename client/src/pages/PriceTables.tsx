@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.ts';
+import { useAuth } from '../lib/auth.tsx';
 import type { CatalogItem, PriceTable, RepresentedCompany } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, Spinner, cn } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
@@ -16,6 +17,7 @@ interface ItemDraft { catalog_item_id: number; preco: string; desconto_max_pct: 
 export function PriceTables({ reps, catalog, adding, onCloseAdd }: {
   reps: RepresentedCompany[]; catalog: CatalogItem[]; adding: boolean; onCloseAdd: () => void;
 }): React.JSX.Element {
+  const { can } = useAuth();
   const [tables, setTables] = useState<PriceTable[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<PriceTable | null>(null);
@@ -62,10 +64,14 @@ export function PriceTables({ reps, catalog, adding, onCloseAdd }: {
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <button onClick={() => void openEdit(t.id, setEditing)} aria-label="Editar tabela"
-              className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
-            <button onClick={() => void remove(t)} aria-label="Excluir tabela"
-              className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+            {can('price_tables.update') && (
+              <button onClick={() => void openEdit(t.id, setEditing)} aria-label="Editar tabela"
+                className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
+            )}
+            {can('price_tables.delete') && (
+              <button onClick={() => void remove(t)} aria-label="Excluir tabela"
+                className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+            )}
           </div>
         </div>
       ))}

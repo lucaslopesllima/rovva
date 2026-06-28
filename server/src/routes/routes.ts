@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { one, query, withClient } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { geocodeAddr } from '../geocode.ts';
 import { fuelEstimate } from '../fuel.ts';
 import { scopeOwner, canWriteOwned } from '../scope.ts';
@@ -277,7 +277,7 @@ async function persistRoute(
 export function routePlanRoutes(app: FastifyInstance): void {
   // Calcula a melhor rota para as empresas selecionadas (preview, não persiste).
   app.post('/api/routes/optimize', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('routes.optimize')],
     schema: {
       body: {
         type: 'object',
@@ -304,7 +304,7 @@ export function routePlanRoutes(app: FastifyInstance): void {
 
   // Persiste uma rota já otimizada (resultado de /optimize).
   app.post('/api/routes', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('routes.create')],
     schema: {
       body: {
         type: 'object',
@@ -356,7 +356,7 @@ export function routePlanRoutes(app: FastifyInstance): void {
   // Lista as rotas salvas da org. Rep vê as próprias + as compartilhadas
   // (owner NULL, criadas antes da Fase 3); admin tudo + filtro por vendedor.
   app.get('/api/routes', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('routes.list')],
     schema: { querystring: { type: 'object', properties: { owner_user_id: { type: 'integer' } } } },
   }, async (req) => {
     const orgId = req.auth!.orgId;
@@ -376,7 +376,7 @@ export function routePlanRoutes(app: FastifyInstance): void {
 
   // Detalhe de uma rota + paradas ordenadas.
   app.get('/api/routes/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('routes.read')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -405,7 +405,7 @@ export function routePlanRoutes(app: FastifyInstance): void {
 
   // Marca/desmarca uma rota como template (e edita nome/recorrência). Fase 5.3.
   app.patch('/api/routes/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('routes.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -447,7 +447,7 @@ export function routePlanRoutes(app: FastifyInstance): void {
   // (template ou não) — as empresas podem ter mudado de endereço — e persiste
   // uma rota nova, do vendedor logado. Reaproveita o mesmo veículo.
   app.post('/api/routes/:id/reuse', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('routes.reuse')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: { type: 'object', properties: { nome: { type: 'string', minLength: 1 } } },
@@ -497,7 +497,7 @@ export function routePlanRoutes(app: FastifyInstance): void {
   // activity de visita por parada, com horário estimado a partir do leg_dur_min
   // somado em sequência. As atividades são do vendedor logado.
   app.post('/api/routes/:id/agenda', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('routes.agenda')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -556,7 +556,7 @@ export function routePlanRoutes(app: FastifyInstance): void {
   // o custo de combustível da rota. Idempotente por rota — segunda chamada
   // devolve 409 com o lançamento existente (evita duplicar o custo).
   app.post('/api/routes/:id/expense', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('routes.expense')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: { type: 'object', properties: { vencimento: { type: 'string' }, valor: { type: 'number', minimum: 0 } } },
@@ -589,7 +589,7 @@ export function routePlanRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/routes/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('routes.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;

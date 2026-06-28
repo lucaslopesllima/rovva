@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.ts';
+import { useAuth } from '../lib/auth.tsx';
 import type { Carrier, CompanyHit } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, PageHeader, Spinner, cn } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
@@ -26,6 +27,7 @@ function toBody(f: Form): Record<string, unknown> {
 // Cadastro de transportadoras: vinculáveis ao pedido (carrier_id). Exclusão é
 // soft no servidor (ativo=false) — pedido emitido mantém o rótulo.
 export function Carriers(): React.JSX.Element {
+  const { can } = useAuth();
   const [list, setList] = useState<Carrier[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<number | 'new' | null>(null);
@@ -71,7 +73,7 @@ export function Carriers(): React.JSX.Element {
   return (
     <div className="space-y-4 p-4 sm:p-6">
       <PageHeader title="Transportadoras" subtitle="Cadastro para vincular nos pedidos de venda."
-        actions={editing !== 'new' && <Btn icon="plus" onClick={() => setEditing('new')}>Nova transportadora</Btn>} />
+        actions={editing !== 'new' && can('carriers.create') && <Btn icon="plus" onClick={() => setEditing('new')}>Nova transportadora</Btn>} />
 
       {loading ? <Spinner /> : (
         <Card className="p-4">
@@ -101,12 +103,18 @@ export function Carriers(): React.JSX.Element {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <button onClick={() => void toggleAtivo(c)} title={c.ativo ? 'Desativar' : 'Ativar'}
-                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name={c.ativo ? 'check' : 'x'} size={16} /></button>
-                  <button onClick={() => setEditing(c.id)} aria-label="Editar transportadora"
-                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
-                  <button onClick={() => void remove(c)} aria-label="Excluir transportadora"
-                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+                  {can('carriers.update') && (
+                    <button onClick={() => void toggleAtivo(c)} title={c.ativo ? 'Desativar' : 'Ativar'}
+                      className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name={c.ativo ? 'check' : 'x'} size={16} /></button>
+                  )}
+                  {can('carriers.update') && (
+                    <button onClick={() => setEditing(c.id)} aria-label="Editar transportadora"
+                      className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
+                  )}
+                  {can('carriers.delete') && (
+                    <button onClick={() => void remove(c)} aria-label="Excluir transportadora"
+                      className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+                  )}
                 </div>
               </div>
             ))}

@@ -1,16 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import { one, query } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 
 export function stageRoutes(app: FastifyInstance): void {
-  app.get('/api/stages', { preHandler: requireAuth }, async (req) => {
+  app.get('/api/stages', { preHandler: [requireAuth, requirePermission('stages.list')] }, async (req) => {
     const orgId = req.auth!.orgId;
     const stages = await query('SELECT id, nome, ordem FROM stages WHERE org_id = $1 ORDER BY ordem', [orgId]);
     return { stages };
   });
 
   app.post('/api/stages', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('stages.create')],
     schema: {
       body: { type: 'object', required: ['nome'], properties: { nome: { type: 'string', minLength: 1 }, ordem: { type: 'integer' } } },
     },
@@ -23,7 +23,7 @@ export function stageRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/stages/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('stages.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: { type: 'object', properties: { nome: { type: 'string' }, ordem: { type: 'integer' } } },
@@ -47,7 +47,7 @@ export function stageRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/stages/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('stages.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;

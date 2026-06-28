@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { query, one, withClient } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { audit, pick } from '../audit.ts';
 import { invalidOrgRef } from '../orgRefs.ts';
 
@@ -68,7 +68,7 @@ async function replaceItems(tableId: number, items: { catalog_item_id: number; p
 
 export function priceTableRoutes(app: FastifyInstance): void {
   app.get('/api/price-tables', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('price_tables.list')],
     schema: {
       querystring: { type: 'object', properties: { represented_id: { type: 'integer' } } },
     },
@@ -91,7 +91,7 @@ export function priceTableRoutes(app: FastifyInstance): void {
   // Tabela vigente hoje para a representada: ativa, início <= hoje <= fim
   // (fim NULL = aberta). Empate resolve pela vigência mais recente.
   app.get('/api/price-tables/active', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('price_tables.list')],
     schema: {
       querystring: {
         type: 'object',
@@ -115,7 +115,7 @@ export function priceTableRoutes(app: FastifyInstance): void {
   });
 
   app.get('/api/price-tables/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('price_tables.read')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -126,7 +126,7 @@ export function priceTableRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/price-tables', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('price_tables.create')],
     schema: {
       body: {
         type: 'object',
@@ -163,7 +163,7 @@ export function priceTableRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/price-tables/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('price_tables.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -203,7 +203,7 @@ export function priceTableRoutes(app: FastifyInstance): void {
 
   // Substitui TODOS os itens da tabela (a UI edita a lista inteira de uma vez).
   app.put('/api/price-tables/:id/items', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('price_tables.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -227,7 +227,7 @@ export function priceTableRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/price-tables/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('price_tables.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;

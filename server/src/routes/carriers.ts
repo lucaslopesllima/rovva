@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { query } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { audit, pick } from '../audit.ts';
 
 // Transportadoras da org. Pedido referencia carrier_id; por isso DELETE é
@@ -20,7 +20,7 @@ const BODY = {
 } as const;
 
 export function carrierRoutes(app: FastifyInstance): void {
-  app.get('/api/carriers', { preHandler: requireAuth }, async (req) => {
+  app.get('/api/carriers', { preHandler: [requireAuth, requirePermission('carriers.list')] }, async (req) => {
     const orgId = req.auth!.orgId;
     const carriers = await query(
       `SELECT ${COLS} FROM carriers WHERE org_id = $1 ORDER BY ativo DESC, nome`,
@@ -30,7 +30,7 @@ export function carrierRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/carriers', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('carriers.create')],
     schema: { body: { type: 'object', required: ['nome'], properties: { ...BODY } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -46,7 +46,7 @@ export function carrierRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/carriers/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('carriers.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: { type: 'object', properties: { ...BODY } },
@@ -74,7 +74,7 @@ export function carrierRoutes(app: FastifyInstance): void {
 
   // Soft delete: pedidos apontam para carriers — a linha fica, sai das listas ativas.
   app.delete('/api/carriers/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('carriers.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;

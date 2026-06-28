@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { query, withClient } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { config } from '../config.ts';
 import { buildRecommendQuery, type RecommendProfile, type RecommendFilters } from '../sql/recommend.ts';
 
@@ -56,7 +56,7 @@ function parsePesos(q: { w_cnae?: number; w_prox?: number; w_porte?: number }): 
 
 export function recommendRoutes(app: FastifyInstance): void {
   app.get('/api/recommend', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('prospeccao.view')],
     schema: {
       querystring: {
         type: 'object',

@@ -19,6 +19,7 @@ import { financeRoutes } from './routes/finance.ts';
 import { vehicleRoutes } from './routes/vehicles.ts';
 import { routePlanRoutes } from './routes/routes.ts';
 import { userRoutes } from './routes/users.ts';
+import { groupRoutes } from './routes/groups.ts';
 import { auditRoutes } from './routes/audit.ts';
 import { priceTableRoutes } from './routes/priceTables.ts';
 import { orderRoutes } from './routes/orders.ts';
@@ -69,6 +70,7 @@ export async function buildApp(opts: { logger?: boolean; authRateLimitMax?: numb
   vehicleRoutes(app);
   routePlanRoutes(app);
   userRoutes(app);
+  groupRoutes(app);
   auditRoutes(app);
   priceTableRoutes(app);
   orderRoutes(app);

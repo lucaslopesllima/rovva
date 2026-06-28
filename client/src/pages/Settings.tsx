@@ -3,7 +3,7 @@ import { api } from '../lib/api.ts';
 import type { Brand, CompanyHit, Contact, NamedItem, RepresentedCompany, Stage, TaxDefaults } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, PageHeader, Spinner, cn } from '../lib/ui.tsx';
 import { Icon, type IconName } from '../lib/icons.tsx';
-import { useOptionalUser } from '../lib/auth.tsx';
+import { useOptionalUser, useAuth } from '../lib/auth.tsx';
 import { CompanySearch } from '../lib/companySearch.tsx';
 import { toast } from '../lib/toast.tsx';
 import { dec, maskCNPJ, maskPct, maskPhone } from '../lib/format.ts';
@@ -118,6 +118,7 @@ interface SmtpView {
   from_email: string; from_name: string | null; enabled: boolean; has_password: boolean;
 }
 function SmtpEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
+  const { can } = useAuth();
   const [host, setHost] = useState('');
   const [port, setPort] = useState(587);
   const [secure, setSecure] = useState(false);
@@ -226,8 +227,8 @@ function SmtpEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
       </div>
 
       <div className="mt-4 flex items-center gap-2">
-        <Btn icon="check" onClick={() => void save()} disabled={busy}>{busy ? '…' : 'Salvar'}</Btn>
-        <Btn variant="soft" icon="mail" onClick={() => void testar()} disabled={testing}>{testing ? 'Enviando…' : 'Enviar teste'}</Btn>
+        {can('settings.smtp.update') && <Btn icon="check" onClick={() => void save()} disabled={busy}>{busy ? '…' : 'Salvar'}</Btn>}
+        {can('settings.smtp.test') && <Btn variant="soft" icon="mail" onClick={() => void testar()} disabled={testing}>{testing ? 'Enviando…' : 'Enviar teste'}</Btn>}
       </div>
     </Card>
   );
@@ -245,6 +246,7 @@ const TAX_FIELDS: { key: keyof TaxDefaults; label: string }[] = [
 ];
 
 function AliquotasEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
+  const { can } = useAuth();
   const [tax, setTax] = useState<Record<keyof TaxDefaults, string>>();
   const [saved, setSaved] = useState(false);
 
@@ -287,7 +289,7 @@ function AliquotasEditor({ inputCls }: { inputCls: string }): React.JSX.Element 
         ))}
       </div>
       <div className="mt-4 flex items-center gap-3">
-        <Btn icon="check" onClick={() => void save()}>Salvar</Btn>
+        {can('tax_defaults.update') && <Btn icon="check" onClick={() => void save()}>Salvar</Btn>}
         {saved && <span className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-600"><Icon name="check" size={16} /> Salvo</span>}
       </div>
     </Card>
@@ -295,6 +297,7 @@ function AliquotasEditor({ inputCls }: { inputCls: string }): React.JSX.Element 
 }
 
 function FunilEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
+  const { can } = useAuth();
   const [stages, setStages] = useState<Stage[]>([]);
   const [loading, setLoading] = useState(true);
   const [novo, setNovo] = useState('');
@@ -369,33 +372,37 @@ function FunilEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
             <span className="tabnums grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-surface text-xs font-bold text-ink-400 shadow-card">
               {i + 1}
             </span>
-            <input defaultValue={st.nome}
+            <input defaultValue={st.nome} disabled={!can('stages.update')}
               onBlur={(e) => { if (e.target.value.trim() !== st.nome) void rename(st.id, e.target.value); }}
               onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
               className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface px-2 py-1.5 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
             <div className="flex shrink-0 items-center gap-1">
-              <button onClick={() => move(i, -1)} disabled={i === 0}
+              <button onClick={() => move(i, -1)} disabled={i === 0 || !can('stages.update')}
                 className="grid h-7 w-7 place-items-center rounded-lg text-ink-500 hover:bg-surface disabled:opacity-30" aria-label="Subir">
                 <Icon name="arrowUp" size={15} />
               </button>
-              <button onClick={() => move(i, 1)} disabled={i === stages.length - 1}
+              <button onClick={() => move(i, 1)} disabled={i === stages.length - 1 || !can('stages.update')}
                 className="grid h-7 w-7 place-items-center rounded-lg text-ink-500 hover:bg-surface disabled:opacity-30" aria-label="Descer">
                 <Icon name="arrowDown" size={15} />
               </button>
-              <button onClick={() => remove(st.id)}
-                className="grid h-7 w-7 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500" aria-label="Excluir">
-                <Icon name="x" size={15} />
-              </button>
+              {can('stages.delete') && (
+                <button onClick={() => remove(st.id)}
+                  className="grid h-7 w-7 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500" aria-label="Excluir">
+                  <Icon name="x" size={15} />
+                </button>
+              )}
             </div>
           </li>
         ))}
         {stages.length === 0 && <li className="py-4 text-center text-sm text-ink-400">Nenhuma fase. Adicione abaixo.</li>}
       </ul>
 
-      <form onSubmit={add} className="mt-3 flex gap-2">
-        <input value={novo} onChange={(e) => setNovo(e.target.value)} placeholder="Nova fase (ex.: Pós-venda)" className={cn(inputCls, 'flex-1')} />
-        <Btn icon="plus" type="submit">Adicionar</Btn>
-      </form>
+      {can('stages.create') && (
+        <form onSubmit={add} className="mt-3 flex gap-2">
+          <input value={novo} onChange={(e) => setNovo(e.target.value)} placeholder="Nova fase (ex.: Pós-venda)" className={cn(inputCls, 'flex-1')} />
+          <Btn icon="plus" type="submit">Adicionar</Btn>
+        </form>
+      )}
     </Card>
   );
 }
@@ -408,6 +415,7 @@ const toForm = (e: RepresentedCompany): EmpForm => ({
 });
 
 function RepresentadasEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
+  const { can } = useAuth();
   const [list, setList] = useState<RepresentedCompany[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<number | 'new' | null>(null);
@@ -457,7 +465,7 @@ function RepresentadasEditor({ inputCls }: { inputCls: string }): React.JSX.Elem
           <h3 className="text-sm font-semibold text-ink-900">Empresas representadas</h3>
           <p className="mt-0.5 text-xs text-ink-400">Marcas/fornecedores que você representa. Pode cadastrar várias.</p>
         </div>
-        {editing !== 'new' && <Btn size="sm" icon="plus" onClick={() => setEditing('new')}>Nova</Btn>}
+        {can('represented.create') && editing !== 'new' && <Btn size="sm" icon="plus" onClick={() => setEditing('new')}>Nova</Btn>}
       </div>
 
       {editing === 'new' && (
@@ -492,14 +500,20 @@ function RepresentadasEditor({ inputCls }: { inputCls: string }): React.JSX.Elem
               {e.notas && <p className="mt-1 line-clamp-2 text-xs text-ink-500">{e.notas}</p>}
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              <button onClick={() => void toggleAtivo(e)} title={e.ativo ? 'Desativar' : 'Ativar'}
-                className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100">
-                <Icon name={e.ativo ? 'check' : 'x'} size={16} />
-              </button>
-              <button onClick={() => setEditing(e.id)} aria-label="Editar"
-                className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
-              <button onClick={() => void remove(e.id)} aria-label="Excluir"
-                className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+              {can('represented.update') && (
+                <button onClick={() => void toggleAtivo(e)} title={e.ativo ? 'Desativar' : 'Ativar'}
+                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100">
+                  <Icon name={e.ativo ? 'check' : 'x'} size={16} />
+                </button>
+              )}
+              {can('represented.update') && (
+                <button onClick={() => setEditing(e.id)} aria-label="Editar"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
+              )}
+              {can('represented.delete') && (
+                <button onClick={() => void remove(e.id)} aria-label="Excluir"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+              )}
             </div>
           </div>
         ))}
@@ -556,6 +570,7 @@ function EmpresaForm({ inputCls, initial, onSave, onCancel }: {
 
 /* ── Marcas de uma empresa representada ────────────────────── */
 function BrandsEditor({ representedId, inputCls }: { representedId: number; inputCls: string }): React.JSX.Element {
+  const { can } = useAuth();
   const [brands, setBrands] = useState<Brand[]>([]);
   const [novo, setNovo] = useState('');
 
@@ -585,17 +600,21 @@ function BrandsEditor({ representedId, inputCls }: { representedId: number; inpu
         {brands.map((b) => (
           <span key={b.id} className="inline-flex items-center gap-1 rounded-full bg-surface px-2.5 py-1 text-xs font-medium text-ink-700 shadow-card">
             {b.nome}
-            <button type="button" onClick={() => void remove(b.id)} className="text-ink-300 hover:text-rose-500" aria-label="Remover">
-              <Icon name="x" size={13} />
-            </button>
+            {can('brands.delete') && (
+              <button type="button" onClick={() => void remove(b.id)} className="text-ink-300 hover:text-rose-500" aria-label="Remover">
+                <Icon name="x" size={13} />
+              </button>
+            )}
           </span>
         ))}
         {brands.length === 0 && <span className="text-xs text-ink-300">Nenhuma marca ainda.</span>}
       </div>
-      <form onSubmit={add} className="mt-2 flex gap-2">
-        <input value={novo} onChange={(e) => setNovo(e.target.value)} placeholder="Nova marca" className={cn(inputCls, 'flex-1')} />
-        <Btn size="sm" icon="plus" type="submit">Add</Btn>
-      </form>
+      {can('brands.create') && (
+        <form onSubmit={add} className="mt-2 flex gap-2">
+          <input value={novo} onChange={(e) => setNovo(e.target.value)} placeholder="Nova marca" className={cn(inputCls, 'flex-1')} />
+          <Btn size="sm" icon="plus" type="submit">Add</Btn>
+        </form>
+      )}
     </div>
   );
 }
@@ -604,6 +623,7 @@ function BrandsEditor({ representedId, inputCls }: { representedId: number; inpu
 function NamedListEditor({ inputCls, path, titulo, desc, icon, placeholder }: {
   inputCls: string; path: 'scenarios' | 'actions'; titulo: string; desc: string; icon: IconName; placeholder: string;
 }): React.JSX.Element {
+  const { can } = useAuth();
   const [items, setItems] = useState<NamedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [novo, setNovo] = useState('');
@@ -651,23 +671,27 @@ function NamedListEditor({ inputCls, path, titulo, desc, icon, placeholder }: {
         {items.map((it) => (
           <li key={it.id} className="flex items-center gap-2 rounded-xl border border-ink-200/70 bg-ink-50 p-2">
             <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-surface text-ink-400 shadow-card"><Icon name={icon} size={15} /></span>
-            <input defaultValue={it.nome}
+            <input defaultValue={it.nome} disabled={!can(`${path}.update`)}
               onBlur={(e) => { if (e.target.value.trim() !== it.nome) void rename(it.id, e.target.value); }}
               onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
               className="min-w-0 flex-1 rounded-lg border border-transparent bg-surface px-2 py-1.5 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
-            <button onClick={() => void remove(it.id)}
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500" aria-label="Excluir">
-              <Icon name="x" size={15} />
-            </button>
+            {can(`${path}.delete`) && (
+              <button onClick={() => void remove(it.id)}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500" aria-label="Excluir">
+                <Icon name="x" size={15} />
+              </button>
+            )}
           </li>
         ))}
         {items.length === 0 && <li className="py-4 text-center text-sm text-ink-400">Nada cadastrado. Adicione abaixo.</li>}
       </ul>
 
-      <form onSubmit={add} className="mt-3 flex gap-2">
-        <input value={novo} onChange={(e) => setNovo(e.target.value)} placeholder={placeholder} className={cn(inputCls, 'flex-1')} />
-        <Btn icon="plus" type="submit">Adicionar</Btn>
-      </form>
+      {can(`${path}.create`) && (
+        <form onSubmit={add} className="mt-3 flex gap-2">
+          <input value={novo} onChange={(e) => setNovo(e.target.value)} placeholder={placeholder} className={cn(inputCls, 'flex-1')} />
+          <Btn icon="plus" type="submit">Adicionar</Btn>
+        </form>
+      )}
     </Card>
   );
 }
@@ -688,6 +712,7 @@ function contactBody(f: ContactForm): Record<string, unknown> {
 }
 
 function ContatosEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
+  const { can } = useAuth();
   const [list, setList] = useState<Contact[]>([]);
   const [reps, setReps] = useState<RepresentedCompany[]>([]);
   const [loading, setLoading] = useState(true);
@@ -739,7 +764,7 @@ function ContatosEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
           <h3 className="text-sm font-semibold text-ink-900">Contatos</h3>
           <p className="mt-0.5 text-xs text-ink-400">Pessoas que você pode vincular na prospecção. Contatos de uma empresa-cliente também podem ser criados direto no funil.</p>
         </div>
-        {editing !== 'new' && <Btn size="sm" icon="plus" onClick={() => setEditing('new')}>Novo</Btn>}
+        {can('contacts.create') && editing !== 'new' && <Btn size="sm" icon="plus" onClick={() => setEditing('new')}>Novo</Btn>}
       </div>
 
       {editing === 'new' && (
@@ -766,10 +791,14 @@ function ContatosEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
               <p className="mt-0.5 truncate text-xs text-ink-400">{[c.email, c.telefone].filter(Boolean).join(' · ') || 'sem contato'}</p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              <button onClick={() => setEditing(c.id)} aria-label="Editar"
-                className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
-              <button onClick={() => void remove(c.id)} aria-label="Excluir"
-                className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+              {can('contacts.update') && (
+                <button onClick={() => setEditing(c.id)} aria-label="Editar"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
+              )}
+              {can('contacts.delete') && (
+                <button onClick={() => void remove(c.id)} aria-label="Excluir"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+              )}
             </div>
           </div>
         ))}

@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { query, one } from '../db.ts';
-import { requireAuth, requireAdmin } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { audit, pick } from '../audit.ts';
 import { invalidOrgRef } from '../orgRefs.ts';
 import { scopeOwner } from '../scope.ts';
@@ -107,7 +107,7 @@ async function settleEntry(
 
 export function commissionRoutes(app: FastifyInstance): void {
   app.get('/api/commissions', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('commissions.list')],
     schema: {
       querystring: {
         type: 'object',
@@ -139,7 +139,7 @@ export function commissionRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/commissions/:id/settle', {
-    preHandler: [requireAuth, requireAdmin],
+    preHandler: [requireAuth, requirePermission('commissions.settle')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -171,7 +171,7 @@ export function commissionRoutes(app: FastifyInstance): void {
   // baixa na comissão do pedido correspondente; fora da tolerância vira
   // divergente. Mesmo formato de retorno do import de NF.
   app.post('/api/commissions/reconcile', {
-    preHandler: [requireAuth, requireAdmin],
+    preHandler: [requireAuth, requirePermission('commissions.reconcile')],
     schema: {
       body: {
         type: 'object',
@@ -241,7 +241,7 @@ export function commissionRoutes(app: FastifyInstance): void {
   /* ── Regras de comissão ─────────────────────────────────── */
 
   app.get('/api/commission-rules', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('commission_rules.list')],
     schema: {
       querystring: { type: 'object', properties: { represented_id: { type: 'integer' } } },
     },
@@ -278,7 +278,7 @@ export function commissionRoutes(app: FastifyInstance): void {
     b.company_id != null && !(await one('SELECT 1 FROM companies WHERE id = $1', [b.company_id]));
 
   app.post('/api/commission-rules', {
-    preHandler: [requireAuth, requireAdmin],
+    preHandler: [requireAuth, requirePermission('commission_rules.create')],
     schema: {
       body: {
         type: 'object',
@@ -309,7 +309,7 @@ export function commissionRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/commission-rules/:id', {
-    preHandler: [requireAuth, requireAdmin],
+    preHandler: [requireAuth, requirePermission('commission_rules.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: { type: 'object', properties: RULE_PROPS },
@@ -340,7 +340,7 @@ export function commissionRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/commission-rules/:id', {
-    preHandler: [requireAuth, requireAdmin],
+    preHandler: [requireAuth, requirePermission('commission_rules.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;

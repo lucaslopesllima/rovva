@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type pg from 'pg';
 import { one, query, withClient } from '../db.ts';
-import { requireAuth, requireAdmin } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { audit, pick } from '../audit.ts';
 import { invalidOrgRef } from '../orgRefs.ts';
 import { scopeOwner, canWriteOwned, invalidOwnerAssignment } from '../scope.ts';
@@ -114,7 +114,7 @@ async function syncCatalogo(c: pg.PoolClient, relId: number, orgId: number, ids:
 export function relationshipRoutes(app: FastifyInstance): void {
   // My funnel: relationships JOIN companies WHERE org_id = me.
   app.get('/api/relationships', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('relationships.list')],
     schema: {
       querystring: {
         type: 'object',
@@ -159,7 +159,7 @@ export function relationshipRoutes(app: FastifyInstance): void {
 
   // Add a company from the global pool to my funnel (create a reference).
   app.post('/api/relationships', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('relationships.create')],
     schema: {
       body: {
         type: 'object',
@@ -225,7 +225,7 @@ export function relationshipRoutes(app: FastifyInstance): void {
   // Empresa inexistente na base ou já vinculada não cria — devolve o resumo
   // (created/alreadyExists/notFound/invalid) p/ a UI orientar o usuário.
   app.post('/api/relationships/import', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('relationships.import')],
     schema: {
       body: {
         type: 'object',
@@ -289,7 +289,7 @@ export function relationshipRoutes(app: FastifyInstance): void {
 
   // Update relationship state (kanban move, status, value, notes, owner).
   app.patch('/api/relationships/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('relationships.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: { type: 'object', properties: { ...EDITABLE_SCHEMA } },
@@ -383,7 +383,7 @@ export function relationshipRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/relationships/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('relationships.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -404,7 +404,7 @@ export function relationshipRoutes(app: FastifyInstance): void {
   // Transferência de carteira (Fase 3): em lote (ids) ou total (sem ids —
   // desligamento de vendedor). Admin only; auditada com a contagem e os ids.
   app.post('/api/relationships/transfer', {
-    preHandler: [requireAuth, requireAdmin],
+    preHandler: [requireAuth, requirePermission('relationships.transfer')],
     schema: {
       body: {
         type: 'object',
@@ -444,7 +444,7 @@ export function relationshipRoutes(app: FastifyInstance): void {
   // Kanban board: stages + cards (relationships) grouped by stage.
   // Rep vê só a própria carteira; admin vê tudo + filtro por vendedor.
   app.get('/api/kanban', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('relationships.list')],
     schema: {
       querystring: {
         type: 'object',

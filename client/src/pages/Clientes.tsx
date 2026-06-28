@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.ts';
+import { useAuth } from '../lib/auth.tsx';
 import type { Cliente, CompanyHit } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, PageHeader, Spinner, StatCard, cn } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
@@ -14,6 +15,7 @@ const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5
 // NÃO copia dados da empresa, só referencia (company_id). Os campos da empresa
 // são lidos via JOIN/CompanyModal a partir da base global — fonte única.
 export function Clientes(): React.JSX.Element {
+  const { can } = useAuth();
   const [list, setList] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -122,10 +124,12 @@ export function Clientes(): React.JSX.Element {
         actions={(
           <div className="flex items-center gap-2">
             <input ref={fileRef} type="file" accept=".csv,text/csv,text/plain" className="hidden" onChange={(e) => void onFile(e)} />
-            <Btn variant="soft" icon="download" disabled={importing} onClick={() => fileRef.current?.click()}>
-              {importing ? 'Importando…' : 'Importar CSV'}
-            </Btn>
-            {!adding && <Btn icon="plus" onClick={() => setAdding(true)}>Novo cliente</Btn>}
+            {can('relationships.import') && (
+              <Btn variant="soft" icon="download" disabled={importing} onClick={() => fileRef.current?.click()}>
+                {importing ? 'Importando…' : 'Importar CSV'}
+              </Btn>
+            )}
+            {can('relationships.create') && !adding && <Btn icon="plus" onClick={() => setAdding(true)}>Novo cliente</Btn>}
           </div>
         )} />
 
@@ -187,14 +191,20 @@ export function Clientes(): React.JSX.Element {
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    <button onClick={() => void toggleAtivo(c)} title={c.ativo ? 'Inativar cliente' : 'Reativar cliente'}
-                      className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name={c.ativo ? 'check' : 'x'} size={16} /></button>
+                    {can('relationships.delete') && (
+                      <button onClick={() => void toggleAtivo(c)} title={c.ativo ? 'Inativar cliente' : 'Reativar cliente'}
+                        className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name={c.ativo ? 'check' : 'x'} size={16} /></button>
+                    )}
                     <button onClick={() => setVerEmpresa(c.company_id)} title="Ver dados da empresa"
                       className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="eye" size={16} /></button>
-                    <button onClick={() => setEditing(c.id)} aria-label="Editar relacionamento"
-                      className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
-                    <button onClick={() => void remove(c)} aria-label="Remover cliente"
-                      className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+                    {can('relationships.update') && (
+                      <button onClick={() => setEditing(c.id)} aria-label="Editar relacionamento"
+                        className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
+                    )}
+                    {can('relationships.delete') && (
+                      <button onClick={() => void remove(c)} aria-label="Remover cliente"
+                        className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+                    )}
                   </div>
                 </div>
               ))}

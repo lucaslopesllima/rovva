@@ -30,6 +30,7 @@ const Commissions = lazy(() => import('./pages/Commissions.tsx').then((m) => ({ 
 const ChangePassword = lazy(() => import('./pages/ChangePassword.tsx').then((m) => ({ default: m.ChangePassword })));
 const EmailAgendado = lazy(() => import('./pages/EmailAgendado.tsx').then((m) => ({ default: m.EmailAgendado })));
 const WhatsApp = lazy(() => import('./pages/WhatsApp.tsx').then((m) => ({ default: m.WhatsApp })));
+const Groups = lazy(() => import('./pages/Groups.tsx').then((m) => ({ default: m.Groups })));
 
 function FullScreenSpinner(): React.JSX.Element {
   return (
@@ -51,13 +52,14 @@ function RequireAuth({ children }: { children: ReactNode }): React.JSX.Element {
   return <>{children}</>;
 }
 
-function RequireAdmin({ children }: { children: ReactNode }): React.JSX.Element {
-  const { user } = useAuth();
-  if (user?.role !== 'admin') return <Navigate to="/" replace />;
+// Bloqueia a rota quando o grupo não tem a permissão (admin faz bypass via can).
+function RequirePermission({ code, children }: { code: string; children: ReactNode }): React.JSX.Element {
+  const { can } = useAuth();
+  if (!can(code)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
-type NavItem = { to: string; label: string; icon: IconName; admin?: boolean };
+type NavItem = { to: string; label: string; icon: IconName; requires?: string };
 type NavGroup = { label?: string; items: NavItem[] };
 
 // Menu agrupado por intenção (chunking): reduz carga cognitiva e aproxima
@@ -65,27 +67,28 @@ type NavGroup = { label?: string; items: NavItem[] };
 const NAV_GROUPS: NavGroup[] = [
   { items: [{ to: '/', label: 'Dashboard', icon: 'gauge' }] },
   { label: 'Vendas', items: [
-    { to: '/prospeccao', label: 'Buscar Empresas', icon: 'target' },
-    { to: '/funil', label: 'Funil', icon: 'columns' },
-    { to: '/clientes', label: 'Clientes', icon: 'users' },
-    { to: '/carteiras', label: 'Carteiras', icon: 'layers', admin: true },
-    { to: '/pedidos', label: 'Pedidos', icon: 'list' },
-    { to: '/whatsapp', label: 'WhatsApp', icon: 'phone' },
-    { to: '/email', label: 'E-mail', icon: 'mail' },
-    { to: '/agenda', label: 'Agenda', icon: 'calendar' },
+    { to: '/prospeccao', label: 'Buscar Empresas', icon: 'target', requires: 'prospeccao.view' },
+    { to: '/funil', label: 'Funil', icon: 'columns', requires: 'relationships.list' },
+    { to: '/clientes', label: 'Clientes', icon: 'users', requires: 'relationships.list' },
+    { to: '/carteiras', label: 'Carteiras', icon: 'layers', requires: 'carteiras.view' },
+    { to: '/pedidos', label: 'Pedidos', icon: 'list', requires: 'orders.list' },
+    { to: '/whatsapp', label: 'WhatsApp', icon: 'phone', requires: 'whatsapp.view' },
+    { to: '/email', label: 'E-mail', icon: 'mail', requires: 'email_schedules.list' },
+    { to: '/agenda', label: 'Agenda', icon: 'calendar', requires: 'activities.list' },
   ] },
   { label: 'Logística', items: [
-    { to: '/transportadoras', label: 'Transportadoras', icon: 'car' },
-    { to: '/rotas', label: 'Rotas', icon: 'route' },
-    { to: '/catalogo', label: 'Catálogo', icon: 'box' },
+    { to: '/transportadoras', label: 'Transportadoras', icon: 'car', requires: 'carriers.list' },
+    { to: '/rotas', label: 'Rotas', icon: 'route', requires: 'routes.list' },
+    { to: '/catalogo', label: 'Catálogo', icon: 'box', requires: 'catalog.list' },
   ] },
   { label: 'Financeiro', items: [
-    { to: '/comissoes', label: 'Comissões', icon: 'percent' },
-    { to: '/financeiro', label: 'Financeiro', icon: 'wallet' },
-    { to: '/relatorios', label: 'Relatórios', icon: 'barChart' },
+    { to: '/comissoes', label: 'Comissões', icon: 'percent', requires: 'commissions.list' },
+    { to: '/financeiro', label: 'Financeiro', icon: 'wallet', requires: 'finance.list' },
+    { to: '/relatorios', label: 'Relatórios', icon: 'barChart', requires: 'reports.sales' },
   ] },
   { label: 'Sistema', items: [
-    { to: '/equipe', label: 'Equipe', icon: 'users', admin: true },
+    { to: '/equipe', label: 'Equipe', icon: 'users', requires: 'users.list' },
+    { to: '/grupos', label: 'Grupos', icon: 'layers', requires: 'groups.list' },
     { to: '/config', label: 'Config', icon: 'settings' },
   ] },
 ];
@@ -93,17 +96,17 @@ const NAV_GROUPS: NavGroup[] = [
 // Lista achatada — mobile (barra + folha "Mais") e título da página usam ordem linear.
 const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
 
-// Itens visíveis para o papel do usuário logado (Equipe/Carteiras só admin).
+// Itens visíveis para as permissões do grupo do usuário (sem `requires` = livre).
 function useNav(): NavItem[] {
-  const { user } = useAuth();
-  return NAV.filter((n) => !n.admin || user?.role === 'admin');
+  const { can } = useAuth();
+  return NAV.filter((n) => !n.requires || can(n.requires));
 }
 
-// Grupos visíveis: filtra itens por papel e descarta grupos que ficaram vazios.
+// Grupos visíveis: filtra itens por permissão e descarta grupos que ficaram vazios.
 function useNavGroups(): NavGroup[] {
-  const { user } = useAuth();
+  const { can } = useAuth();
   return NAV_GROUPS
-    .map((g) => ({ ...g, items: g.items.filter((n) => !n.admin || user?.role === 'admin') }))
+    .map((g) => ({ ...g, items: g.items.filter((n) => !n.requires || can(n.requires)) }))
     .filter((g) => g.items.length > 0);
 }
 
@@ -430,22 +433,23 @@ export function App(): React.JSX.Element {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<RequireAuth><Shell><Dashboard /></Shell></RequireAuth>} />
-      <Route path="/prospeccao" element={<RequireAuth><Shell><Recommend /></Shell></RequireAuth>} />
+      <Route path="/prospeccao" element={<RequireAuth><RequirePermission code="prospeccao.view"><Shell><Recommend /></Shell></RequirePermission></RequireAuth>} />
       <Route path="/perfil" element={<Navigate to="/config" replace />} />
-      <Route path="/funil" element={<RequireAuth><Shell><Kanban /></Shell></RequireAuth>} />
-      <Route path="/clientes" element={<RequireAuth><Shell><Clientes /></Shell></RequireAuth>} />
-      <Route path="/carteiras" element={<RequireAuth><RequireAdmin><Shell><Carteiras /></Shell></RequireAdmin></RequireAuth>} />
-      <Route path="/pedidos" element={<RequireAuth><Shell><Orders /></Shell></RequireAuth>} />
-      <Route path="/whatsapp" element={<RequireAuth><Shell><WhatsApp /></Shell></RequireAuth>} />
-      <Route path="/comissoes" element={<RequireAuth><Shell><Commissions /></Shell></RequireAuth>} />
-      <Route path="/relatorios" element={<RequireAuth><Shell><Reports /></Shell></RequireAuth>} />
-      <Route path="/transportadoras" element={<RequireAuth><Shell><Carriers /></Shell></RequireAuth>} />
-      <Route path="/rotas" element={<RequireAuth><Shell><RoutePlanner /></Shell></RequireAuth>} />
-      <Route path="/catalogo" element={<RequireAuth><Shell><Catalog /></Shell></RequireAuth>} />
-      <Route path="/agenda" element={<RequireAuth><Shell><Agenda /></Shell></RequireAuth>} />
-      <Route path="/email" element={<RequireAuth><Shell><EmailAgendado /></Shell></RequireAuth>} />
-      <Route path="/financeiro" element={<RequireAuth><Shell><Finance /></Shell></RequireAuth>} />
-      <Route path="/equipe" element={<RequireAuth><RequireAdmin><Shell><Team /></Shell></RequireAdmin></RequireAuth>} />
+      <Route path="/funil" element={<RequireAuth><RequirePermission code="relationships.list"><Shell><Kanban /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/clientes" element={<RequireAuth><RequirePermission code="relationships.list"><Shell><Clientes /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/carteiras" element={<RequireAuth><RequirePermission code="carteiras.view"><Shell><Carteiras /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/pedidos" element={<RequireAuth><RequirePermission code="orders.list"><Shell><Orders /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/whatsapp" element={<RequireAuth><RequirePermission code="whatsapp.view"><Shell><WhatsApp /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/comissoes" element={<RequireAuth><RequirePermission code="commissions.list"><Shell><Commissions /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/relatorios" element={<RequireAuth><RequirePermission code="reports.sales"><Shell><Reports /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/transportadoras" element={<RequireAuth><RequirePermission code="carriers.list"><Shell><Carriers /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/rotas" element={<RequireAuth><RequirePermission code="routes.list"><Shell><RoutePlanner /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/catalogo" element={<RequireAuth><RequirePermission code="catalog.list"><Shell><Catalog /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/agenda" element={<RequireAuth><RequirePermission code="activities.list"><Shell><Agenda /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/email" element={<RequireAuth><RequirePermission code="email_schedules.list"><Shell><EmailAgendado /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/financeiro" element={<RequireAuth><RequirePermission code="finance.list"><Shell><Finance /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/equipe" element={<RequireAuth><RequirePermission code="users.list"><Shell><Team /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/grupos" element={<RequireAuth><RequirePermission code="groups.list"><Shell><Groups /></Shell></RequirePermission></RequireAuth>} />
       <Route path="/trocar-senha" element={<RequireAuth><ChangePassword /></RequireAuth>} />
       <Route path="/config" element={<RequireAuth><Shell><Settings /></Shell></RequireAuth>} />
       <Route path="/conta" element={<RequireAuth><Shell><Account /></Shell></RequireAuth>} />

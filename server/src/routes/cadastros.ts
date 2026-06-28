@@ -1,13 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { query } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { invalidOrgRef } from '../orgRefs.ts';
 
 // Cadastros que alimentam os dropdowns da prospecção: marcas, contatos, cenários e ações.
 export function cadastroRoutes(app: FastifyInstance): void {
   // ── Marcas das empresas representadas ──────────────────────
   app.get('/api/brands', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('brands.list')],
     schema: { querystring: { type: 'object', properties: { represented_id: { type: 'integer' } } } },
   }, async (req) => {
     const orgId = req.auth!.orgId;
@@ -23,7 +23,7 @@ export function cadastroRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/brands', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('brands.create')],
     schema: {
       body: {
         type: 'object',
@@ -46,7 +46,7 @@ export function cadastroRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/brands/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('brands.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -58,7 +58,7 @@ export function cadastroRoutes(app: FastifyInstance): void {
 
   // ── Contatos ───────────────────────────────────────────────
   app.get('/api/contacts', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('contacts.list')],
     schema: {
       querystring: {
         type: 'object',
@@ -91,7 +91,7 @@ export function cadastroRoutes(app: FastifyInstance): void {
   const CONTACT_COLS = 'id, nome, cargo, email, telefone, company_id, represented_id';
 
   app.post('/api/contacts', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('contacts.create')],
     schema: { body: { type: 'object', required: ['nome'], properties: { ...contactBody } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -108,7 +108,7 @@ export function cadastroRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/contacts/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('contacts.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: { type: 'object', properties: { ...contactBody } },
@@ -136,7 +136,7 @@ export function cadastroRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/contacts/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('contacts.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -158,14 +158,14 @@ function registerSimpleList(
   path: 'scenarios' | 'actions',
   table: 'funnel_scenarios' | 'funnel_actions',
 ): void {
-  app.get(`/api/${path}`, { preHandler: requireAuth }, async (req) => {
+  app.get(`/api/${path}`, { preHandler: [requireAuth, requirePermission(`${path}.list`)] }, async (req) => {
     const orgId = req.auth!.orgId;
     const items = await query(`SELECT id, nome FROM ${table} WHERE org_id = $1 ORDER BY nome`, [orgId]);
     return { items };
   });
 
   app.post(`/api/${path}`, {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission(`${path}.create`)],
     schema: { body: { type: 'object', required: ['nome'], properties: { nome: { type: 'string', minLength: 1 } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -175,7 +175,7 @@ function registerSimpleList(
   });
 
   app.patch(`/api/${path}/:id`, {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission(`${path}.update`)],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: { type: 'object', required: ['nome'], properties: { nome: { type: 'string', minLength: 1 } } },
@@ -190,7 +190,7 @@ function registerSimpleList(
   });
 
   app.delete(`/api/${path}/:id`, {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission(`${path}.delete`)],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../lib/api.ts';
+import { useAuth } from '../lib/auth.tsx';
 import type { Brand, CatalogItem, Contact, KanbanCard, NamedItem, RepresentedCompany, Stage } from '../lib/types.ts';
 import { Badge, Btn, PageHeader, Spinner, StatCard, cn, type Tone } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
@@ -23,6 +24,7 @@ const FILTERS_OPEN_KEY = 'funil:filtersOpen';
 const KPIS_OPEN_KEY = 'funil:kpisOpen';
 
 export function Kanban(): React.JSX.Element {
+  const { can } = useAuth();
   const [stages, setStages] = useState<Stage[]>([]);
   const [cards, setCards] = useState<KanbanCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,25 +193,29 @@ export function Kanban(): React.JSX.Element {
               )}
               <div className="flex-1 space-y-2 overflow-auto px-0.5 pb-1">
                 {colCards.map((c) => (
-                  <div key={c.id} draggable
+                  <div key={c.id} draggable={can('relationships.update')}
                     onDragStart={() => setDragId(c.id)}
                     onDragEnd={() => { setDragId(null); setOver(null); }}
                     className={cn('group relative cursor-grab rounded-xl border border-ink-200/70 bg-surface p-3 shadow-card transition active:cursor-grabbing',
                       dragId === c.id && 'opacity-50')}>
                     <div className="absolute right-2 top-2 flex items-center gap-0.5">
-                      <button type="button"
-                        onClick={() => setEditing(c)}
-                        title="Editar prospecção"
-                        className="rounded-lg p-1 text-ink-300 transition hover:bg-ink-100 hover:text-ink-600 focus:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
-                        <Icon name="pencil" size={14} />
-                      </button>
-                      <button type="button"
-                        onClick={() => setMoveFor((m) => (m === c.id ? null : c.id))}
-                        aria-label="Mover para outra etapa" aria-haspopup="menu" aria-expanded={moveFor === c.id}
-                        title="Mover para…"
-                        className="rounded-lg p-1 text-ink-300 transition hover:bg-ink-100 hover:text-ink-600 focus:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
-                        <Icon name="arrowRight" size={14} />
-                      </button>
+                      {can('relationships.update') && (
+                        <button type="button"
+                          onClick={() => setEditing(c)}
+                          title="Editar prospecção"
+                          className="rounded-lg p-1 text-ink-300 transition hover:bg-ink-100 hover:text-ink-600 focus:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                          <Icon name="pencil" size={14} />
+                        </button>
+                      )}
+                      {can('relationships.update') && (
+                        <button type="button"
+                          onClick={() => setMoveFor((m) => (m === c.id ? null : c.id))}
+                          aria-label="Mover para outra etapa" aria-haspopup="menu" aria-expanded={moveFor === c.id}
+                          title="Mover para…"
+                          className="rounded-lg p-1 text-ink-300 transition hover:bg-ink-100 hover:text-ink-600 focus:opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                          <Icon name="arrowRight" size={14} />
+                        </button>
+                      )}
                     </div>
                     {moveFor === c.id && (
                       <>
@@ -266,15 +272,19 @@ export function Kanban(): React.JSX.Element {
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
                       {/* âncora simples (não NavLink): o Kanban também renderiza fora de Router nos testes */}
-                      <a href={`/pedidos?company_id=${c.company_id}&relationship_id=${c.id}${c.represented_id != null ? `&represented_id=${c.represented_id}` : ''}`}
-                        title="Novo pedido"
-                        className="inline-flex items-center gap-1 rounded-lg bg-ink-100 px-2 py-1 text-xs font-semibold text-ink-600 transition hover:bg-brand-50 hover:text-brand-700">
-                        <Icon name="plus" size={13} /> Pedido
-                      </a>
-                      <button type="button" onClick={() => setSampleFor(c)} title="Solicitar amostra"
-                        className="inline-flex items-center gap-1 rounded-lg bg-ink-100 px-2 py-1 text-xs font-semibold text-ink-600 transition hover:bg-brand-50 hover:text-brand-700">
-                        <Icon name="flask" size={13} /> +Amostra
-                      </button>
+                      {can('orders.create') && (
+                        <a href={`/pedidos?company_id=${c.company_id}&relationship_id=${c.id}${c.represented_id != null ? `&represented_id=${c.represented_id}` : ''}`}
+                          title="Novo pedido"
+                          className="inline-flex items-center gap-1 rounded-lg bg-ink-100 px-2 py-1 text-xs font-semibold text-ink-600 transition hover:bg-brand-50 hover:text-brand-700">
+                          <Icon name="plus" size={13} /> Pedido
+                        </a>
+                      )}
+                      {can('sample_requests.create') && (
+                        <button type="button" onClick={() => setSampleFor(c)} title="Solicitar amostra"
+                          className="inline-flex items-center gap-1 rounded-lg bg-ink-100 px-2 py-1 text-xs font-semibold text-ink-600 transition hover:bg-brand-50 hover:text-brand-700">
+                          <Icon name="flask" size={13} /> +Amostra
+                        </button>
+                      )}
                       {c.telefone1 && (
                         <button type="button" title="Abrir conversa no WhatsApp"
                           onClick={() => {
@@ -353,6 +363,7 @@ function EditModal({ card, stages, reps, brands, scenarios, actions, catalog, on
   onRemove: (id: number) => void | Promise<void>;
   onSave: (id: number, patch: EditPatch) => Promise<void>; onClose: () => void;
 }): React.JSX.Element {
+  const { can } = useAuth();
   const [stageId, setStageId] = useState<number | null>(card.stage_id);
   const [status, setStatus] = useState<string>(card.status);
   const [valor, setValor] = useState<string>(numStr(card.valor_estimado));
@@ -568,13 +579,17 @@ function EditModal({ card, stages, reps, brands, scenarios, actions, catalog, on
             </Field>
           </div>
           <div className="flex flex-wrap items-center gap-2 border-t border-ink-100 p-4">
-            <Btn variant="danger" type="button" icon="x"
-              onClick={() => { if (confirm('Remover esta empresa do funil?')) void onRemove(card.id); }}>
-              Remover do funil
-            </Btn>
-            <Btn variant="soft" type="button" icon="calendar" onClick={() => setCreatingActivity(true)}>
-              Criar compromisso
-            </Btn>
+            {can('relationships.delete') && (
+              <Btn variant="danger" type="button" icon="x"
+                onClick={() => { if (confirm('Remover esta empresa do funil?')) void onRemove(card.id); }}>
+                Remover do funil
+              </Btn>
+            )}
+            {can('activities.create') && (
+              <Btn variant="soft" type="button" icon="calendar" onClick={() => setCreatingActivity(true)}>
+                Criar compromisso
+              </Btn>
+            )}
             <div className="ml-auto flex gap-2">
               <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
               <Btn icon="check" type="submit" disabled={busy}>{busy ? '…' : 'Salvar'}</Btn>

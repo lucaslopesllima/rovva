@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { query } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 
 // Relatórios (Fase 4): vendas agregadas, curva ABC de clientes, mapa de
 // cobertura (potencial RFB vs. clientes por município) e perdas por motivo de
@@ -33,7 +33,7 @@ const GROUPS = {
 export function reportRoutes(app: FastifyInstance): void {
   // Vendas agregadas por vendedor | representada | mês.
   app.get('/api/reports/sales', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('reports.sales')],
     schema: {
       querystring: {
         type: 'object',
@@ -66,7 +66,7 @@ export function reportRoutes(app: FastifyInstance): void {
 
   // Curva ABC de clientes por faturamento nos últimos N meses (default 12).
   app.get('/api/reports/abc', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('reports.abc')],
     schema: {
       querystring: {
         type: 'object',
@@ -111,7 +111,7 @@ export function reportRoutes(app: FastifyInstance): void {
   // Mapa de cobertura: por município do território, potencial (empresas ativas
   // na base RFB) vs. clientes já conquistados (relationships status='cliente').
   app.get('/api/reports/coverage', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('reports.coverage')],
     schema: { querystring: { type: 'object', properties: { user_id: { type: 'integer' }, munis: { type: 'string' } } } },
   }, async (req) => {
     const orgId = req.auth!.orgId;
@@ -141,7 +141,7 @@ export function reportRoutes(app: FastifyInstance): void {
 
   // Perdas por motivo de descarte (relacionamentos status='descartado').
   app.get('/api/reports/descartes', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('reports.descartes')],
     schema: { querystring: { type: 'object', properties: { user_id: { type: 'integer' } } } },
   }, async (req) => {
     const orgId = req.auth!.orgId;

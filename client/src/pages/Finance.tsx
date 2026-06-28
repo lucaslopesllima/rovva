@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api.ts';
+import { useAuth } from '../lib/auth.tsx';
 import type { Activity, FinanceCategory, FinanceEntry, KanbanCard, RepresentedCompany } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, PageHeader, Segmented, Spinner, StatCard, cn, type Tone } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
@@ -23,6 +24,7 @@ const STATUS_META: Record<string, { label: string; tone: Tone }> = {
 type Opt = { id: number; label: string };
 
 export function Finance(): React.JSX.Element {
+  const { can } = useAuth();
   const [view, setView] = useState<'lancamentos' | 'fluxo' | 'dre'>('lancamentos');
   const [entries, setEntries] = useState<FinanceEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,8 +132,12 @@ export function Finance(): React.JSX.Element {
       <PageHeader title="Financeiro" subtitle="Contas a pagar e a receber"
         actions={
           <div className="flex gap-2">
-            <Btn variant="ghost" icon="layers" onClick={() => setManagingCats(true)}>Categorias</Btn>
-            <Btn icon="plus" onClick={() => setAdding(true)}>Lançamento</Btn>
+            {(can('finance_categories.create') || can('finance_categories.delete')) && (
+              <Btn variant="ghost" icon="layers" onClick={() => setManagingCats(true)}>Categorias</Btn>
+            )}
+            {can('finance.create') && (
+              <Btn icon="plus" onClick={() => setAdding(true)}>Lançamento</Btn>
+            )}
           </div>
         } />
 
@@ -208,6 +214,8 @@ export function Finance(): React.JSX.Element {
 function Row({ e, onEdit, onRemove, onLiquidar }: {
   e: FinanceEntry; onEdit: () => void; onRemove: () => void; onLiquidar: () => void;
 }): React.JSX.Element {
+  const { can } = useAuth();
+  const canUpdate = can('finance.update');
   const receber = e.kind === 'receber';
   const vencido = e.status === 'pendente' && e.vencimento < todayStr();
   const links = [e.company_nome, e.represented_nome, e.activity_titulo, e.route_nome].filter(Boolean) as string[];
@@ -215,15 +223,15 @@ function Row({ e, onEdit, onRemove, onLiquidar }: {
   const categoria = e.categoria_nome ?? e.categoria;
   return (
     <Card className={cn('flex items-center gap-3 p-3', vencido && 'border-l-4 border-l-rose-500')}>
-      <button onClick={onLiquidar} title={e.status === 'liquidado' ? 'Reabrir' : 'Marcar liquidado'}
-        className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-xl transition',
+      <button onClick={onLiquidar} disabled={!canUpdate} title={e.status === 'liquidado' ? 'Reabrir' : 'Marcar liquidado'}
+        className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-xl transition disabled:cursor-default',
           e.status === 'liquidado' ? 'bg-emerald-500 text-white'
             : receber ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
               : 'bg-rose-50 text-rose-600 hover:bg-rose-100')}>
         <Icon name={e.status === 'liquidado' ? 'check' : receber ? 'arrowDown' : 'arrowUp'} size={17} />
       </button>
 
-      <button onClick={onEdit} className="flex min-w-0 flex-1 items-center gap-3 text-left" title="Editar">
+      <button onClick={onEdit} disabled={!canUpdate} className="flex min-w-0 flex-1 items-center gap-3 text-left" title={canUpdate ? 'Editar' : undefined}>
         <div className="min-w-0 flex-1">
           <p className={cn('truncate text-sm font-semibold', e.status === 'cancelado' ? 'text-ink-400 line-through' : 'text-ink-800')}>
             {e.descricao}
@@ -247,10 +255,12 @@ function Row({ e, onEdit, onRemove, onLiquidar }: {
         </Badge>
       </div>
 
-      <button onClick={onRemove} aria-label="Excluir"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500">
-        <Icon name="x" size={16} />
-      </button>
+      {can('finance.delete') && (
+        <button onClick={onRemove} aria-label="Excluir"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500">
+          <Icon name="x" size={16} />
+        </button>
+      )}
     </Card>
   );
 }
@@ -385,6 +395,7 @@ function DreView(): React.JSX.Element {
 function CategoriesModal({ categories, onClose, onChanged }: {
   categories: FinanceCategory[]; onClose: () => void; onChanged: () => void;
 }): React.JSX.Element {
+  const { can } = useAuth();
   const [nome, setNome] = useState('');
   const [grupo, setGrupo] = useState('');
   const [kind, setKind] = useState<'' | 'pagar' | 'receber'>('');
@@ -418,16 +429,18 @@ function CategoriesModal({ categories, onClose, onChanged }: {
               <Icon name="x" size={17} />
             </button>
           </div>
-          <form onSubmit={add} className="mb-3 grid grid-cols-2 gap-2">
-            <input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome *" className={inputCls} />
-            <input value={grupo} onChange={(e) => setGrupo(e.target.value)} placeholder="Grupo DRE (ex.: Operacional)" className={inputCls} />
-            <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} className={inputCls}>
-              <option value="">Pagar e receber</option>
-              <option value="pagar">Só a pagar</option>
-              <option value="receber">Só a receber</option>
-            </select>
-            <Btn icon="plus" type="submit" disabled={busy}>{busy ? '…' : 'Adicionar'}</Btn>
-          </form>
+          {can('finance_categories.create') && (
+            <form onSubmit={add} className="mb-3 grid grid-cols-2 gap-2">
+              <input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome *" className={inputCls} />
+              <input value={grupo} onChange={(e) => setGrupo(e.target.value)} placeholder="Grupo DRE (ex.: Operacional)" className={inputCls} />
+              <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} className={inputCls}>
+                <option value="">Pagar e receber</option>
+                <option value="pagar">Só a pagar</option>
+                <option value="receber">Só a receber</option>
+              </select>
+              <Btn icon="plus" type="submit" disabled={busy}>{busy ? '…' : 'Adicionar'}</Btn>
+            </form>
+          )}
           <div className="max-h-[55vh] space-y-1.5 overflow-auto">
             {categories.length === 0 ? (
               <p className="py-6 text-center text-sm text-ink-400">Nenhuma categoria cadastrada.</p>
@@ -439,10 +452,12 @@ function CategoriesModal({ categories, onClose, onChanged }: {
                     {c.grupo_dre}{c.kind ? ` · só ${c.kind}` : ''}
                   </p>
                 </div>
+                {can('finance_categories.delete') && (
                 <button onClick={() => void remove(c)} aria-label={`Excluir ${c.nome}`}
                   className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500">
                   <Icon name="trash" size={16} />
                 </button>
+                )}
               </div>
             ))}
           </div>

@@ -38,9 +38,17 @@ export interface AuthClaims {
   role: string;
   // versão de sessão: incrementada na troca/reset de senha, invalida tokens antigos.
   tokenVersion: number;
+  // RBAC fino: carregados do grupo do usuário a cada request (não vão no JWT,
+  // mudam em runtime). isAdmin = bypass total. Preenchidos por requireAuth.
+  permissions: Set<string>;
+  isAdmin: boolean;
 }
 
-export async function signToken(claims: AuthClaims): Promise<string> {
+// Só os campos que vão (e voltam) no JWT — permissions/isAdmin são carregados
+// do banco em requireAuth, não trafegam no token.
+export type TokenClaims = Pick<AuthClaims, 'userId' | 'orgId' | 'role' | 'tokenVersion'>;
+
+export async function signToken(claims: TokenClaims): Promise<string> {
   return new SignJWT({ org: claims.orgId, role: claims.role, ver: claims.tokenVersion })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(String(claims.userId))
@@ -49,7 +57,7 @@ export async function signToken(claims: AuthClaims): Promise<string> {
     .sign(secret);
 }
 
-export async function verifyToken(token: string): Promise<AuthClaims> {
+export async function verifyToken(token: string): Promise<TokenClaims> {
   const { payload } = await jwtVerify(token, secret, { algorithms: ['HS256'] });
   return {
     userId: Number(payload.sub),
@@ -67,30 +75,52 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
   if (!header || !header.startsWith('Bearer ')) {
     return reply.code(401).send({ error: 'missing token' });
   }
+  let claims: TokenClaims;
   try {
-    req.auth = await verifyToken(header.slice(7));
+    claims = await verifyToken(header.slice(7));
   } catch {
     return reply.code(401).send({ error: 'invalid token' });
   }
-  const u = await one<{ ativo: boolean; token_version: number }>(
-    'SELECT ativo, token_version FROM users WHERE id = $1', [req.auth.userId],
+  // Mesma ida ao banco que valida ativo/token_version já traz o grupo do usuário
+  // (LEFT JOIN, sem N+1). group_id NULL → sem permissões (admin ainda passa via role).
+  const u = await one<{
+    ativo: boolean; token_version: number; is_admin: boolean | null; permissions: string[] | null;
+  }>(
+    `SELECT u.ativo, u.token_version, g.is_admin, g.permissions
+       FROM users u LEFT JOIN permission_groups g ON g.id = u.group_id
+      WHERE u.id = $1`,
+    [claims.userId],
   );
   if (!u || !u.ativo) {
-    req.auth = undefined;
     return reply.code(401).send({ error: 'usuário desativado' });
   }
   // Token de versão antiga (senha trocada/resetada depois da emissão) não vale mais.
-  if (u.token_version !== req.auth.tokenVersion) {
-    req.auth = undefined;
+  if (u.token_version !== claims.tokenVersion) {
     return reply.code(401).send({ error: 'sessão expirada' });
   }
+  req.auth = {
+    ...claims,
+    permissions: new Set(u.permissions ?? []),
+    isAdmin: claims.role === 'admin' || u.is_admin === true,
+  };
 }
 
 // preHandler complementar (depois de requireAuth): só admin passa.
 export async function requireAdmin(req: FastifyRequest, reply: FastifyReply): Promise<void> {
-  if (req.auth?.role !== 'admin') {
+  if (!req.auth?.isAdmin) {
     return reply.code(403).send({ error: 'apenas administradores' });
   }
+}
+
+// Factory de preHandler: exige um código de permissão. Admin (is_admin/role)
+// faz bypass. Empilhar depois de requireAuth: preHandler: [requireAuth, requirePermission('orders.create')].
+export function requirePermission(code: string) {
+  return async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    if (req.auth?.isAdmin) return;
+    if (!req.auth?.permissions.has(code)) {
+      return reply.code(403).send({ error: 'sem permissão' });
+    }
+  };
 }
 
 declare module 'fastify' {

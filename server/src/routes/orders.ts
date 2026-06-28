@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { query, one, withClient } from '../db.ts';
-import { requireAuth, requireAdmin } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { audit, pick } from '../audit.ts';
 import { invalidOrgRef } from '../orgRefs.ts';
 import { scopeOwner } from '../scope.ts';
@@ -327,7 +327,7 @@ function orderHtml(org: OrgHeader, order: Record<string, unknown>, items: Record
 
 export function orderRoutes(app: FastifyInstance): void {
   app.get('/api/orders', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('orders.list')],
     schema: {
       querystring: {
         type: 'object',
@@ -358,7 +358,7 @@ export function orderRoutes(app: FastifyInstance): void {
   });
 
   app.get('/api/orders/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('orders.read')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -375,7 +375,7 @@ export function orderRoutes(app: FastifyInstance): void {
   // HTML do pedido/cotação para impressão/PDF (Fase 6.2). Devolve { html } e o
   // client abre numa aba + window.print(); evita dependência de gerador de PDF.
   app.get('/api/orders/:id/print', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('orders.print')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -394,7 +394,7 @@ export function orderRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/orders', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('orders.create')],
     schema: {
       body: {
         type: 'object',
@@ -461,7 +461,7 @@ export function orderRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/orders/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('orders.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -551,7 +551,7 @@ export function orderRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/orders/:id/transition', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('orders.transition')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -593,7 +593,7 @@ export function orderRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/orders/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('orders.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -616,7 +616,7 @@ export function orderRoutes(app: FastifyInstance): void {
   // cliente + valor (tolerância 1 centavo); marca faturado + nf_numero.
   // Admin only — fatura pedido de qualquer vendedor.
   app.post('/api/orders/import', {
-    preHandler: [requireAuth, requireAdmin],
+    preHandler: [requireAuth, requirePermission('orders.import')],
     schema: {
       body: {
         type: 'object',

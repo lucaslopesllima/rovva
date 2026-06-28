@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
 import { one, query, withClient } from '../db.ts';
-import { requireAuth, verifyToken } from '../auth.ts';
+import { requireAuth, requirePermission, verifyToken } from '../auth.ts';
 import { audit } from '../audit.ts';
 import * as evo from '../evolution.ts';
 import { mediaEnabled, saveMedia, readMedia } from '../mediaStore.ts';
@@ -39,7 +39,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
   });
 
   // Estado da conexão da org (cria a linha de settings na primeira visita).
-  app.get('/api/whatsapp/status', { preHandler: requireAuth }, async (req) => {
+  app.get('/api/whatsapp/status', { preHandler: [requireAuth, requirePermission('whatsapp.view')] }, async (req) => {
     const orgId = req.auth!.orgId;
     await ensureSettings(orgId);
     const s = await one<{ status: string; numero: string | null; updated_at: string }>(
@@ -49,7 +49,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
   });
 
   // Inicia conexão: cria a instância (idempotente) e devolve o QR pra leitura.
-  app.post('/api/whatsapp/connect', { preHandler: requireAuth }, async (req, reply) => {
+  app.post('/api/whatsapp/connect', { preHandler: [requireAuth, requirePermission('whatsapp.connect')] }, async (req, reply) => {
     const orgId = req.auth!.orgId;
     const name = await ensureSettings(orgId);
     try {
@@ -73,7 +73,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
 
   // Repesca o estado real na Evolution (o front chama em polling enquanto o QR
   // está aberto, até virar 'conectado').
-  app.get('/api/whatsapp/connection', { preHandler: requireAuth }, async (req, reply) => {
+  app.get('/api/whatsapp/connection', { preHandler: [requireAuth, requirePermission('whatsapp.view')] }, async (req, reply) => {
     const orgId = req.auth!.orgId;
     await ensureSettings(orgId);
     try {
@@ -87,7 +87,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
     }
   });
 
-  app.post('/api/whatsapp/disconnect', { preHandler: requireAuth }, async (req, reply) => {
+  app.post('/api/whatsapp/disconnect', { preHandler: [requireAuth, requirePermission('whatsapp.connect')] }, async (req, reply) => {
     const orgId = req.auth!.orgId;
     try {
       await evo.logout(instanceName(orgId));
@@ -101,7 +101,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
   });
 
   // Lista de conversas (lateral) com rótulos do vínculo, mais recentes primeiro.
-  app.get('/api/whatsapp/chats', { preHandler: requireAuth }, async (req) => {
+  app.get('/api/whatsapp/chats', { preHandler: [requireAuth, requirePermission('whatsapp.view')] }, async (req) => {
     const orgId = req.auth!.orgId;
     const chats = await query(
       `${CHAT_LABELS_SQL}
@@ -124,7 +124,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
 
   // Mensagens de uma conversa (ordem cronológica). Zera não-lidas localmente e
   // dispara confirmação de leitura (ticks azuis) pro contato no WhatsApp.
-  app.get('/api/whatsapp/chats/:id/messages', { preHandler: requireAuth }, async (req, reply) => {
+  app.get('/api/whatsapp/chats/:id/messages', { preHandler: [requireAuth, requirePermission('whatsapp.view')] }, async (req, reply) => {
     const orgId = req.auth!.orgId;
     const chatId = (req.params as { id: string }).id;
     const chat = await one<{ id: string; remote_jid: string; nao_lidas: number }>(
@@ -149,6 +149,30 @@ export function whatsappRoutes(app: FastifyInstance): void {
     }
     await query('UPDATE whatsapp_chats SET nao_lidas = 0 WHERE id = $1 AND org_id = $2', [chatId, orgId]);
     return { messages };
+  });
+
+  // Marca conversa como lida sem refazer o fetch das mensagens. Usado quando uma
+  // mensagem chega numa conversa já aberta (zera o contador no servidor pra não
+  // reaparecer no próximo loadChats) e confirma leitura (ticks azuis) no WhatsApp.
+  app.post('/api/whatsapp/chats/:id/read', { preHandler: [requireAuth, requirePermission('whatsapp.view')] }, async (req, reply) => {
+    const orgId = req.auth!.orgId;
+    const chatId = (req.params as { id: string }).id;
+    const chat = await one<{ id: string; remote_jid: string; nao_lidas: number }>(
+      'SELECT id, remote_jid, nao_lidas FROM whatsapp_chats WHERE id = $1 AND org_id = $2', [chatId, orgId],
+    );
+    if (!chat) return reply.code(404).send({ error: 'conversa não encontrada' });
+    if (chat.nao_lidas > 0) {
+      const reads = await query<{ evolution_id: string | null }>(
+        `SELECT evolution_id FROM whatsapp_messages
+          WHERE chat_id = $1 AND org_id = $2 AND from_me = false AND evolution_id IS NOT NULL
+          ORDER BY momento DESC LIMIT 30`,
+        [chatId, orgId],
+      );
+      const payload = reads.map((m) => ({ id: m.evolution_id as string, remoteJid: chat.remote_jid, fromMe: false }));
+      if (payload.length) evo.markRead(instanceName(orgId), payload).catch(() => undefined); // best-effort
+    }
+    await query('UPDATE whatsapp_chats SET nao_lidas = 0 WHERE id = $1 AND org_id = $2', [chatId, orgId]);
+    return { ok: true };
   });
 
   // Proxy de mídia: <img>/<audio>/<video>/<a> apontam pra cá (?token=JWT, já que
@@ -205,7 +229,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
   // Envia texto numa conversa existente. Persiste a mensagem própria, atualiza a
   // prévia da conversa e empurra pro WebSocket (espelho nas outras abas).
   app.post('/api/whatsapp/chats/:id/send', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('whatsapp.send')],
     schema: {
       body: { type: 'object', required: ['text'], properties: { text: { type: 'string', minLength: 1 } } },
     },
@@ -236,7 +260,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
   // Envia mídia (anexo): base64 vindo do upload do navegador. Cacheia o próprio
   // base64 na linha pra exibir de imediato sem rebaixar da Evolution.
   app.post('/api/whatsapp/chats/:id/send-media', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('whatsapp.send')],
     schema: {
       body: {
         type: 'object',
@@ -295,7 +319,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
   // Vincula (ou desvincula) a conversa a uma empresa da base. Resolve o
   // relationship do funil daquela empresa, se existir. Habilita "criar pedido".
   app.patch('/api/whatsapp/chats/:id/link', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('whatsapp.link')],
     schema: { body: { type: 'object', properties: { company_id: { type: ['integer', 'null'] } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -316,7 +340,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
   // Valida o número no WhatsApp, grava no contato e registra o jid de telefone
   // como alias da conversa — assim o envio passa a funcionar (sai pelo número).
   app.patch('/api/whatsapp/chats/:id/numero', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('whatsapp.link')],
     schema: { body: { type: 'object', required: ['numero'], properties: { numero: { type: 'string', minLength: 8 } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -348,7 +372,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
   });
 
   // Dados do grupo (painel de detalhes): descrição + participantes.
-  app.get('/api/whatsapp/chats/:id/group', { preHandler: requireAuth }, async (req, reply) => {
+  app.get('/api/whatsapp/chats/:id/group', { preHandler: [requireAuth, requirePermission('whatsapp.view')] }, async (req, reply) => {
     const orgId = req.auth!.orgId;
     const id = (req.params as { id: string }).id;
     const chat = await one<{ remote_jid: string }>('SELECT remote_jid FROM whatsapp_chats WHERE id = $1 AND org_id = $2', [id, orgId]);
@@ -367,7 +391,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
   // Concilia duas conversas do mesmo contato (telefone + @lid) numa só. `id` é a
   // conversa que permanece (primária); `other_id` é absorvida e removida.
   app.post('/api/whatsapp/chats/:id/merge', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('whatsapp.link')],
     schema: { body: { type: 'object', required: ['other_id'], properties: { other_id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -387,7 +411,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
 
   // Apaga a conversa (espelho local): mensagens, aliases e agendamentos somem
   // por ON DELETE CASCADE. Avisa as outras abas pelo WebSocket.
-  app.delete('/api/whatsapp/chats/:id', { preHandler: requireAuth }, async (req, reply) => {
+  app.delete('/api/whatsapp/chats/:id', { preHandler: [requireAuth, requirePermission('whatsapp.link')] }, async (req, reply) => {
     const orgId = req.auth!.orgId;
     const id = (req.params as { id: string }).id;
     const ok = await deleteChat(orgId, Number(id));
@@ -400,7 +424,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
   // Abre/retoma uma conversa a partir de uma empresa do funil (ação no Kanban).
   // Cria o chat para o telefone informado e já vincula empresa + relationship.
   app.post('/api/whatsapp/chats/from-company', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('whatsapp.send')],
     schema: {
       body: {
         type: 'object', required: ['company_id', 'numero'],
@@ -428,7 +452,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
 
   // Agenda uma mensagem de texto pra uma conversa (envio pelo processador).
   app.post('/api/whatsapp/chats/:id/schedule', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('whatsapp.schedule')],
     schema: {
       body: {
         type: 'object', required: ['text', 'agendado_para'],
@@ -475,7 +499,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
 
   // Agendamentos pendentes (opcionalmente de uma conversa).
   app.get('/api/whatsapp/schedules', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('whatsapp.view')],
     schema: { querystring: { type: 'object', properties: { chat_id: { type: 'integer' } } } },
   }, async (req) => {
     const orgId = req.auth!.orgId;
@@ -494,7 +518,7 @@ export function whatsappRoutes(app: FastifyInstance): void {
   });
 
   // Cancela um agendamento pendente.
-  app.delete('/api/whatsapp/schedules/:id', { preHandler: requireAuth }, async (req, reply) => {
+  app.delete('/api/whatsapp/schedules/:id', { preHandler: [requireAuth, requirePermission('whatsapp.schedule')] }, async (req, reply) => {
     const orgId = req.auth!.orgId;
     const id = (req.params as { id: string }).id;
     const rows = await query<{ activity_id: string | null }>(

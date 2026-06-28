@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { one, query, withClient } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { invalidOrgRef } from '../orgRefs.ts';
 import { scopeOwner, canWriteOwned } from '../scope.ts';
 import { audit } from '../audit.ts';
@@ -35,7 +35,7 @@ const findSample = (id: number, orgId: number): Promise<{ owner_user_id: string 
 export function sampleRequestRoutes(app: FastifyInstance): void {
   // Lista amostras de uma prospecção (ou da carteira toda). Escopo por dono.
   app.get('/api/sample-requests', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('sample_requests.list')],
     schema: {
       querystring: {
         type: 'object',
@@ -59,7 +59,7 @@ export function sampleRequestRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/sample-requests', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('sample_requests.create')],
     schema: {
       body: {
         type: 'object',
@@ -146,7 +146,7 @@ export function sampleRequestRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/sample-requests/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('sample_requests.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -192,7 +192,7 @@ export function sampleRequestRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/sample-requests/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('sample_requests.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { one, query } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { scopeOwner, canWriteOwned } from '../scope.ts';
 
 // Cadastro de veículos (org-scoped). Consumo/preço alimentam o cálculo de
@@ -20,7 +20,7 @@ const FIELD_SCHEMA = {
 
 export function vehicleRoutes(app: FastifyInstance): void {
   app.get('/api/vehicles', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('vehicles.list')],
     schema: { querystring: { type: 'object', properties: { owner_user_id: { type: 'integer' } } } },
   }, async (req) => {
     const orgId = req.auth!.orgId;
@@ -36,7 +36,7 @@ export function vehicleRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/vehicles', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('vehicles.create')],
     schema: {
       body: {
         type: 'object',
@@ -57,7 +57,7 @@ export function vehicleRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/vehicles/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('vehicles.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: { type: 'object', properties: { ...FIELD_SCHEMA, ativo: { type: 'boolean' } } },
@@ -90,7 +90,7 @@ export function vehicleRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/vehicles/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('vehicles.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;

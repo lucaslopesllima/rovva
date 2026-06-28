@@ -10,6 +10,12 @@ export interface User {
   org_id: number | string;
   org_nome?: string;
   must_change_password?: boolean;
+  // RBAC fino: grupo do usuário. is_admin = bypass total; permissions = códigos
+  // do catálogo concedidos pelo grupo.
+  group_id?: number | string | null;
+  group_nome?: string | null;
+  is_admin?: boolean;
+  permissions?: string[];
 }
 
 interface AuthState {
@@ -19,6 +25,8 @@ interface AuthState {
   register: (org_nome: string, email: string, senha: string) => Promise<void>;
   refresh: () => Promise<void>;
   logout: () => void;
+  // true se o usuário pode executar a ação (admin faz bypass).
+  can: (code: string) => boolean;
 }
 
 const AuthCtx = createContext<AuthState | null>(null);
@@ -64,7 +72,10 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
     location.href = '/login';
   };
 
-  return <AuthCtx.Provider value={{ user, loading, login, register, refresh, logout }}>{children}</AuthCtx.Provider>;
+  const can = (code: string): boolean =>
+    !!user && (user.is_admin === true || (user.permissions?.includes(code) ?? false));
+
+  return <AuthCtx.Provider value={{ user, loading, login, register, refresh, logout, can }}>{children}</AuthCtx.Provider>;
 }
 
 export function useAuth(): AuthState {

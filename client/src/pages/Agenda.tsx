@@ -5,6 +5,7 @@ import { Btn, Card, EmptyState, PageHeader, Segmented, Spinner, cn } from '../li
 import { Icon, type IconName } from '../lib/icons.tsx';
 import { ActivityCreateModal, VisitModal, type RepresentedOption } from '../lib/activityModal.tsx';
 import { toast } from '../lib/toast.tsx';
+import { useAuth } from '../lib/auth.tsx';
 
 // "Adicionar" sem dia escolhido abre num horário comercial futuro: antes das 9h
 // usa hoje 09:00; durante o expediente, a próxima hora cheia (nunca no passado).
@@ -43,6 +44,7 @@ const fmtDayLong = (d: Date): string => d.toLocaleDateString('pt-BR', { weekday:
 type FunnelCompany = { company_id: number; label: string };
 
 export function Agenda(): React.JSX.Element {
+  const { can } = useAuth();
   const [items, setItems] = useState<Activity[]>([]);
   const [funnel, setFunnel] = useState<FunnelCompany[]>([]);
   const [represented, setRepresented] = useState<RepresentedOption[]>([]);
@@ -175,7 +177,9 @@ export function Agenda(): React.JSX.Element {
   return (
     <div className="flex h-full flex-col gap-4 p-4 sm:p-6">
       <PageHeader title="Agenda" subtitle={`${pendentes} atividade(s) pendente(s)`}
-        actions={<Btn icon="plus" onClick={() => setAddAt(proximoHorarioComercial())}>Adicionar</Btn>} />
+        actions={can('activities.create')
+          ? <Btn icon="plus" onClick={() => setAddAt(proximoHorarioComercial())}>Adicionar</Btn>
+          : undefined} />
 
       {/* ── control panel ─────────────────────────────── */}
       <Card className="flex flex-wrap items-center justify-between gap-3 p-3">
@@ -312,6 +316,7 @@ function WeekView({ days, today, byDay, onDay, onSlot }: {
   days: Date[]; today: Date; byDay: Record<string, Activity[]>;
   onDay: (d: Date) => void; onSlot: (d: Date) => void;
 }): React.JSX.Element {
+  const { can } = useAuth();
   const hours = Array.from({ length: WEEK_END_HOUR - WEEK_START_HOUR }, (_, i) => WEEK_START_HOUR + i);
   const bodyH = hours.length * HOUR_PX;
   const cols = '56px repeat(7, minmax(0, 1fr))';
@@ -358,6 +363,7 @@ function WeekView({ days, today, byDay, onDay, onSlot }: {
             return (
               <div key={di} className="relative border-l border-ink-100"
                 onClick={(e) => {
+                  if (!can('activities.create')) return;
                   const hour = Math.min(WEEK_END_HOUR - 1, WEEK_START_HOUR + Math.floor(e.nativeEvent.offsetY / HOUR_PX));
                   const dd = new Date(d); dd.setHours(hour, 0, 0, 0); onSlot(dd);
                 }}>
@@ -391,6 +397,7 @@ function ListView({ byDay, onToggle, onRemove, onEdit, onVisit, onAdd }: {
   byDay: Record<string, Activity[]>; onToggle: (a: Activity) => void; onRemove: (a: Activity) => void;
   onEdit: (a: Activity) => void; onVisit: (a: Activity) => void; onAdd: () => void;
 }): React.JSX.Element {
+  const { can } = useAuth();
   const days = Object.entries(byDay).sort((a, b) => (a[1][0]?.start_at ?? '').localeCompare(b[1][0]?.start_at ?? ''));
   if (days.length === 0) {
     return <EmptyState icon="calendar" title="Nenhuma atividade" hint="Ajuste os filtros ou adicione uma atividade." />;
@@ -405,7 +412,7 @@ function ListView({ byDay, onToggle, onRemove, onEdit, onVisit, onAdd }: {
           </div>
         </div>
       ))}
-      <Btn variant="soft" icon="plus" onClick={onAdd}>Adicionar atividade</Btn>
+      {can('activities.create') && <Btn variant="soft" icon="plus" onClick={onAdd}>Adicionar atividade</Btn>}
     </div>
   );
 }
@@ -413,14 +420,15 @@ function ListView({ byDay, onToggle, onRemove, onEdit, onVisit, onAdd }: {
 function Row({ a, onToggle, onRemove, onEdit, onVisit }: {
   a: Activity; onToggle: (a: Activity) => void; onRemove: (a: Activity) => void; onEdit: (a: Activity) => void; onVisit: (a: Activity) => void;
 }): React.JSX.Element {
+  const { can } = useAuth();
   const done = a.status === 'feito';
   // Visita em campo: só faz sentido com empresa vinculada (check-in/relatório).
   const podeVisitar = a.company_id != null;
   const visitada = !!a.checkin_at || !!a.relatorio;
   return (
     <Card className="flex items-center gap-3 p-3">
-      <button onClick={() => onToggle(a)} aria-label="Concluir"
-        className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-lg border transition',
+      <button onClick={() => onToggle(a)} aria-label="Concluir" disabled={!can('activities.update')}
+        className={cn('grid h-6 w-6 shrink-0 place-items-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-50',
           done ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-ink-300 text-transparent hover:border-brand-400')}>
         <Icon name="check" size={14} />
       </button>
@@ -433,21 +441,25 @@ function Row({ a, onToggle, onRemove, onEdit, onVisit }: {
           <p className="truncate text-xs text-ink-400">{fmtTime(a.start_at)} · {TIPO[a.tipo]?.label ?? a.tipo}{a.razao_social ? ` · ${a.razao_social}` : ''}{a.represented_nome ? ` · ${a.represented_nome}` : ''}{a.contact_nome ? ` · ${a.contact_nome}` : ''}</p>
         </div>
       </button>
-      {podeVisitar && (
+      {podeVisitar && (can('activities.checkin') || can('activities.report')) && (
         <button onClick={() => onVisit(a)} aria-label="Registrar visita" title="Check-in / relatório"
           className={cn('grid h-8 w-8 shrink-0 place-items-center rounded-lg transition',
             visitada ? 'text-emerald-600 hover:bg-emerald-50' : 'text-ink-300 hover:bg-brand-50 hover:text-brand-600')}>
           <Icon name="mapPin" size={16} />
         </button>
       )}
-      <button onClick={() => onEdit(a)} aria-label="Editar"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-400 hover:bg-ink-100">
-        <Icon name="pencil" size={16} />
-      </button>
-      <button onClick={() => onRemove(a)} aria-label="Excluir"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500">
-        <Icon name="trash" size={16} />
-      </button>
+      {can('activities.update') && (
+        <button onClick={() => onEdit(a)} aria-label="Editar"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-400 hover:bg-ink-100">
+          <Icon name="pencil" size={16} />
+        </button>
+      )}
+      {can('activities.delete') && (
+        <button onClick={() => onRemove(a)} aria-label="Excluir"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500">
+          <Icon name="trash" size={16} />
+        </button>
+      )}
     </Card>
   );
 }
@@ -478,6 +490,7 @@ function DayModal({ date, events, onClose, onToggle, onRemove, onEdit, onVisit, 
   onVisit: (a: Activity) => void; onAdd: () => void;
   onGerarRota: (d: Date, evs: Activity[]) => void; rotaBusy: boolean;
 }): React.JSX.Element {
+  const { can } = useAuth();
   const comEmpresa = events.filter((e) => e.company_id != null).length;
   return (
     <Modal title={fmtDayLong(date)} onClose={onClose}>
@@ -492,7 +505,9 @@ function DayModal({ date, events, onClose, onToggle, onRemove, onEdit, onVisit, 
             {rotaBusy ? 'Gerando…' : `Gerar rota do dia (${comEmpresa} paradas)`}
           </Btn>
         )}
-        <Btn variant="soft" icon="plus" onClick={onAdd} className="w-full">Adicionar neste dia</Btn>
+        {can('activities.create') && (
+          <Btn variant="soft" icon="plus" onClick={onAdd} className="w-full">Adicionar neste dia</Btn>
+        )}
       </div>
     </Modal>
   );

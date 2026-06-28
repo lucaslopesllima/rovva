@@ -5,8 +5,17 @@ import { buildApp } from './app.ts';
 import { materializeRecurrences } from './recurrence.ts';
 import { processDueEmails } from './email.ts';
 import { processDueWhatsapp } from './whatsappScheduler.ts';
+import { seedAllOrgs } from './seedGroups.ts';
 
 const app = await buildApp();
+
+// RBAC: garante os grupos padrão em toda org e filia usuários ainda sem grupo
+// (admin → Administrador, demais → Vendedor). Idempotente; roda no boot, depois
+// das migrações. Falha aqui não derruba o servidor — só registra.
+seedAllOrgs().then(
+  () => app.log.info('grupos de permissão semeados'),
+  (e) => app.log.error({ err: e }, 'falha ao semear grupos de permissão'),
+);
 
 // Materializa lançamentos financeiros recorrentes decorridos (Fase 6.1). Roda
 // no boot; idempotente, então deploys repetidos não duplicam. Falha aqui não

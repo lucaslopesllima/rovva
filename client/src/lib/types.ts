@@ -247,6 +247,18 @@ export interface CommissionRule {
 export interface OrgUser {
   id: number; nome: string | null; email: string; role: string; ativo: boolean;
   must_change_password?: boolean;
+  group_id?: number | null; group_nome?: string | null;
+}
+
+// Grupo de permissões (RBAC fino). is_admin = bypass total; permissions = códigos do catálogo.
+export interface PermissionGroup {
+  id: number; nome: string; is_admin: boolean; permissions: string[];
+  created_at: string; user_count?: number;
+}
+
+// Item do catálogo de permissões servido por GET /api/permissions/catalog.
+export interface PermissionCatalogItem {
+  code: string; label: string; module: string;
 }
 
 export interface Goal {

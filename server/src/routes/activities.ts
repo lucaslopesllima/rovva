@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { one, query } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { invalidOrgRef } from '../orgRefs.ts';
 import { scopeOwner, canWriteOwned, invalidOwnerAssignment } from '../scope.ts';
 import { audit } from '../audit.ts';
@@ -9,7 +9,7 @@ import { audit } from '../audit.ts';
 // Fase 3: rep vê/edita só os próprios compromissos; admin tudo + filtro.
 export function activityRoutes(app: FastifyInstance): void {
   app.get('/api/activities', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('activities.list')],
     schema: {
       querystring: {
         type: 'object',
@@ -47,7 +47,7 @@ export function activityRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/activities', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('activities.create')],
     schema: {
       body: {
         type: 'object',
@@ -85,7 +85,7 @@ export function activityRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/activities/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('activities.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -135,7 +135,7 @@ export function activityRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/activities/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('activities.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -154,7 +154,7 @@ export function activityRoutes(app: FastifyInstance): void {
 
   // Fase 5 — check-in de visita: grava a geolocalização do navegador na hora.
   app.post('/api/activities/:id/checkin', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('activities.checkin')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -188,7 +188,7 @@ export function activityRoutes(app: FastifyInstance): void {
   // texto). Atualiza data_contato do relationship vinculado (zera o alerta de
   // inatividade da Fase 4) e marca o compromisso como feito.
   app.post('/api/activities/:id/report', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('activities.report')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {

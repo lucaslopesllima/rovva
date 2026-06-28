@@ -42,7 +42,7 @@ export function Commissions(): React.JSX.Element {
           ]} />
         } />
       {tab === 'extrato'
-        ? <Extrato reps={reps} admin={admin} />
+        ? <Extrato reps={reps} />
         : <Rules reps={reps} admin={admin} />}
     </div>
   );
@@ -50,7 +50,8 @@ export function Commissions(): React.JSX.Element {
 
 /* ── Extrato mensal ─────────────────────────────────────── */
 
-function Extrato({ reps, admin }: { reps: RepresentedCompany[]; admin: boolean }): React.JSX.Element {
+function Extrato({ reps }: { reps: RepresentedCompany[] }): React.JSX.Element {
+  const { can } = useAuth();
   const [competencia, setCompetencia] = useState(todayStr().slice(0, 7));
   const [representedId, setRepresentedId] = useState<'todas' | number>('todas');
   const [status, setStatus] = useState<'todos' | CommissionStatus>('todos');
@@ -128,7 +129,7 @@ function Extrato({ reps, admin }: { reps: RepresentedCompany[]; admin: boolean }
               e.valor_recebido == null ? '' : csvNum(e.valor_recebido), e.status]))}>
           Exportar
         </Btn>
-        {admin && (
+        {can('commissions.reconcile') && (
           <Btn variant="ghost" size="sm" icon="arrowDown" onClick={() => setReconciling(true)}>
             Conciliar CSV
           </Btn>
@@ -156,7 +157,7 @@ function Extrato({ reps, admin }: { reps: RepresentedCompany[]; admin: boolean }
                 </div>
                 <div className="space-y-2">
                   {xs.map((e) => (
-                    <EntryRow key={e.id} e={e} admin={admin} onSettle={() => setSettling(e)} />
+                    <EntryRow key={e.id} e={e} onSettle={() => setSettling(e)} />
                   ))}
                 </div>
               </section>
@@ -177,7 +178,8 @@ function Extrato({ reps, admin }: { reps: RepresentedCompany[]; admin: boolean }
   );
 }
 
-function EntryRow({ e, admin, onSettle }: { e: CommissionEntry; admin: boolean; onSettle: () => void }): React.JSX.Element {
+function EntryRow({ e, onSettle }: { e: CommissionEntry; onSettle: () => void }): React.JSX.Element {
+  const { can } = useAuth();
   const meta = STATUS_META[e.status];
   return (
     <Card className={cn('flex items-center gap-3 p-3', e.status === 'cancelada' && 'opacity-60')}>
@@ -205,7 +207,7 @@ function EntryRow({ e, admin, onSettle }: { e: CommissionEntry; admin: boolean; 
         </span>
         <Badge tone={meta.tone}>{meta.label}</Badge>
       </div>
-      {admin && (e.status === 'prevista' || e.status === 'divergente') && (
+      {can('commissions.settle') && (e.status === 'prevista' || e.status === 'divergente') && (
         <Btn variant="ghost" size="sm" onClick={onSettle}>Dar baixa</Btn>
       )}
     </Card>
@@ -342,6 +344,7 @@ const alvoRegra = (r: CommissionRule): { label: string; tone: Tone } =>
   : { label: 'Regra geral', tone: 'neutral' };
 
 function Rules({ reps, admin }: { reps: RepresentedCompany[]; admin: boolean }): React.JSX.Element {
+  const { can } = useAuth();
   const [rules, setRules] = useState<CommissionRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -385,7 +388,7 @@ function Rules({ reps, admin }: { reps: RepresentedCompany[]; admin: boolean }):
       <p className="px-1 text-xs text-ink-400">
         Precedência na resolução: <strong>produto</strong> &gt; <strong>cliente</strong> &gt; <strong>vendedor</strong> &gt; regra geral da representada.
       </p>
-      {admin && (
+      {can('commission_rules.create') && (
         <div className="flex justify-end">
           <Btn icon="plus" size="sm" onClick={() => setAdding(true)}>Nova regra</Btn>
         </div>
@@ -415,12 +418,16 @@ function Rules({ reps, admin }: { reps: RepresentedCompany[]; admin: boolean }):
                 {fmtDate(r.vigencia_inicio)} → {r.vigencia_fim ? fmtDate(r.vigencia_fim) : 'sem fim'}
               </p>
             </div>
-            {admin && (
+            {(can('commission_rules.update') || can('commission_rules.delete')) && (
               <div className="flex shrink-0 items-center gap-1">
-                <button onClick={() => setEditing(r)} aria-label="Editar regra"
-                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
-                <button onClick={() => void remove(r)} aria-label="Excluir regra"
-                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+                {can('commission_rules.update') && (
+                  <button onClick={() => setEditing(r)} aria-label="Editar regra"
+                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
+                )}
+                {can('commission_rules.delete') && (
+                  <button onClick={() => void remove(r)} aria-label="Excluir regra"
+                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+                )}
               </div>
             )}
           </div>

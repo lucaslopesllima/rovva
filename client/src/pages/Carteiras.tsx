@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../lib/api.ts';
+import { useAuth } from '../lib/auth.tsx';
 import type { Cliente, Order, OrgUser } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, PageHeader, Spinner, StatCard, cn } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
@@ -17,6 +18,7 @@ const REALIZADO_STATUS = new Set(['faturado', 'entregue']);
 // troca o vendedor de uma carteira (transfere tudo) e move clientes entre
 // carteiras (reatribui o owner de cada cliente). Fonte única: o relacionamento.
 export function Carteiras(): React.JSX.Element {
+  const { can } = useAuth();
   const [users, setUsers] = useState<OrgUser[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -181,7 +183,7 @@ export function Carteiras(): React.JSX.Element {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {sel.ownerId !== SEM_DONO && (
+              {sel.ownerId !== SEM_DONO && can('relationships.transfer') && (
                 <label className="inline-flex items-center gap-2 text-xs text-ink-500">
                   Trocar vendedor:
                   <select value="" onChange={(e) => { if (e.target.value) void trocarVendedor(Number(e.target.value)); }}
@@ -191,7 +193,9 @@ export function Carteiras(): React.JSX.Element {
                   </select>
                 </label>
               )}
-              <Btn size="sm" icon="plus" variant="soft" onClick={() => { setAdding((v) => !v); setPickQ(''); }}>Adicionar clientes</Btn>
+              {can('relationships.transfer') && (
+                <Btn size="sm" icon="plus" variant="soft" onClick={() => { setAdding((v) => !v); setPickQ(''); }}>Adicionar clientes</Btn>
+              )}
             </div>
           </div>
 
@@ -242,6 +246,7 @@ export function Carteiras(): React.JSX.Element {
                 <label className="inline-flex shrink-0 items-center gap-1.5 text-[11px] text-ink-400">
                   <Icon name="users" size={14} />
                   <select value={c.owner_user_id ?? ''} aria-label="Vendedor da carteira"
+                    disabled={!can('relationships.transfer')}
                     onChange={(e) => void moverCliente(c, e.target.value === '' ? null : Number(e.target.value))}
                     className="rounded-lg border border-ink-200 bg-surface px-2 py-1.5 text-xs text-ink-700">
                     <option value="">Sem vendedor</option>

@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { one, query } from '../db.ts';
-import { requireAuth, requireAdmin } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { audit, pick } from '../audit.ts';
 import { invalidOrgRef } from '../orgRefs.ts';
 import { scopeOwner, canWriteOwned, invalidOwnerAssignment } from '../scope.ts';
@@ -49,7 +49,7 @@ const cast = (k: string): string => (k === 'kind' ? '::finance_kind' : k === 'st
 
 export function financeRoutes(app: FastifyInstance): void {
   app.get('/api/finance', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('finance.list')],
     schema: {
       querystring: {
         type: 'object',
@@ -82,7 +82,7 @@ export function financeRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/finance', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('finance.create')],
     schema: {
       body: {
         type: 'object',
@@ -134,7 +134,7 @@ export function financeRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/finance/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('finance.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -191,7 +191,7 @@ export function financeRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/finance/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('finance.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -210,7 +210,7 @@ export function financeRoutes(app: FastifyInstance): void {
   // Materializa lançamentos recorrentes da org sob demanda (cron/deploy). O boot
   // já roda para todas as orgs; este endpoint é o gatilho manual (admin).
   app.post('/api/finance/recurrences/run', {
-    preHandler: [requireAuth, requireAdmin],
+    preHandler: [requireAuth, requirePermission('finance.recurrences')],
   }, async (req) => {
     const created = await materializeRecurrences(req.auth!.orgId);
     return { created };
@@ -220,7 +220,7 @@ export function financeRoutes(app: FastifyInstance): void {
   // + comissões previstas ainda não recebidas, agrupados por semana (segunda a
   // segunda) nos próximos N meses. Saldo = receber + comissão − pagar.
   app.get('/api/finance/cashflow', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('finance.cashflow')],
     schema: { querystring: { type: 'object', properties: { months: { type: 'integer', minimum: 1, maximum: 12 }, user_id: { type: 'integer' } } } },
   }, async (req) => {
     const orgId = req.auth!.orgId;
@@ -278,7 +278,7 @@ export function financeRoutes(app: FastifyInstance): void {
   // despesas = lançamentos 'pagar' liquidados, abertos por categoria. Resultado
   // = receita − despesa total. Ano default = corrente.
   app.get('/api/finance/dre', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('finance.dre')],
     schema: { querystring: { type: 'object', properties: { ano: { type: 'integer', minimum: 2000, maximum: 2100 }, user_id: { type: 'integer' } } } },
   }, async (req) => {
     const orgId = req.auth!.orgId;
@@ -349,7 +349,7 @@ export function financeRoutes(app: FastifyInstance): void {
 
   // ───── Categorias financeiras (cadastro leve + grupo de DRE) ─────
   app.get('/api/finance/categories', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('finance_categories.list')],
     schema: { querystring: { type: 'object', properties: { kind: { type: 'string', enum: ['pagar', 'receber'] }, ativo: { type: 'boolean' } } } },
   }, async (req) => {
     const orgId = req.auth!.orgId;
@@ -367,7 +367,7 @@ export function financeRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/finance/categories', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('finance_categories.create')],
     schema: {
       body: {
         type: 'object', required: ['nome'],
@@ -395,7 +395,7 @@ export function financeRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/finance/categories/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('finance_categories.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -431,7 +431,7 @@ export function financeRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/finance/categories/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('finance_categories.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;

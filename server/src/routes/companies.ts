@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { one, query } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { geocodeAddr } from '../geocode.ts';
 
 // Read-only lookup into the global companies pool (mesma fonte do recommend/funil).
@@ -10,7 +10,7 @@ export function companyRoutes(app: FastifyInstance): void {
   // cadastros (transportadoras, representadas, etc.). q só com dígitos vira
   // prefixo de CNPJ (índice pattern_ops); senão ILIKE trigram em razão/fantasia.
   app.get('/api/companies/search', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('prospeccao.view')],
     schema: { querystring: { type: 'object', required: ['q'], properties: { q: { type: 'string', minLength: 2 } } } },
   }, async (req) => {
     const { q } = req.query as { q: string };
@@ -42,7 +42,7 @@ export function companyRoutes(app: FastifyInstance): void {
   });
 
   app.get('/api/companies/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('prospeccao.view')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const { id } = req.params as { id: number };
@@ -96,7 +96,7 @@ export function companyRoutes(app: FastifyInstance): void {
   // Geocodifica o endereço da empresa sob demanda (lat/lon exato) e cacheia.
   // Fallback: centroide do município (não cacheado, pra permitir nova tentativa).
   app.get('/api/companies/:id/geocode', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('prospeccao.view')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const { id } = req.params as { id: number };

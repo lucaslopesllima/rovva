@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { query } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 
 const COLS = 'id, nome, cnpj, segmento, site, contato, notas, ativo';
 
 export function representedRoutes(app: FastifyInstance): void {
-  app.get('/api/represented', { preHandler: requireAuth }, async (req) => {
+  app.get('/api/represented', { preHandler: [requireAuth, requirePermission('represented.list')] }, async (req) => {
     const orgId = req.auth!.orgId;
     const empresas = await query(
       `SELECT ${COLS} FROM represented_companies WHERE org_id = $1 ORDER BY ativo DESC, nome`,
@@ -15,7 +15,7 @@ export function representedRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/represented', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('represented.create')],
     schema: {
       body: {
         type: 'object',
@@ -42,7 +42,7 @@ export function representedRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/represented/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('represented.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: {
@@ -79,7 +79,7 @@ export function representedRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/represented/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('represented.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;

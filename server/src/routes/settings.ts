@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { one, query } from '../db.ts';
-import { requireAuth, requireAdmin } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { encryptSecret } from '../crypto.ts';
 import { getSmtpSettings, sendViaSmtp } from '../smtp.ts';
 import { audit } from '../audit.ts';
@@ -8,7 +8,7 @@ import { audit } from '../audit.ts';
 // Config SMTP da org (admin). A senha entra cifrada e NUNCA volta ao client:
 // o GET expõe só has_password. PUT faz upsert; senha vazia/omitida mantém a atual.
 export function settingsRoutes(app: FastifyInstance): void {
-  app.get('/api/settings/smtp', { preHandler: [requireAuth, requireAdmin] }, async (req) => {
+  app.get('/api/settings/smtp', { preHandler: [requireAuth, requirePermission('settings.smtp.read')] }, async (req) => {
     const orgId = req.auth!.orgId;
     const s = await getSmtpSettings(orgId);
     if (!s) return { smtp: null };
@@ -22,7 +22,7 @@ export function settingsRoutes(app: FastifyInstance): void {
   });
 
   app.put('/api/settings/smtp', {
-    preHandler: [requireAuth, requireAdmin],
+    preHandler: [requireAuth, requirePermission('settings.smtp.update')],
     schema: {
       body: {
         type: 'object',
@@ -70,7 +70,7 @@ export function settingsRoutes(app: FastifyInstance): void {
   });
 
   // Envia um e-mail de teste pro próprio usuário com a config SMTP salva.
-  app.post('/api/settings/smtp/test', { preHandler: [requireAuth, requireAdmin] }, async (req, reply) => {
+  app.post('/api/settings/smtp/test', { preHandler: [requireAuth, requirePermission('settings.smtp.test')] }, async (req, reply) => {
     const orgId = req.auth!.orgId;
     const s = await getSmtpSettings(orgId);
     if (!s) return reply.code(400).send({ error: 'configure o SMTP antes de testar' });

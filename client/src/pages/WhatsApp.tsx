@@ -8,6 +8,7 @@ import { Icon } from '../lib/icons.tsx';
 import { maskPhone } from '../lib/format.ts';
 import { CompanySearch } from '../lib/companySearch.tsx';
 import { OrderModal } from '../lib/orderModal.tsx';
+import { useAuth } from '../lib/auth.tsx';
 import type { Contact, CompanyHit, WaChat, WaMessage, WaSchedule, WaStatus } from '../lib/types.ts';
 
 // base64 do QR pode vir cru ou já como data URL — normaliza p/ <img src>.
@@ -76,6 +77,7 @@ function fileToBase64(file: File): Promise<string> {
 
 // Painel de conexão: mostra QR e faz polling do estado até conectar.
 function ConnectPanel({ onConnected }: { onConnected: () => void }): React.JSX.Element {
+  const { can } = useAuth();
   const [qr, setQr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -116,10 +118,12 @@ function ConnectPanel({ onConnected }: { onConnected: () => void }): React.JSX.E
         </div>
         {qr ? (
           <img src={qrSrc(qr)} alt="QR Code" className="h-56 w-56 rounded-xl border border-ink-200" />
-        ) : (
+        ) : can('whatsapp.connect') ? (
           <Btn onClick={() => void start()} disabled={busy} icon="phone">
             {busy ? 'Gerando QR…' : 'Gerar QR Code'}
           </Btn>
+        ) : (
+          <p className="text-xs text-ink-400">Você não tem permissão para conectar o WhatsApp.</p>
         )}
         {qr && <p className="text-xs text-ink-400">Aguardando leitura…</p>}
       </Card>
@@ -429,6 +433,7 @@ function ContactDetails({ chat, messages, onClose, onLink, onOrder, onNumber, on
   onLink: () => void; onOrder: () => void; onNumber: () => void;
   onOpenContact: (chatId: number) => void;
 }): React.JSX.Element {
+  const { can } = useAuth();
   const isGroup = chat.remote_jid.endsWith('@g.us');
   const [group, setGroup] = useState<GroupData | null>(null);
   useEffect(() => {
@@ -476,7 +481,7 @@ function ContactDetails({ chat, messages, onClose, onLink, onOrder, onNumber, on
           <img src={avatarSrc(chat)} alt="" className="h-32 w-32 rounded-full object-cover" />
           <h2 className="text-xl font-semibold text-ink-900">{nomeChat(chat)}</h2>
           <p className="text-sm text-ink-500">{isGroup ? (group?.size ? `${group.size} participantes` : 'Grupo') : chatIdent(chat)}</p>
-          {needsNumber && (
+          {needsNumber && can('whatsapp.link') && (
             <button onClick={onNumber} className="mt-1 rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100">
               Informar número
             </button>
@@ -502,11 +507,11 @@ function ContactDetails({ chat, messages, onClose, onLink, onOrder, onNumber, on
                 </div>
                 <div className="flex gap-2">
                   <Btn size="sm" icon="plus" onClick={onOrder}>Criar pedido</Btn>
-                  <Btn size="sm" variant="soft" icon="pencil" onClick={onLink}>Trocar</Btn>
+                  {can('whatsapp.link') && <Btn size="sm" variant="soft" icon="pencil" onClick={onLink}>Trocar</Btn>}
                 </div>
               </div>
             ) : (
-              <Btn size="sm" variant="soft" icon="building" onClick={onLink}>Vincular empresa</Btn>
+              can('whatsapp.link') && <Btn size="sm" variant="soft" icon="building" onClick={onLink}>Vincular empresa</Btn>
             )}
           </div>
         )}
@@ -610,6 +615,7 @@ function ContactDetails({ chat, messages, onClose, onLink, onOrder, onNumber, on
 }
 
 export function WhatsApp(): React.JSX.Element {
+  const { can } = useAuth();
   const [status, setStatus] = useState<WaStatus | null>(null);
   const [enabled, setEnabled] = useState(true);
   const [chats, setChats] = useState<WaChat[]>([]);
@@ -714,9 +720,15 @@ export function WhatsApp(): React.JSX.Element {
         }
         if (msg.event === 'message' && msg.data.message) {
           const m = msg.data.message;
-          void loadChats();
-          if (Number(msg.data.chat_id) === Number(activeRef.current)) {
+          const chatId = msg.data.chat_id;
+          if (Number(chatId) === Number(activeRef.current)) {
             setMessages((ms) => (ms.some((x) => x.id === m.id) ? ms : [...ms, m]));
+            // Conversa aberta: confirma leitura no servidor e só então recarrega a
+            // lista já zerada (evita que loadChats traga o contador de volta).
+            void api.post(`/api/whatsapp/chats/${chatId}/read`, {})
+              .then(loadChats).catch(() => loadChats());
+          } else {
+            void loadChats();
           }
         }
       };
@@ -924,7 +936,7 @@ export function WhatsApp(): React.JSX.Element {
                   </span>
                 </button>
                 <div className="flex shrink-0 items-center gap-0.5">
-                  {needsNumber && (
+                  {needsNumber && can('whatsapp.link') && (
                     <button title="Informar número do contato" onClick={() => setNumberOpen(true)}
                       className="grid h-9 w-9 place-items-center rounded-full text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10">
                       <Icon name="phone" size={18} />
@@ -936,18 +948,24 @@ export function WhatsApp(): React.JSX.Element {
                       <Icon name="plus" size={18} />
                     </button>
                   )}
-                  <button title="Conciliar conversas (telefone + LID)" onClick={() => setMergeOpen(true)}
-                    className="grid h-9 w-9 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
-                    <Icon name="layers" size={18} />
-                  </button>
-                  <button title="Agendar mensagem" onClick={() => setSchedOpen(true)}
-                    className="grid h-9 w-9 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
-                    <Icon name="clock" size={18} />
-                  </button>
-                  <button title={active.company_id != null ? 'Empresa vinculada' : 'Vincular empresa'} onClick={() => setLinkOpen(true)}
-                    className={cn('grid h-9 w-9 place-items-center rounded-full hover:bg-[var(--wa-hover)]', active.company_id != null ? 'text-emerald-600' : 'text-[var(--wa-muted)]')}>
-                    <Icon name="users" size={18} />
-                  </button>
+                  {can('whatsapp.link') && (
+                    <button title="Conciliar conversas (telefone + LID)" onClick={() => setMergeOpen(true)}
+                      className="grid h-9 w-9 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
+                      <Icon name="layers" size={18} />
+                    </button>
+                  )}
+                  {can('whatsapp.schedule') && (
+                    <button title="Agendar mensagem" onClick={() => setSchedOpen(true)}
+                      className="grid h-9 w-9 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
+                      <Icon name="clock" size={18} />
+                    </button>
+                  )}
+                  {can('whatsapp.link') && (
+                    <button title={active.company_id != null ? 'Empresa vinculada' : 'Vincular empresa'} onClick={() => setLinkOpen(true)}
+                      className={cn('grid h-9 w-9 place-items-center rounded-full hover:bg-[var(--wa-hover)]', active.company_id != null ? 'text-emerald-600' : 'text-[var(--wa-muted)]')}>
+                      <Icon name="users" size={18} />
+                    </button>
+                  )}
                   <button title="Apagar conversa" onClick={() => void delChat(active)}
                     className="grid h-9 w-9 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10">
                     <Icon name="trash" size={18} />
@@ -966,18 +984,22 @@ export function WhatsApp(): React.JSX.Element {
               </div>
 
               <div className="flex items-end gap-2 bg-[var(--wa-panel)] px-3 py-2">
-                <button onClick={() => fileRef.current?.click()} aria-label="Anexar"
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
-                  <Icon name="paperclip" size={20} />
-                </button>
+                {can('whatsapp.send') && (
+                  <button onClick={() => fileRef.current?.click()} aria-label="Anexar"
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
+                    <Icon name="paperclip" size={20} />
+                  </button>
+                )}
                 <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={1} autoFocus
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (can('whatsapp.send')) void send(); } }}
                   placeholder="Digite uma mensagem…"
                   className="max-h-32 min-h-[40px] min-w-0 flex-1 resize-none rounded-lg bg-[var(--wa-in)] px-3 py-2 text-sm text-[var(--wa-ink)] outline-none placeholder:text-[var(--wa-muted)]" />
-                <button onClick={() => void send()} aria-label="Enviar"
-                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[var(--wa-green)] hover:bg-[var(--wa-hover)]">
-                  <Icon name="send" size={20} />
-                </button>
+                {can('whatsapp.send') && (
+                  <button onClick={() => void send()} aria-label="Enviar"
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[var(--wa-green)] hover:bg-[var(--wa-hover)]">
+                    <Icon name="send" size={20} />
+                  </button>
+                )}
               </div>
             </>
           ) : (

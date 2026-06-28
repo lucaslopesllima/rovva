@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { query } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 import { TAX_FIELDS } from './tax.ts';
 
 const COLS = `id, nome, codigo, descricao, preco, unidade_medida, represented_id, ativo, ${TAX_FIELDS.join(', ')}`;
@@ -20,7 +20,7 @@ const BODY = {
 } as const;
 
 export function catalogRoutes(app: FastifyInstance): void {
-  app.get('/api/catalog', { preHandler: requireAuth }, async (req) => {
+  app.get('/api/catalog', { preHandler: [requireAuth, requirePermission('catalog.list')] }, async (req) => {
     const orgId = req.auth!.orgId;
     const items = await query(
       `SELECT ${COLS} FROM catalog_items WHERE org_id = $1 ORDER BY ativo DESC, nome`,
@@ -30,7 +30,7 @@ export function catalogRoutes(app: FastifyInstance): void {
   });
 
   app.post('/api/catalog', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('catalog.create')],
     schema: { body: { type: 'object', required: ['nome'], properties: { ...BODY } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
@@ -47,7 +47,7 @@ export function catalogRoutes(app: FastifyInstance): void {
   });
 
   app.patch('/api/catalog/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('catalog.update')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
       body: { type: 'object', properties: { ...BODY } },
@@ -73,7 +73,7 @@ export function catalogRoutes(app: FastifyInstance): void {
   });
 
   app.delete('/api/catalog/:id', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('catalog.delete')],
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;

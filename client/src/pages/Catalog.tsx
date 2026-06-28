@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.ts';
+import { useAuth } from '../lib/auth.tsx';
 import type { CatalogItem, RepresentedCompany } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, PageHeader, Segmented, Spinner, cn } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
@@ -41,6 +42,7 @@ function toBody(f: Form): Record<string, unknown> {
 }
 
 export function Catalog(): React.JSX.Element {
+  const { can } = useAuth();
   const [list, setList] = useState<CatalogItem[]>([]);
   const [reps, setReps] = useState<RepresentedCompany[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,8 +109,8 @@ export function Catalog(): React.JSX.Element {
     <div className="space-y-4 p-4 sm:p-6">
       <PageHeader title="Catálogo" subtitle="Produtos e serviços que você oferece. Vincule na prospecção."
         actions={tab === 'itens'
-          ? (editing !== 'new' && <Btn icon="plus" onClick={() => setEditing('new')}>Novo item</Btn>)
-          : (!addingTable && <Btn icon="plus" onClick={() => setAddingTable(true)}>Nova tabela</Btn>)} />
+          ? (editing !== 'new' && can('catalog.create') && <Btn icon="plus" onClick={() => setEditing('new')}>Novo item</Btn>)
+          : (!addingTable && can('price_tables.create') && <Btn icon="plus" onClick={() => setAddingTable(true)}>Nova tabela</Btn>)} />
 
       <Segmented value={tab} onChange={setTab} options={[
         { value: 'itens', label: 'Itens', icon: 'box' },
@@ -158,12 +160,18 @@ export function Catalog(): React.JSX.Element {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
-                  <button onClick={() => void toggleAtivo(i)} title={i.ativo ? 'Desativar' : 'Ativar'}
-                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name={i.ativo ? 'check' : 'x'} size={16} /></button>
-                  <button onClick={() => setEditing(i.id)} aria-label="Editar"
-                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
-                  <button onClick={() => void remove(i.id)} aria-label="Excluir"
-                    className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+                  {can('catalog.update') && (
+                    <button onClick={() => void toggleAtivo(i)} title={i.ativo ? 'Desativar' : 'Ativar'}
+                      className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name={i.ativo ? 'check' : 'x'} size={16} /></button>
+                  )}
+                  {can('catalog.update') && (
+                    <button onClick={() => setEditing(i.id)} aria-label="Editar"
+                      className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
+                  )}
+                  {can('catalog.delete') && (
+                    <button onClick={() => void remove(i.id)} aria-label="Excluir"
+                      className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+                  )}
                 </div>
               </div>
             ))}

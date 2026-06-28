@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.tsx';
-import type { GoalProgress, OrgUser, RepresentedCompany } from '../lib/types.ts';
+import type { GoalProgress, OrgUser, PermissionGroup, RepresentedCompany } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, PageHeader, Segmented, Spinner, cn } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
 import { brl, todayStr } from '../lib/format.ts';
@@ -38,8 +38,9 @@ export function Team(): React.JSX.Element {
 }
 
 function Usuarios(): React.JSX.Element {
-  const { user: me } = useAuth();
+  const { user: me, can } = useAuth();
   const [users, setUsers] = useState<OrgUser[]>([]);
+  const [groups, setGroups] = useState<PermissionGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
@@ -48,6 +49,7 @@ function Usuarios(): React.JSX.Element {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [role, setRole] = useState<'rep' | 'admin'>('rep');
+  const [groupId, setGroupId] = useState<number | ''>('');
   const [busy, setBusy] = useState(false);
   const [transfer, setTransfer] = useState<OrgUser | null>(null);
   const [resetting, setResetting] = useState<OrgUser | null>(null);
@@ -63,13 +65,21 @@ function Usuarios(): React.JSX.Element {
     }
   };
   useEffect(() => { void load(); }, []);
+  // Grupos para o seletor. Pode 403 se quem gerencia equipe não tem groups.list —
+  // nesse caso o seletor some e os usuários ficam sem grupo atribuído por aqui.
+  useEffect(() => {
+    void api.get<{ groups: PermissionGroup[] }>('/api/groups').then((r) => setGroups(r.groups)).catch(() => undefined);
+  }, []);
 
   const create = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     setBusy(true); setErr('');
     try {
-      await api.post('/api/users', { nome: nome.trim(), email: email.trim(), senha, role });
-      setNome(''); setEmail(''); setSenha(''); setRole('rep'); setShowForm(false);
+      await api.post('/api/users', {
+        nome: nome.trim(), email: email.trim(), senha, role,
+        group_id: groupId === '' ? null : groupId,
+      });
+      setNome(''); setEmail(''); setSenha(''); setRole('rep'); setGroupId(''); setShowForm(false);
       await load();
       toast.success('Usuário criado.');
     } catch (e2) {
@@ -78,7 +88,7 @@ function Usuarios(): React.JSX.Element {
     } finally { setBusy(false); }
   };
 
-  const patch = async (id: number, body: Partial<Pick<OrgUser, 'role' | 'ativo' | 'nome'>>): Promise<void> => {
+  const patch = async (id: number, body: Partial<Pick<OrgUser, 'role' | 'ativo' | 'nome' | 'group_id'>>): Promise<void> => {
     setErr('');
     try {
       await api.patch(`/api/users/${id}`, body);
@@ -105,7 +115,7 @@ function Usuarios(): React.JSX.Element {
   return (
     <div className="space-y-5">
       <div className="flex justify-end">
-        <Btn icon="plus" onClick={() => setShowForm((v) => !v)}>Novo usuário</Btn>
+        {can('users.create') && <Btn icon="plus" onClick={() => setShowForm((v) => !v)}>Novo usuário</Btn>}
       </div>
 
       {err && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{err}</p>}
@@ -131,6 +141,14 @@ function Usuarios(): React.JSX.Element {
                 <option value="admin">Administrador</option>
               </select>
             </Field>
+            {groups.length > 0 && (
+              <Field label="Grupo de permissões">
+                <select value={groupId} onChange={(e) => setGroupId(e.target.value === '' ? '' : Number(e.target.value))} className={inputCls}>
+                  <option value="">Sem grupo</option>
+                  {groups.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
+                </select>
+              </Field>
+            )}
             <div className="flex gap-2 sm:col-span-2">
               <Btn type="submit" disabled={busy}>{busy ? '…' : 'Criar usuário'}</Btn>
               <Btn type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Btn>
@@ -149,6 +167,7 @@ function Usuarios(): React.JSX.Element {
                 <th className="px-4 py-3">Nome</th>
                 <th className="px-4 py-3">E-mail</th>
                 <th className="px-4 py-3">Papel</th>
+                {groups.length > 0 && <th className="px-4 py-3">Grupo</th>}
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Ações</th>
               </tr>
@@ -165,7 +184,7 @@ function Usuarios(): React.JSX.Element {
                     <td className="px-4 py-3">
                       <select
                         value={u.role}
-                        disabled={self}
+                        disabled={self || !can('users.update')}
                         onChange={(e) => void patch(u.id, { role: e.target.value as 'admin' | 'rep' })}
                         className="rounded-lg border border-ink-200 bg-surface px-2 py-1 text-xs disabled:cursor-not-allowed disabled:bg-ink-50"
                       >
@@ -173,6 +192,19 @@ function Usuarios(): React.JSX.Element {
                         <option value="admin">Administrador</option>
                       </select>
                     </td>
+                    {groups.length > 0 && (
+                      <td className="px-4 py-3">
+                        <select
+                          value={u.group_id ?? ''}
+                          disabled={!can('users.update')}
+                          onChange={(e) => void patch(u.id, { group_id: e.target.value === '' ? null : Number(e.target.value) })}
+                          className="rounded-lg border border-ink-200 bg-surface px-2 py-1 text-xs disabled:cursor-not-allowed disabled:bg-ink-50"
+                        >
+                          <option value="">Sem grupo</option>
+                          {groups.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
+                        </select>
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1.5">
                         <Badge tone={u.ativo ? 'success' : 'neutral'}>{u.ativo ? 'Ativo' : 'Desativado'}</Badge>
@@ -181,13 +213,13 @@ function Usuarios(): React.JSX.Element {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span className="inline-flex gap-1.5">
-                        {!self && (
+                        {!self && can('relationships.transfer') && (
                           <Btn size="sm" variant="ghost" onClick={() => setTransfer(u)}>Transferir carteira</Btn>
                         )}
-                        {!self && (
+                        {!self && can('users.reset_password') && (
                           <Btn size="sm" variant="ghost" onClick={() => setResetting(u)}>Redefinir senha</Btn>
                         )}
-                        {!self && (
+                        {!self && can('users.update') && (
                           <Btn size="sm" variant={u.ativo ? 'danger' : 'soft'}
                             onClick={() => void patch(u.id, { ativo: !u.ativo })}>
                             {u.ativo ? 'Desativar' : 'Reativar'}
@@ -247,6 +279,7 @@ function ResetPwdModal({ user, onClose, onConfirm }: { user: OrgUser; onClose: (
 // Nome do usuário editável direto na tabela: clica → input → Enter/blur salva,
 // Esc cancela. Só dispara o PATCH se o nome mudou.
 function NameCell({ u, self, onSave }: { u: OrgUser; self: boolean; onSave: (nome: string) => Promise<void> }): React.JSX.Element {
+  const { can } = useAuth();
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(u.nome ?? '');
   useEffect(() => { setVal(u.nome ?? ''); }, [u.nome]);
@@ -267,6 +300,14 @@ function NameCell({ u, self, onSave }: { u: OrgUser; self: boolean; onSave: (nom
         }}
         aria-label={`Editar nome de ${u.email}`}
         className="w-40 rounded-lg border border-brand-300 bg-surface px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-brand-200" />
+    );
+  }
+  if (!can('users.update')) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        {u.nome ?? '—'}
+        {self && <span className="text-xs font-normal text-ink-400">(você)</span>}
+      </span>
     );
   }
   return (
@@ -342,6 +383,7 @@ function TransferModal({ from, users, onClose, onDone }: {
 }
 
 function Metas(): React.JSX.Element {
+  const { can } = useAuth();
   const [competencia, setCompetencia] = useState(todayStr().slice(0, 7));
   const [progress, setProgress] = useState<GoalProgress[]>([]);
   const [users, setUsers] = useState<OrgUser[]>([]);
@@ -402,24 +444,26 @@ function Metas(): React.JSX.Element {
         <Field label="Competência">
           <input type="month" value={competencia} onChange={(e) => setCompetencia(e.target.value)} className={cn(inputCls, 'w-44')} />
         </Field>
-        <form onSubmit={create} className="flex flex-wrap items-end gap-3">
-          <Field label="Vendedor">
-            <select value={userId} onChange={(e) => setUserId(e.target.value === '' ? '' : Number(e.target.value))} required className={cn(inputCls, 'w-48')}>
-              <option value="">Escolha…</option>
-              {users.map((u) => <option key={u.id} value={u.id}>{u.nome ?? u.email}</option>)}
-            </select>
-          </Field>
-          <Field label="Representada (opcional)">
-            <select value={representedId} onChange={(e) => setRepresentedId(e.target.value === '' ? '' : Number(e.target.value))} className={cn(inputCls, 'w-48')}>
-              <option value="">Todas (meta global)</option>
-              {reps.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
-            </select>
-          </Field>
-          <Field label="Meta (R$)">
-            <input type="number" min="0" step="0.01" value={valor} onChange={(e) => setValor(e.target.value)} required className={cn(inputCls, 'w-36')} />
-          </Field>
-          <Btn icon="plus" type="submit" disabled={busy}>{busy ? '…' : 'Definir meta'}</Btn>
-        </form>
+        {can('goals.create') && (
+          <form onSubmit={create} className="flex flex-wrap items-end gap-3">
+            <Field label="Vendedor">
+              <select value={userId} onChange={(e) => setUserId(e.target.value === '' ? '' : Number(e.target.value))} required className={cn(inputCls, 'w-48')}>
+                <option value="">Escolha…</option>
+                {users.map((u) => <option key={u.id} value={u.id}>{u.nome ?? u.email}</option>)}
+              </select>
+            </Field>
+            <Field label="Representada (opcional)">
+              <select value={representedId} onChange={(e) => setRepresentedId(e.target.value === '' ? '' : Number(e.target.value))} className={cn(inputCls, 'w-48')}>
+                <option value="">Todas (meta global)</option>
+                {reps.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
+              </select>
+            </Field>
+            <Field label="Meta (R$)">
+              <input type="number" min="0" step="0.01" value={valor} onChange={(e) => setValor(e.target.value)} required className={cn(inputCls, 'w-36')} />
+            </Field>
+            <Btn icon="plus" type="submit" disabled={busy}>{busy ? '…' : 'Definir meta'}</Btn>
+          </form>
+        )}
       </Card>
 
       {err && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{err}</p>}
@@ -445,8 +489,10 @@ function Metas(): React.JSX.Element {
                       <p className="tabnums text-sm font-bold text-ink-900">{brl(g.realizado)} <span className="font-normal text-ink-400">/ {brl(Number(g.valor_meta))}</span></p>
                       <p className="tabnums text-xs font-semibold text-ink-500">{g.pct ?? 0}%</p>
                     </div>
-                    <button onClick={() => void remove(g.id)} aria-label="Excluir meta"
-                      className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+                    {can('goals.delete') && (
+                      <button onClick={() => void remove(g.id)} aria-label="Excluir meta"
+                        className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></button>
+                    )}
                   </div>
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-ink-100">

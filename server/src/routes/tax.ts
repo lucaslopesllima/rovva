@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { one, query } from '../db.ts';
-import { requireAuth } from '../auth.ts';
+import { requireAuth, requirePermission } from '../auth.ts';
 
 // Alíquotas default da org (uma linha por org). Buscadas como base na criação
 // do pedido; cada item guarda a cópia (ver orders.ts / migration 037).
@@ -24,15 +24,14 @@ export async function orgTaxDefaults(orgId: number): Promise<Record<string, numb
 }
 
 export function taxRoutes(app: FastifyInstance): void {
-  app.get('/api/tax-defaults', { preHandler: requireAuth }, async (req) => {
+  app.get('/api/tax-defaults', { preHandler: [requireAuth, requirePermission('tax_defaults.read')] }, async (req) => {
     return { tax: await orgTaxDefaults(req.auth!.orgId) };
   });
 
   app.patch('/api/tax-defaults', {
-    preHandler: requireAuth,
+    preHandler: [requireAuth, requirePermission('tax_defaults.update')],
     schema: { body: { type: 'object', properties: PROPS } },
-  }, async (req, reply) => {
-    if (req.auth!.role !== 'admin') return reply.code(403).send({ error: 'apenas administradores' });
+  }, async (req) => {
     const orgId = req.auth!.orgId;
     const b = req.body as Record<string, number>;
     // upsert: cria a linha da org no primeiro save, atualiza só os campos enviados.
