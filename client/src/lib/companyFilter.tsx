@@ -401,8 +401,6 @@ function RecommendConfig({ f }: { f: CompanyFilter }): React.JSX.Element {
       {/* Território */}
       <div className="rounded-2xl border border-ink-200/70 bg-surface p-3 shadow-card">
         <h4 className="text-sm font-semibold text-ink-900">Território</h4>
-        <p className="mt-0.5 text-xs text-ink-400">Onde a recomendação busca. A proximidade é medida a partir do endereço de partida (ou do centro do território).</p>
-
         <p className="mb-1.5 mt-3 text-[11px] font-semibold uppercase tracking-wider text-ink-400">Por estado</p>
         <div className="flex flex-wrap gap-1">
           {ufs.map((u) => {
