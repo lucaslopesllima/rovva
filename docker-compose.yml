@@ -52,25 +52,6 @@ services:
     # não publicado por padrão (porta do host pode estar em uso). Descomente p/ inspecionar:
     # ports: ["5432:5432"]
 
-  # SGBD (GUI de administração do Postgres). Web em http://localhost:5050
-  # Login: admin@rs.com / admin. Servidor "rs-local" já registrado (servers.json);
-  # na 1ª conexão pede a senha do banco = postgres.
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@rs.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_CONFIG_SERVER_MODE: "False"
-      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
-    ports:
-      - "5050:80"
-
   app:
     image: node:24-slim
     working_dir: /app
@@ -177,11 +158,12 @@ services:
   # (DATABASE_SAVE_DATA_* true). Perder o Redis não perde sessão.
   redis:
     image: redis:7-alpine
-    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    # Mesma config do prod (docker-compose.prod.yml) — maxmemory parametrizável
+    # pela mesma env EVOLUTION_REDIS_MAXMEMORY, pra dev espelhar produção.
+    command: redis-server --maxmemory ${EVOLUTION_REDIS_MAXMEMORY:-512mb} --maxmemory-policy allkeys-lru
 
 volumes:
   pgdata_dev:
-  pgadmin_data:
   app_node_modules:
   web_node_modules:
   evolution_instances:

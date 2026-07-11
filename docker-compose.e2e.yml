@@ -31,8 +31,6 @@ services:
     profiles: ["disabled"]
   evolution_db:
     profiles: ["disabled"]
-  pgadmin:
-    profiles: ["disabled"]
 
   # Stub HTTP único: OSRM /trip, Nominatim /search, BrasilAPI /api/cep/v2/:cep,
   # Evolution /evolution/* — respostas determinísticas (ver e2e/stub-server).

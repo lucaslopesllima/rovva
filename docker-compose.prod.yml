@@ -61,74 +61,89 @@ services:
       # Mídia do WhatsApp em disco (volume wa_media). NÃO entra no pg_dump diário —
       # faça backup do volume à parte se a mídia for crítica.
       WHATSAPP_MEDIA_DIR: /data/wa-media
+      # WhatsApp (Evolution API). URL interna do container. O webhook aponta de
+      # volta pro próprio app; o token valida o POST de entrada. App NÃO depende
+      # do evolution no boot (chamada é lazy) — se o gateway cair, o resto do app
+      # segue de pé e só os endpoints de WhatsApp respondem erro.
+      EVOLUTION_API_URL: http://evolution:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:?defina EVOLUTION_API_KEY no .env}
+      WHATSAPP_WEBHOOK_URL: http://app:8080/api/webhooks/whatsapp?token=${WHATSAPP_WEBHOOK_TOKEN:?defina WHATSAPP_WEBHOOK_TOKEN no .env}
+      WHATSAPP_WEBHOOK_TOKEN: ${WHATSAPP_WEBHOOK_TOKEN:?defina WHATSAPP_WEBHOOK_TOKEN no .env}
     volumes:
       - wa_media:/data/wa-media
     ports:
       - "${APP_PORT:-8080}:8080"
     restart: unless-stopped
 
-  # Backup diário às 02:30 (pg_dump custom format), retenção 14 dias em ./backups.
-  # Restaurar: pg_restore -h db -U postgres -d rs --clean ./backups/rs-AAAA-MM-DD.dump
-  #
-  # Backup só no disco da VPS não sobrevive à VPS. Configure no .env:
-  #   BACKUP_WEBHOOK_URL   — POST JSON {"text": "..."} em qualquer falha
-  #                          (Slack/Discord/ntfy/Telegram-bridge). Sem alerta,
-  #                          backup quebrado fica meses sem ninguém ver.
-  #   BACKUP_RCLONE_REMOTE — destino rclone (ex.: s3:meu-bucket/prospecta);
-  #                          requer ./rclone/rclone.conf (rclone config).
-  # Cada dump é validado com pg_restore --list antes de contar como ok.
-  backup:
-    image: postgis/postgis:16-3.4
+  # ── WhatsApp (Evolution API) ─────────────────────────────────────────────
+  # Gateway não oficial (Baileys). O painel/Swagger (porta 8080 interna) NÃO é
+  # publicado: acesso só pela rede interna do compose. Se precisar inspecionar,
+  # exponha atrás do firewall/reverse-proxy com auth — nunca aberto na internet
+  # (a AUTHENTICATION_API_KEY é a única barreira).
+  evolution:
+    image: atendai/evolution-api:v2.1.1
     depends_on:
-      db:
+      evolution_db:
         condition: service_healthy
+      redis:
+        condition: service_started
     environment:
-      PGPASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
-      PGUSER: ${POSTGRES_USER:-postgres}
-      PGDATABASE: ${POSTGRES_DB:-rs}
-      BACKUP_WEBHOOK_URL: ${BACKUP_WEBHOOK_URL:-}
-      BACKUP_RCLONE_REMOTE: ${BACKUP_RCLONE_REMOTE:-}
+      SERVER_URL: http://evolution:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?defina EVOLUTION_API_KEY no .env}
+      # Versão do WhatsApp Web anunciada no handshake. Desatualizada = WhatsApp
+      # fecha a conexão (statusReason 405) e o QR nunca gera. Atualize pelo
+      # baileys-version.json do WhiskeySockets/Baileys se o QR parar de gerar.
+      CONFIG_SESSION_PHONE_VERSION: ${WA_WEB_VERSION:-2.3000.1035194821}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@evolution_db:5432/evolution
+      DATABASE_CONNECTION_CLIENT_NAME: evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      # Cache no Redis, fora do heap Node: com CACHE_LOCAL o cache (chats/contatos/
+      # mensagens) cresce no processo e o GC do V8 derruba o Evolution antes do
+      # limite físico de RAM. Sessão persiste no Postgres, então perder o Redis
+      # não perde sessão.
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_REDIS_SAVE_INSTANCES: "false"
+      CACHE_LOCAL_ENABLED: "false"
+      WEBHOOK_GLOBAL_ENABLED: "false"
     volumes:
-      - ./backups:/backups
-      - ./rclone:/root/.config/rclone
-    entrypoint:
-      - bash
-      - -c
-      - |
-        notify() {
-          echo "$$1" >&2
-          [ -n "$$BACKUP_WEBHOOK_URL" ] && \
-            curl -fsS -m 10 -X POST -H 'content-type: application/json' \
-              -d "{\"text\":\"[prospecta-backup] $$1\"}" "$$BACKUP_WEBHOOK_URL" >/dev/null 2>&1 || true
-        }
-        # curl/rclone não vêm na imagem do postgres — instala no primeiro boot.
-        if [ -n "$$BACKUP_WEBHOOK_URL$$BACKUP_RCLONE_REMOTE" ]; then
-          apt-get update -qq && apt-get install -yqq curl rclone >/dev/null 2>&1 \
-            || echo "aviso: install curl/rclone falhou — alerta/offsite indisponíveis" >&2
-        fi
-        while true; do
-          now=$$(date +%s)
-          target=$$(date -d 'today 02:30' +%s)
-          [ "$$now" -ge "$$target" ] && target=$$(date -d 'tomorrow 02:30' +%s)
-          sleep $$(( target - now ))
-          ts=$$(date +%F)
-          if pg_dump -h db -Fc -f "/backups/rs-$$ts.dump" \
-             && pg_restore --list "/backups/rs-$$ts.dump" >/dev/null; then
-            echo "backup ok: rs-$$ts.dump"
-            if [ -n "$$BACKUP_RCLONE_REMOTE" ]; then
-              if rclone copy "/backups/rs-$$ts.dump" "$$BACKUP_RCLONE_REMOTE" 2>/dev/null; then
-                echo "offsite ok: rs-$$ts.dump -> $$BACKUP_RCLONE_REMOTE"
-              else
-                notify "cópia offsite FALHOU: rs-$$ts.dump"
-              fi
-            fi
-          else
-            notify "backup FALHOU: rs-$$ts.dump"
-          fi
-          find /backups -name 'rs-*.dump' -mtime +14 -delete
-        done
+      - evolution_instances:/evolution/instances
+    restart: unless-stopped
+
+  # Postgres dedicado do Evolution (sessões/instâncias/mensagens). Separado do
+  # banco da aplicação. NÃO entra no backup diário (que só dumpa o rs) — se as
+  # sessões forem críticas, faça backup do volume evolution_pgdata à parte.
+  evolution_db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: evolution
+    volumes:
+      - evolution_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d evolution"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Cache quente do Evolution, fora do heap Node. Sem volume — é só cache; a
+  # fonte de verdade é o evolution_db. Perder o Redis não perde sessão.
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory ${EVOLUTION_REDIS_MAXMEMORY:-512mb} --maxmemory-policy allkeys-lru
     restart: unless-stopped
 
 volumes:
   pgdata:
   wa_media:
+  evolution_instances:
+  evolution_pgdata:

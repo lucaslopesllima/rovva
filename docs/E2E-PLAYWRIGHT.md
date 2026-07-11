@@ -75,7 +75,7 @@ Browsers: **só Chromium** (app B2B; usuários de campo = Android/Chrome — mes
 ## Ambiente
 
 - **Banco dedicado `rs_e2e`** (nunca `rs` dev). `global-setup.ts` copia a lógica de `server/test/setup.ts`: cria DB, roda migrations, `TRUNCATE companies CASCADE` + aplica `seed/companies.sql`.
-- **`docker-compose.e2e.yml`** (override): `app` com `DATABASE_URL=…/rs_e2e`, `JWT_SECRET=e2e-secret`, `AUTH_RATE_LIMIT_MAX=1000000`, URLs externas apontando ao stub; publica porta do db p/ o host; desabilita `evolution`, `evolution_db`, `pgadmin` (profiles); adiciona serviços `mailpit` (axllent/mailpit) e `stub` (stub-server).
+- **`docker-compose.e2e.yml`** (override): `app` com `DATABASE_URL=…/rs_e2e`, `JWT_SECRET=e2e-secret`, `AUTH_RATE_LIMIT_MAX=1000000`, URLs externas apontando ao stub; publica porta do db p/ o host; desabilita `evolution`, `evolution_db` (profiles); adiciona serviços `mailpit` (axllent/mailpit) e `stub` (stub-server).
 - **Isolamento**: org nova por teste via `register` com email único (`e2e.<ts>.<rand>@teste.com`) — multi-tenancy isola; sem truncate entre testes; `fullyParallel: true`. `companies` é read-only global.
 - **Playwright no host**: `npx playwright install chromium --with-deps` uma vez; testes atacam `localhost:5173` (baseURL por env — permite container/CI com `E2E_BASE_URL=http://web:5173`).
 - **Seed companies**: ~200 empresas em 3-4 municípios com `geom` (`ST_MakePoint`), CNAEs/portes variados, situação ativa; inclui cluster denso (agrupamento no mapa) e bordas (sem geom, baixada).

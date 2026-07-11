@@ -68,7 +68,7 @@
 
 ### 6. Observabilidade — quase zero
 - Só Pino + `GET /api/health`. Sem Sentry, sem métricas, sem uptime monitor
-  externo, sem alertas (só o container de backup alerta).
+  externo, sem alertas.
 - `disableRequestLogging: true` em prod (`server/src/app.ts:53`) = zero log de
   requisição para investigar incidente.
 - **Fazer:** error tracking (Sentry), monitor externo batendo em `/api/health`
@@ -119,21 +119,18 @@
 | Limites de recurso nos containers | Sem `mem_limit`/`cpus`; pico pode OOM-killar o Postgres | `docker-compose.prod.yml` |
 | Zero-downtime deploy | Cada deploy derruba a instância única; aceitável no começo, documentar janela | `deploy.sh:38` |
 | Schedulers in-process | `setInterval` sem leader-election; quebra com 2+ instâncias. Sem retry/backoff (falha = `status='erro'` e fim) | `server/src/index.ts:16` |
-| WhatsApp em prod | Evolution API só no compose de dev; em prod endpoints respondem 503. Se for feature vendida: portar `evolution`/`evolution_db` + backup do volume `wa_media` (hoje fora do backup diário) | `docker-compose.yml`, `docker-compose.prod.yml:61` |
+| Backup — não existe backup automático | O container `backup` foi removido. Nada é dumpado sozinho: nem o `rs`, nem as sessões do WhatsApp (`evolution_pgdata`), nem a mídia (`wa_media`). README traz um `pg_dump` por crontab manual do `rs` como alternativa. **Definir estratégia de backup (dump + offsite + teste de restore) antes do go-live.** | `README.md`, `deploy.sh` |
 | Analytics/telemetria | Zero no app e na landing. Plausible/GA4 + eventos de conversão (CTA, trial, escolha de plano) | `Marketing/LANCAMENTO.md:34` |
 | Página 404 real | Hoje redireciona silenciosamente para o Dashboard | `client/src/App.tsx:456` |
 | Ícones PWA raster/maskable | Só `icon.svg`; iOS home-screen quebra | `client/vite.config.ts:30` |
 | UX de sessão expirada | 401 = hard-redirect abrupto para `/login`, sem aviso | `client/src/lib/api.ts:39` |
-| README desatualizado | Ainda diz que WhatsApp é fase 2 (já implementado); doc de backup por crontab conflita com o container `backup` | `README.md:8`, `README.md:170` |
+| README desatualizado | Ainda diz que WhatsApp é fase 2 (já implementado) | `README.md:8` |
 | Firewall na VPS | Nenhuma config/doc (ufw/security group) no repo | — |
-| Teste de restore do backup | Dump é validado com `pg_restore --list`, mas restore nunca é ensaiado | `docker-compose.prod.yml:80` |
 
 ---
 
 ## O que já está sólido (não mexer)
 
-- Backup diário do Postgres com `pg_dump -Fc`, validação, retenção 14 dias e
-  offsite opcional via rclone (`docker-compose.prod.yml:80`).
 - Migrations idempotentes com advisory lock, transação por arquivo e checksum,
   rodando no boot (`server/scripts/migrate-lib.ts`).
 - Segredos fora do git, com validação no boot (`server/src/config.ts:18`) e no
@@ -142,7 +139,7 @@
   autenticados com `authorizeToken` (item deferido da auditoria já resolvido).
 - RBAC fino por grupos de permissão (server + client), ~217 testes.
 - Headers de segurança: helmet, CSP, HSTS; `statement_timeout` no pool;
-  rate-limit no auth; Postgres não exposto; pgAdmin só no dev.
+  rate-limit no auth; Postgres não exposto.
 - Estados vazios consistentes em todas as telas (`client/src/lib/ui.tsx:121`);
   error boundary global; PWA com fila offline para agenda de campo
   (`client/src/lib/offline.ts`).
