@@ -20,8 +20,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest: {
-        name: 'Certumn — Representação Comercial',
-        short_name: 'Certumn',
+        name: 'Rovva — Representação Comercial',
+        short_name: 'Rovva',
         description: 'Prospecção, pedidos e rotas em campo.',
         theme_color: '#0f172a',
         background_color: '#0f172a',

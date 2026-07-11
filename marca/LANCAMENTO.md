@@ -19,10 +19,10 @@
 
 ## 🔨 Falta construir (bloqueadores de go-live)
 
-### 1. Unificar a marca em "Rovva"
-Os assets em `marca/` já estão em Rovva (logo, favicon, social, capas). Falta o **código**:
-- `client/index.html` (título, favicon, manifest) → Rovva + `marca/favicon.svg`.
-- `nginx/templates/certumn.conf.template` → `rovva.conf.template` + domínio.
+### 1. Unificar a marca em "Rovva" — ✅ feito
+Assets (`marca/`) e código já em Rovva (título/manifest em `client/index.html`, nome no
+app, `nginx/templates/rovva.conf.template`, imagem `rovva-app`, domínio `rovva.*`).
+Restante opcional:
 - Cor primária nos tokens Tailwind (ver `IDENTIDADE.md`).
 - **Exportar PNGs** dos SVGs sociais (não há renderer no ambiente). Ex.:
   `rsvg-convert -w 1080 -h 1080 marca/rovva-profile.svg -o marca/rovva-profile-1080.png`

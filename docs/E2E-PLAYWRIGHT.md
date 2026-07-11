@@ -1,4 +1,4 @@
-# Plano: Cobertura E2E 100% com Playwright — Certumn
+# Plano: Cobertura E2E 100% com Playwright — Rovva
 
 ## Contexto
 

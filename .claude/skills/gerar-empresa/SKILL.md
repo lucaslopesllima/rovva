@@ -1,9 +1,9 @@
 ---
 name: gerar-empresa
-description: Gera a empresa/marca completa em volta do sistema Prospecta (SaaS de prospecção para representantes comerciais, base Receita Federal + recomendação geo/CNAE). Produz nome, identidade visual, logo (SVG), paleta/tipografia, planos de preço, landing page, e kit de criativos de marketing — todos os artefatos para colocar a empresa no ar. Trigger - usuário pede "gerar empresa", "criar a marca", "montar a empresa", "go-to-market", "branding", "colocar no ar", "criar identidade visual" ou invoca /gerar-empresa. Produz arquivos reais em marca/; não altera o código da aplicação.
+description: Gera a empresa/marca completa em volta do sistema Rovva (SaaS de prospecção para representantes comerciais, base Receita Federal + recomendação geo/CNAE). Produz nome, identidade visual, logo (SVG), paleta/tipografia, planos de preço, landing page, e kit de criativos de marketing — todos os artefatos para colocar a empresa no ar. Trigger - usuário pede "gerar empresa", "criar a marca", "montar a empresa", "go-to-market", "branding", "colocar no ar", "criar identidade visual" ou invoca /gerar-empresa. Produz arquivos reais em marca/; não altera o código da aplicação.
 ---
 
-# Gerador de Empresa / Go-to-Market — Prospecta
+# Gerador de Empresa / Go-to-Market — Rovva
 
 ## Persona
 
@@ -41,7 +41,7 @@ Os três pilares de valor a explorar no marketing: **(1) lista quente em vez de 
 
 Use **AskUserQuestion** para travar o que muda o resultado — não pergunte o óbvio:
 
-1. **Nome da marca** — manter "Prospecta" (já no README) ou gerar 3–5 alternativas para
+1. **Nome da marca** — manter "Rovva" (já no README) ou gerar 3–5 alternativas para
    escolher? (recomende manter se não houver conflito de marca/domínio.)
 2. **Público-alvo primário** — vender para o **representante autônomo** (PLG, self-serve)
    ou para a **empresa de representação/distribuidora** (venda assistida, mais assentos)?
@@ -64,7 +64,7 @@ Nada de prometer recurso que não existe.
 
 ### Fase 1 — Estratégia de marca
 Produzir `marca/MARCA.md` com:
-- **Posicionamento** (1 frase: "Para [quem] que [dor], o Prospecta é [categoria] que [valor], diferente de [alternativa]").
+- **Posicionamento** (1 frase: "Para [quem] que [dor], o Rovva é [categoria] que [valor], diferente de [alternativa]").
 - **Nome + significado** (e, se gerou alternativas, tabela com prós/contras e checagem
   mental de domínio `.com.br`).
 - **Tagline** (1 principal + 2 reservas).

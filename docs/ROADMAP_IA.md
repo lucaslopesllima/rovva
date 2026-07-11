@@ -1,6 +1,6 @@
-# Roadmap IA — Certumn
+# Roadmap IA — Rovva
 
-Funcionalidades de IA a agregar ao Certumn, inspiradas no **Mercos IA** e adaptadas à
+Funcionalidades de IA a agregar ao Rovva, inspiradas no **Mercos IA** e adaptadas à
 base real do produto (prospecção RFB + geo/CNAE + funil + pedidos + rotas).
 
 > **Contexto do produto:** SaaS de prospecção para representantes comerciais.
@@ -174,7 +174,7 @@ Ordem por **razão valor/esforço** — começa pelo que reusa dado existente.
 | Item | Motivo |
 |---|---|
 | **WhatsApp bot** | Infra nova (Twilio/Meta API), custo alto. App web já é o canal. Adiar. |
-| **E-commerce B2B** | Certumn é field force, não loja. Fora do escopo. |
+| **E-commerce B2B** | Rovva é field force, não loja. Fora do escopo. |
 | **Reposição automática** | Precisa modelo de estoque/recompra recorrente — não existe hoje. |
 
 ---
@@ -182,7 +182,7 @@ Ordem por **razão valor/esforço** — começa pelo que reusa dado existente.
 ## Diferencial vs Mercos
 
 Mercos IA = assistente de **pedido/CRM** (etapa pós-cliente).
-Certumn ataca **antes**: achar cliente novo (RFB + geo/CNAE + rotas) — Mercos não tem isso.
+Rovva ataca **antes**: achar cliente novo (RFB + geo/CNAE + rotas) — Mercos não tem isso.
 IA aqui reforça o **pós-prospecção** (hoje lado fraco): resumo, pedido, e-mail, cross-sell.
 
 ---

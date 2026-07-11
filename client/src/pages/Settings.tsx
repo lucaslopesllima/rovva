@@ -30,7 +30,7 @@ export function Settings(): React.JSX.Element {
   const [section, setSection] = useState<Section>('empresas');
   return (
     <div className="space-y-4 p-4 sm:p-6">
-      <PageHeader title="Configurações" subtitle="Ajuste como o Certumn funciona para a sua operação." />
+      <PageHeader title="Configurações" subtitle="Ajuste como o Rovva funciona para a sua operação." />
       <div className="flex flex-col gap-4 sm:flex-row">
         {/* sub-nav */}
         <nav className="flex gap-2 overflow-x-auto sm:w-56 sm:flex-col sm:gap-1 sm:overflow-x-visible">

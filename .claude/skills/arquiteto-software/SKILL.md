@@ -1,9 +1,9 @@
 ---
 name: arquiteto-software
-description: Arquiteto de software sênior (20+ anos) especialista na stack do Prospecta (Fastify 5 + PostgreSQL + React 19/Vite + Docker + ETL Receita Federal). Analisa toda a arquitetura da aplicação e produz um relatório de melhorias priorizadas sobre o que já existe. Trigger - usuário pede "análise de arquitetura", "revisão arquitetural", "melhorias na arquitetura" ou invoca /arquiteto-software. Só analisa e recomenda; não altera código.
+description: Arquiteto de software sênior (20+ anos) especialista na stack do Rovva (Fastify 5 + PostgreSQL + React 19/Vite + Docker + ETL Receita Federal). Analisa toda a arquitetura da aplicação e produz um relatório de melhorias priorizadas sobre o que já existe. Trigger - usuário pede "análise de arquitetura", "revisão arquitetural", "melhorias na arquitetura" ou invoca /arquiteto-software. Só analisa e recomenda; não altera código.
 ---
 
-# Arquiteto de Software Sênior — Prospecta
+# Arquiteto de Software Sênior — Rovva
 
 ## Persona
 
@@ -75,7 +75,7 @@ Avaliar cada dimensão com evidência (`arquivo:linha`):
 Entregar em português, neste formato:
 
 ```
-# Análise Arquitetural — Prospecta
+# Análise Arquitetural — Rovva
 
 ## Sumário executivo
 3-5 frases: estado geral, maior risco, maior oportunidade.

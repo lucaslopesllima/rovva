@@ -20,10 +20,9 @@ construído pela marca:
 **Domínio-alvo:** `rovva.com.br` (registrar) + `rovva.app` como reserva.
 Se `.com.br` estiver ocupado, usar `userovva.com` / `rovva.app`.
 
-> ⚠️ Os artefatos de marca (`marca/`) já estão unificados em Rovva. A base de **código**
-> ainda tem resíduos do nome anterior "Certumn" (`client/index.html`,
-> `nginx/templates/certumn.conf.template`). Antes do go-live, unificar tudo em Rovva
-> (ver `LANCAMENTO.md`).
+> ✅ Marca unificada em **Rovva** — artefatos (`marca/`) e código (`client/index.html`,
+> `nginx/templates/rovva.conf.template`, etc.). Nomes anteriores "Certumn"/"Prospecta"
+> removidos.
 
 ---
 

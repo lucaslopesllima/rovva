@@ -47,7 +47,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: certumn-app:latest
+    image: rovva-app:latest
     depends_on:
       db:
         condition: service_healthy
