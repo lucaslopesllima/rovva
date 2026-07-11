@@ -1,6 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, setToken, getToken } from './api.ts';
+import { api, setToken, getToken, ApiError } from './api.ts';
 import { clearQueue } from './offline.ts';
+
+// Último usuário conhecido, espelhado no localStorage. Serve para hidratar a
+// sessão no boot ANTES de bater no /me — essencial offline (PWA): sem rede o
+// /me falha, mas com o token válido e o usuário cacheado o app abre autenticado
+// em vez de cair na landing. Limpo no logout / 401.
+const USER_KEY = 'rs_user';
+function cacheUser(u: User): void {
+  try { localStorage.setItem(USER_KEY, JSON.stringify(u)); } catch { /* quota/priv mode */ }
+}
+function getCachedUser(): User | null {
+  try { const raw = localStorage.getItem(USER_KEY); return raw ? (JSON.parse(raw) as User) : null; } catch { return null; }
+}
+function clearCachedUser(): void {
+  try { localStorage.removeItem(USER_KEY); } catch { /* noop */ }
+}
 
 export interface User {
   id: number | string;
@@ -16,17 +31,22 @@ export interface User {
   group_nome?: string | null;
   is_admin?: boolean;
   permissions?: string[];
+  // escritório = multi-usuário (default); individual = single-user, esconde equipe/RBAC/carteiras.
+  tipo_conta?: 'escritorio' | 'individual';
 }
 
 interface AuthState {
   user: User | null;
   loading: boolean;
   login: (email: string, senha: string) => Promise<void>;
-  register: (org_nome: string, email: string, senha: string) => Promise<void>;
+  register: (org_nome: string, email: string, senha: string, tipo_conta: 'escritorio' | 'individual') => Promise<void>;
   refresh: () => Promise<void>;
   logout: () => void;
   // true se o usuário pode executar a ação (admin faz bypass).
   can: (code: string) => boolean;
+  // true = conta escritório (recursos de equipe visíveis). undefined trata como escritório
+  // (sessão antiga sem o campo, até o /me repopular).
+  isOffice: boolean;
 }
 
 const AuthCtx = createContext<AuthState | null>(null);
@@ -37,10 +57,21 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
 
   useEffect(() => {
     if (!getToken()) { setLoading(false); return; }
+    // Hidrata otimista do cache: app já abre autenticado enquanto o /me valida
+    // (e continua autenticado se o /me falhar por estar offline).
+    const cached = getCachedUser();
+    if (cached) setUser(cached);
     const ac = new AbortController();
     api.get<{ user: User }>('/api/auth/me', { signal: ac.signal })
-      .then((r) => setUser(r.user))
-      .catch((e) => { if (!ac.signal.aborted) setToken(null); void e; })
+      .then((r) => { setUser(r.user); cacheUser(r.user); })
+      .catch((e) => {
+        if (ac.signal.aborted) return;
+        // Só derruba a sessão se o servidor REJEITOU o token (401/403). Falha de
+        // rede (offline) mantém token + usuário cacheado — o PWA segue usável.
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          setToken(null); clearCachedUser(); setUser(null);
+        }
+      })
       .finally(() => { if (!ac.signal.aborted) setLoading(false); });
     return () => ac.abort();
   }, []);
@@ -49,23 +80,27 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
     const r = await api.post<{ token: string; user: User }>('/api/auth/login', { email, senha });
     setToken(r.token);
     setUser(r.user);
+    cacheUser(r.user);
   }, []);
 
-  const register = useCallback(async (org_nome: string, email: string, senha: string): Promise<void> => {
-    const r = await api.post<{ token: string; user: User }>('/api/auth/register', { org_nome, email, senha });
+  const register = useCallback(async (org_nome: string, email: string, senha: string, tipo_conta: 'escritorio' | 'individual'): Promise<void> => {
+    const r = await api.post<{ token: string; user: User }>('/api/auth/register', { org_nome, email, senha, tipo_conta });
     setToken(r.token);
     setUser(r.user);
+    cacheUser(r.user);
   }, []);
 
   // Recarrega o usuário do servidor (ex.: após trocar a senha provisória).
   const refresh = useCallback(async (): Promise<void> => {
     const r = await api.get<{ user: User }>('/api/auth/me');
     setUser(r.user);
+    cacheUser(r.user);
   }, []);
 
   const logout = useCallback((): void => {
     setToken(null);
     setUser(null);
+    clearCachedUser();
     // Limpa a fila offline antes de sair: em dispositivo compartilhado a próxima
     // conta não pode reenviar ações de campo enfileiradas por este usuário.
     void clearQueue();
@@ -83,11 +118,14 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
   const can = useCallback((code: string): boolean =>
     !!user && (user.is_admin === true || (user.permissions?.includes(code) ?? false)), [user]);
 
+  // undefined (sessão antiga) → escritório, preservando o comportamento atual.
+  const isOffice = user?.tipo_conta !== 'individual';
+
   // Valor memoizado: sem isso todo render do provider re-renderiza a árvore
   // inteira de consumidores do contexto.
   const value = useMemo<AuthState>(
-    () => ({ user, loading, login, register, refresh, logout, can }),
-    [user, loading, login, register, refresh, logout, can],
+    () => ({ user, loading, login, register, refresh, logout, can, isOffice }),
+    [user, loading, login, register, refresh, logout, can, isOffice],
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
