@@ -315,13 +315,13 @@ function Row({ o, showOwner, onEdit, onRemove, onTransition, onPrint }: {
       <td className="tabnums whitespace-nowrap px-3 py-2.5 align-middle text-sm font-bold text-ink-800">{brl(Number(o.total))}</td>
       <td className="px-3 py-2 align-middle">
         {/* slots de largura fixa → ícones alinham em coluna entre as linhas */}
-        <div className="grid w-max grid-cols-[2rem_7rem_2rem_2rem] items-center justify-items-center gap-1">
+        <div className="grid w-max grid-cols-[2rem_9rem_2rem_2rem] items-center justify-items-center gap-1">
           {can('orders.print') ? (
             <SafeButton onClick={onPrint} title="Imprimir / PDF"
               className="grid h-8 w-8 place-items-center rounded-lg text-brand-600 hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/15"><Icon name="download" size={16} /></SafeButton>
           ) : <span />}
           {next && can('orders.transition') ? (
-            <Btn variant="soft" title={next.label} className="w-full justify-center truncate px-1 text-xs" onClick={() => onTransition(next.to)}>{next.label}</Btn>
+            <Btn variant="soft" title={next.label} className="w-full justify-center truncate px-2 text-xs" onClick={() => onTransition(next.to)}>{next.label}</Btn>
           ) : <span />}
           {cancellable && can('orders.delete') ? (
             <SafeButton onClick={() => onTransition('cancelado')} title="Cancelar pedido"

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from './api.ts';
 import { useAuth } from './auth.tsx';
-import type { Carrier, CatalogItem, CommissionEntry, KanbanCard, Order, PriceTable, RepresentedCompany, TaxDefaults } from './types.ts';
+import type { Carrier, CatalogItem, CommissionEntry, Contact, KanbanCard, Order, PriceTable, RepresentedCompany, TaxDefaults } from './types.ts';
 import { Btn, Card, cn } from './ui.tsx';
 import { Icon } from './icons.tsx';
 import { brl, dec, maskMoney, maskPct, numStr, todayStr } from './format.ts';
@@ -74,6 +74,9 @@ export function OrderModal({ order = null, prefill = null, onClose, onSaved }: {
   const [validade, setValidade] = useState(order?.validade?.slice(0, 10) ?? '');
   const [condicao, setCondicao] = useState(order?.condicao_pagamento ?? '');
   const [carrierId, setCarrierId] = useState<number | null>(order?.carrier_id ?? null);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contactId, setContactId] = useState<number | null>(order?.contact_id ?? null);
+  const [contactBusy, setContactBusy] = useState(false);
   const [frete, setFrete] = useState(order ? numStr(order.frete) : '');
   const [observacoes, setObservacoes] = useState(order?.observacoes ?? '');
   const [items, setItems] = useState<ItemDraft[]>(
@@ -106,6 +109,25 @@ export function OrderModal({ order = null, prefill = null, onClose, onSaved }: {
     void api.get<{ carriers: Carrier[] }>('/api/carriers')
       .then((r) => setCarriers(r.carriers.filter((c) => c.ativo))).catch(() => undefined);
   }, []);
+
+  // Contatos da empresa cliente — populam o select "Contato" do pedido.
+  useEffect(() => {
+    if (companyId == null) { setContacts([]); return; }
+    void api.get<{ contacts: Contact[] }>(`/api/contacts?company_id=${companyId}`)
+      .then((r) => setContacts(r.contacts)).catch(() => undefined);
+  }, [companyId]);
+
+  // Troca o contato do pedido. Em pedido já salvo grava na hora (endpoint próprio,
+  // liberado em qualquer status); em pedido novo só guarda p/ enviar no submit.
+  const changeContact = (id: number | null): void => {
+    setContactId(id);
+    if (order == null) return;
+    setContactBusy(true);
+    void api.patch<{ order: Order }>(`/api/orders/${order.id}/contact`, { contact_id: id })
+      .then(() => toast.success('Contato do pedido atualizado.'))
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Falha ao atualizar contato.'))
+      .finally(() => setContactBusy(false));
+  };
 
   // validação por item, reusada pra destacar campo e bloquear submit
   const itemErr = (i: ItemDraft): { desc: boolean; qtd: boolean; preco: boolean } => ({
@@ -193,6 +215,7 @@ export function OrderModal({ order = null, prefill = null, onClose, onSaved }: {
       validade: cotacao && validade ? validade : null,
       condicao_pagamento: condicao || null,
       carrier_id: carrierId,
+      contact_id: contactId,
       frete: dec(frete) || 0,
       observacoes: observacoes || null,
       items: items.map((i) => ({
@@ -314,6 +337,20 @@ export function OrderModal({ order = null, prefill = null, onClose, onSaved }: {
                 </div>
               )}
             </div>
+
+            <label className="block">
+              <span className="text-xs font-semibold text-ink-600">Contato do pedido</span>
+              <select value={contactId ?? ''} disabled={contactBusy}
+                onChange={(e) => changeContact(e.target.value === '' ? null : Number(e.target.value))} className={cn(inputCls, 'mt-1')}>
+                <option value="">Sem contato</option>
+                {/* pedido pode apontar p/ contato fora da lista atual da empresa — mantém a opção */}
+                {order?.contact_id != null && !contacts.some((c) => Number(c.id) === Number(order.contact_id)) && (
+                  <option value={order.contact_id}>{order.contact_nome ?? `#${order.contact_id}`}</option>
+                )}
+                {contacts.map((c) => <option key={c.id} value={c.id}>{c.nome}{c.cargo ? ` · ${c.cargo}` : ''}</option>)}
+              </select>
+              {companyId == null && <span className="mt-1 block text-[11px] text-ink-400">Escolha o cliente para listar contatos.</span>}
+            </label>
 
             <div className="grid gap-2 sm:grid-cols-3">
               <label className="block">

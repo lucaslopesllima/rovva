@@ -94,6 +94,17 @@ export function cadastroRoutes(app: FastifyInstance): void {
   const CONTACT_COLS = 'id, nome, cargo, email, telefone, company_id, represented_id, '
     + '(SELECT COALESCE(co.nome_fantasia, co.razao_social) FROM companies co WHERE co.id = contacts.company_id) AS company_name';
 
+  app.get('/api/contacts/:id', {
+    preHandler: [requireAuth, requirePermission('contacts.list')],
+    schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
+  }, async (req, reply) => {
+    const orgId = req.auth!.orgId;
+    const { id } = req.params as { id: number };
+    const rows = await query(`SELECT ${CONTACT_COLS} FROM contacts WHERE id = $1 AND org_id = $2`, [id, orgId]);
+    if (rows.length === 0) return reply.code(404).send({ error: 'não encontrado' });
+    return { contact: rows[0] };
+  });
+
   app.post('/api/contacts', {
     preHandler: [requireAuth, requirePermission('contacts.create')],
     schema: { body: { type: 'object', required: ['nome'], properties: { ...contactBody } } },

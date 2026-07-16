@@ -565,9 +565,19 @@ function ContactDetails({ chat, messages, onClose, onLink, onOrder, onNumber, on
   const canSaveContact = !isGroup && !!chat.numero && chat.contact_id == null && !savedContact && can('whatsapp.link');
   const saveContact = (): void => setContactModal({ contact: null, link: true });
 
+  // Edita o contato vinculado à conversa direto pelo cabeçalho — busca os dados
+  // completos (pode não estar em `contatos` quando não há empresa vinculada).
+  const editLinkedContact = async (): Promise<void> => {
+    if (chat.contact_id == null) return;
+    try {
+      const r = await api.get<{ contact: Contact }>(`/api/contacts/${chat.contact_id}`);
+      setContactModal({ contact: r.contact, link: false });
+    } catch (e) { toast.error(e instanceof ApiError ? e.message : 'Falha ao carregar contato'); }
+  };
+
   return (
    <>
-    <aside className="absolute inset-y-0 right-0 z-30 flex w-full max-w-sm flex-col border-l border-ink-200 bg-surface shadow-pop animate-[toastIn_.18s_ease-out]">
+    <aside className="absolute inset-y-0 right-0 z-30 flex w-full flex-col border-l border-ink-200 bg-surface shadow-pop animate-[toastIn_.18s_ease-out] md:static md:z-auto md:w-96 md:max-w-sm md:shrink-0 md:shadow-none">
       <div className="flex items-center gap-3 bg-[var(--wa-panel)] px-4 py-3">
         <button onClick={onClose} aria-label="Fechar" className="grid h-8 w-8 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-black/5 dark:hover:bg-white/10">
           <Icon name="x" size={18} />
@@ -584,6 +594,12 @@ function ContactDetails({ chat, messages, onClose, onLink, onOrder, onNumber, on
           {needsNumber && can('whatsapp.link') && (
             <button onClick={onNumber} className="mt-1 rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100">
               Informar número
+            </button>
+          )}
+          {!isGroup && chat.contact_id != null && can('whatsapp.link') && (
+            <button onClick={() => void editLinkedContact()}
+              className="mt-1 inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-emerald-600 hover:bg-emerald-50">
+              <Icon name="pencil" size={13} /> Editar contato
             </button>
           )}
         </div>
@@ -710,9 +726,16 @@ function ContactDetails({ chat, messages, onClose, onLink, onOrder, onNumber, on
             void api.patch<{ chat: WaChat }>(`/api/whatsapp/chats/${chat.id}/contact`, { contact_id: c.id })
               .then((r) => onChatUpdate(r.chat))
               .catch((e) => toast.error(e instanceof ApiError ? e.message : 'Falha ao vincular contato à conversa'));
+          } else if (Number(c.id) === Number(chat.contact_id)) {
+            // Editou o contato já vinculado: reflete o novo nome no cabeçalho/lista.
+            onChatUpdate({ ...chat, contact_nome: c.nome });
           }
         }}
-        onDeleted={(id) => setContatos((xs) => xs.filter((x) => x.id !== id))} />
+        onDeleted={(id) => {
+          setContatos((xs) => xs.filter((x) => x.id !== id));
+          // FK ON DELETE SET NULL: o vínculo caiu no banco; reflete no cabeçalho.
+          if (Number(id) === Number(chat.contact_id)) onChatUpdate({ ...chat, contact_id: null, contact_nome: null });
+        }} />
     )}
     <ImageLightbox url={lightbox} onClose={() => setLightbox(null)} />
    </>

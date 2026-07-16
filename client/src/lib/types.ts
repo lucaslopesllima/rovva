@@ -215,6 +215,7 @@ export interface Order {
   status: OrderStatus; validade: string | null;
   condicao_pagamento: string | null; transportadora: string | null;
   carrier_id: number | null; carrier_nome: string | null;
+  contact_id: number | null; contact_nome: string | null;
   frete: string; observacoes: string | null; total: string;
   nf_numero: string | null; emitido_em: string | null; faturado_em: string | null;
   created_at: string; updated_at: string;

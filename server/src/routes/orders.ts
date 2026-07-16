@@ -18,20 +18,22 @@ const SELECT = `
   SELECT o.id, o.numero, o.relationship_id, o.company_id, o.represented_id,
          o.owner_user_id, o.price_table_id, o.status, o.validade,
          o.condicao_pagamento, o.transportadora, o.carrier_id, o.frete, o.observacoes, o.total,
-         o.nf_numero, o.emitido_em, o.faturado_em, o.created_at, o.updated_at,
+         o.nf_numero, o.emitido_em, o.faturado_em, o.created_at, o.updated_at, o.contact_id,
          c.razao_social AS company_nome, c.cnpj AS company_cnpj,
          r.nome AS represented_nome,
          u.email AS owner_email, u.nome AS owner_nome,
-         tc.nome AS carrier_nome
+         tc.nome AS carrier_nome,
+         ct.nome AS contact_nome
   FROM orders o
   JOIN companies c ON c.id = o.company_id
   JOIN represented_companies r ON r.id = o.represented_id
   LEFT JOIN users u ON u.id = o.owner_user_id
-  LEFT JOIN carriers tc ON tc.id = o.carrier_id`;
+  LEFT JOIN carriers tc ON tc.id = o.carrier_id
+  LEFT JOIN contacts ct ON ct.id = o.contact_id`;
 
 // Campos de cabeçalho editáveis (POST e PATCH).
 const FIELDS = ['relationship_id', 'company_id', 'represented_id', 'price_table_id',
-  'validade', 'condicao_pagamento', 'transportadora', 'carrier_id', 'frete', 'observacoes'] as const;
+  'validade', 'condicao_pagamento', 'transportadora', 'carrier_id', 'frete', 'observacoes', 'contact_id'] as const;
 
 // Máquina de estados: fluxo feliz cotacao→rascunho→enviado→faturado→entregue;
 // cancelado de qualquer status não-terminal; sem voltar de faturado.
@@ -84,6 +86,7 @@ const HEADER_PROPS = {
   carrier_id: { type: ['integer', 'null'] },
   frete: { type: 'number', minimum: 0 },
   observacoes: { type: ['string', 'null'] },
+  contact_id: { type: ['integer', 'null'] },
 } as const;
 
 // Impostos copiados por item. Alíquota ausente no payload cai no default da org.
@@ -418,7 +421,7 @@ export function orderRoutes(app: FastifyInstance): void {
   }, async (req, reply) => {
     const orgId = req.auth!.orgId;
     const b = req.body as Record<string, unknown> & { items?: ItemInput[]; status?: string };
-    const badRef = await invalidOrgRef(orgId, b, ['represented_id', 'relationship_id', 'price_table_id', 'carrier_id']);
+    const badRef = await invalidOrgRef(orgId, b, ['represented_id', 'relationship_id', 'price_table_id', 'carrier_id', 'contact_id']);
     if (badRef) return reply.code(400).send({ error: `${badRef} inválido` });
     if (await priceTableMismatch(orgId, (b.price_table_id as number | undefined) ?? null, Number(b.represented_id))) {
       return reply.code(400).send({ error: 'tabela de preço não pertence à representada do pedido' });
@@ -436,15 +439,15 @@ export function orderRoutes(app: FastifyInstance): void {
         const res = await c.query(
           `INSERT INTO orders (org_id, numero, relationship_id, company_id, represented_id,
              owner_user_id, price_table_id, status, validade, condicao_pagamento,
-             transportadora, carrier_id, frete, observacoes)
+             transportadora, carrier_id, frete, observacoes, contact_id)
            VALUES ($1, (SELECT COALESCE(MAX(numero),0)+1 FROM orders WHERE org_id = $1),
                    $2, $3, $4, $5, $6, COALESCE($7,'rascunho')::order_status,
-                   $8, $9, $10, $11, $12, $13)
+                   $8, $9, $10, $11, $12, $13, $14)
            RETURNING id`,
           [orgId, b.relationship_id ?? null, b.company_id, b.represented_id,
             req.auth!.userId, b.price_table_id ?? null, b.status ?? null,
             b.validade ?? null, b.condicao_pagamento ?? null, b.transportadora ?? null,
-            b.carrier_id ?? null, frete, b.observacoes ?? null],
+            b.carrier_id ?? null, frete, b.observacoes ?? null, b.contact_id ?? null],
         );
         const id = Number(res.rows[0].id);
         for (const it of resolved) {
@@ -490,7 +493,7 @@ export function orderRoutes(app: FastifyInstance): void {
     if (!EDITABLE.has(order.status)) {
       return reply.code(409).send({ error: `pedido ${order.status} não é editável` });
     }
-    const badRef = await invalidOrgRef(orgId, b, ['represented_id', 'relationship_id', 'price_table_id', 'carrier_id']);
+    const badRef = await invalidOrgRef(orgId, b, ['represented_id', 'relationship_id', 'price_table_id', 'carrier_id', 'contact_id']);
     if (badRef) return reply.code(400).send({ error: `${badRef} inválido` });
 
     // Valida tabela×representada com os valores efetivos (o que o body muda, ou o
@@ -556,6 +559,31 @@ export function orderRoutes(app: FastifyInstance): void {
       }
     });
     await audit(req, 'order', id, 'update', pick(b, FIELDS));
+    return { order: await fullOrder(id) };
+  });
+
+  // Vincula/edita o contato (comprador) do pedido. Diferente do PATCH geral, é
+  // permitido em QUALQUER status — é só referência de com quem foi tratado, não
+  // muda valor. Usado pela tela de visualização do pedido.
+  app.patch('/api/orders/:id/contact', {
+    preHandler: [requireAuth, requirePermission('orders.update')],
+    schema: {
+      params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
+      body: { type: 'object', required: ['contact_id'], properties: { contact_id: { type: ['integer', 'null'] } } },
+    },
+  }, async (req, reply) => {
+    const orgId = req.auth!.orgId;
+    const { id } = req.params as { id: number };
+    const { contact_id } = req.body as { contact_id: number | null };
+    const order = await findOrder(id, orgId);
+    if (!order) return reply.code(404).send({ error: 'não encontrado' });
+    if (!canWrite(req, order.owner_user_id === null ? null : Number(order.owner_user_id))) {
+      return reply.code(403).send({ error: 'pedido de outro vendedor' });
+    }
+    const badRef = await invalidOrgRef(orgId, { contact_id }, ['contact_id']);
+    if (badRef) return reply.code(400).send({ error: `${badRef} inválido` });
+    await query('UPDATE orders SET contact_id = $1, updated_at = now() WHERE id = $2 AND org_id = $3', [contact_id, id, orgId]);
+    await audit(req, 'order', id, 'update', { contact_id });
     return { order: await fullOrder(id) };
   });
 
