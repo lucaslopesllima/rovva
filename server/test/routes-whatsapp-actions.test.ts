@@ -180,6 +180,19 @@ describe('whatsapp — from-company', () => {
     expect(r.statusCode).toBe(201);
     expect(r.json().chat.nome).toBe('Contato Direto');
   });
+  it('retoma conversa existente pelo número (mesmo sem o nono dígito) sem renomear', async () => {
+    const companyId = await makeCompany({ fantasia: 'Empresa Dedup' });
+    const chat = await mkChat('5511955554444@s.whatsapp.net', '5511955554444');
+    await query('UPDATE whatsapp_chats SET nome = $2 WHERE id = $1', [chat, 'Nome Original']);
+    // Telefone do contato salvo sem o 9: precisa cair na mesma conversa.
+    const r = await inj('POST', '/api/whatsapp/chats/from-company', { company_id: companyId, numero: '1155554444', nome: 'Outro Nome' });
+    expect(r.statusCode).toBe(201);
+    expect(String(r.json().chat.id)).toBe(String(chat));
+    expect(r.json().chat.nome).toBe('Nome Original');
+    expect(String(r.json().chat.company_id)).toBe(String(companyId));
+    const dupes = await query('SELECT id FROM whatsapp_chats WHERE org_id = $1 AND right(numero, 8) = $2', [org, '55554444']);
+    expect(dupes.length).toBe(1);
+  });
 });
 
 describe('whatsapp — agendamentos', () => {

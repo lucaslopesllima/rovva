@@ -93,6 +93,15 @@ export function numeroToJid(numero: string): string {
   return `${normalizeNumero(numero)}@s.whatsapp.net`;
 }
 
+// Chave de comparação de telefone tolerante ao nono dígito BR: DDI 55 + DDD +
+// últimos 8 dígitos (o 9 na frente do celular cai fora). Fora desse formato,
+// compara os dígitos crus.
+export function numeroKey(raw: string): string {
+  const d = normalizeNumero(raw);
+  if (d.startsWith('55') && (d.length === 12 || d.length === 13)) return `55${d.slice(2, 4)}${d.slice(-8)}`;
+  return d;
+}
+
 // Relationship (funil) existente da org para a empresa, se houver.
 export async function relationshipForCompany(orgId: number, companyId: number): Promise<{ id: string; represented_id: string | null } | null> {
   return one<{ id: string; represented_id: string | null }>(
@@ -130,6 +139,20 @@ export async function resolveChatId(orgId: number, jid: string): Promise<string 
     'SELECT chat_id FROM whatsapp_chat_jids WHERE org_id = $1 AND jid = $2', [orgId, jid],
   );
   return r?.chat_id ?? null;
+}
+
+// Conversa existente da org com o mesmo telefone, tolerante ao nono dígito BR —
+// pega o caso em que o jid não bate (contato salvo sem o 9, ou conversa @lid
+// cujo numero veio por outro caminho) e evita abrir conversa duplicada.
+export async function findChatByNumero(orgId: number, numero: string): Promise<ChatRow | null> {
+  const key = numeroKey(numero);
+  if (!key) return null;
+  const rows = await query<ChatRow>(
+    `SELECT ${CHAT_COLS} FROM whatsapp_chats
+      WHERE org_id = $1 AND numero IS NOT NULL AND right(numero, 8) = right($2, 8)`,
+    [orgId, key],
+  );
+  return rows.find((r) => numeroKey(r.numero!) === key) ?? null;
 }
 
 // Aplica nome/preview/horário/não-lidas e devolve a conversa completa.

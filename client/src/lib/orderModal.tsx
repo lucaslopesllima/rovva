@@ -207,9 +207,11 @@ export function OrderModal({ order = null, prefill = null, onClose, onSaved }: {
     const body: Record<string, unknown> = {
       company_id: companyId,
       represented_id: representedId,
-      relationship_id: order?.relationship_id
+      // funil primeiro: se o cliente foi trocado, pega o relationship do card
+      // escolhido; senão cai no do próprio pedido/prefill (cliente fora do funil).
+      relationship_id: companies.find((c) => Number(c.id) === Number(companyId))?.relationship_id
+        ?? order?.relationship_id
         ?? prefill?.relationship_id
-        ?? companies.find((c) => Number(c.id) === Number(companyId))?.relationship_id
         ?? null,
       price_table_id: table != null ? table.id : null,
       validade: cotacao && validade ? validade : null,
@@ -260,10 +262,10 @@ export function OrderModal({ order = null, prefill = null, onClose, onSaved }: {
             <div className="grid gap-2 sm:grid-cols-2">
               <label className="block">
                 <span className="text-xs font-semibold text-ink-600">Cliente (funil) *</span>
-                <select value={companyId ?? ''} disabled={readOnly || order != null}
+                <select value={companyId ?? ''} disabled={readOnly}
                   onChange={(e) => setCompanyId(e.target.value === '' ? null : Number(e.target.value))} className={cn(inputCls, 'mt-1')}>
                   <option value="">Escolha o cliente</option>
-                  {companyMissing && <option value={companyId!}>{prefill?.company_label ?? 'Empresa vinculada'}</option>}
+                  {companyMissing && <option value={companyId!}>{prefill?.company_label ?? order?.company_nome ?? 'Empresa vinculada'}</option>}
                   {companies.map((c) => <option key={c.relationship_id} value={c.id}>{c.label}</option>)}
                 </select>
               </label>
@@ -340,7 +342,7 @@ export function OrderModal({ order = null, prefill = null, onClose, onSaved }: {
 
             <label className="block">
               <span className="text-xs font-semibold text-ink-600">Contato do pedido</span>
-              <select value={contactId ?? ''} disabled={contactBusy}
+              <select value={contactId ?? ''} disabled={readOnly || contactBusy}
                 onChange={(e) => changeContact(e.target.value === '' ? null : Number(e.target.value))} className={cn(inputCls, 'mt-1')}>
                 <option value="">Sem contato</option>
                 {/* pedido pode apontar p/ contato fora da lista atual da empresa — mantém a opção */}

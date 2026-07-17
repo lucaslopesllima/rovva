@@ -1,18 +1,15 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.ts';
-import type { Brand, CompanyHit, Contact, NamedItem, RepresentedCompany, Stage, TaxDefaults } from '../lib/types.ts';
-import { Badge, Btn, Card, EmptyState, PageHeader, SafeButton, Spinner, cn } from '../lib/ui.tsx';
+import type { NamedItem, Stage, TaxDefaults } from '../lib/types.ts';
+import { Btn, Card, PageHeader, SafeButton, Spinner, cn } from '../lib/ui.tsx';
 import { Icon, type IconName } from '../lib/icons.tsx';
 import { useOptionalUser, useAuth } from '../lib/auth.tsx';
-import { CompanySearch } from '../lib/companySearch.tsx';
 import { toast } from '../lib/toast.tsx';
-import { clampNum, dec, maskCNPJ, maskPct, maskPhone } from '../lib/format.ts';
+import { clampNum, dec, maskPct } from '../lib/format.ts';
 import { confirmDialog } from '../lib/confirm.ts';
 
-type Section = 'empresas' | 'funil' | 'contatos' | 'cenarios' | 'acoes' | 'aliquotas' | 'alertas' | 'smtp';
+type Section = 'funil' | 'cenarios' | 'acoes' | 'aliquotas' | 'alertas' | 'smtp';
 const SECTIONS: { key: Section; label: string; icon: IconName; desc: string; admin?: boolean }[] = [
-  { key: 'empresas', label: 'Empresas representadas', icon: 'building', desc: 'Representadas e suas marcas' },
-  { key: 'contatos', label: 'Contatos', icon: 'users', desc: 'Pessoas para vincular na prospecção' },
   { key: 'cenarios', label: 'Cenários', icon: 'list', desc: 'Opções de "cenário atual"' },
   { key: 'acoes', label: 'Ações próximo nível', icon: 'target', desc: 'Opções de ação para avançar' },
   { key: 'funil', label: 'Funil', icon: 'columns', desc: 'Fases do seu pipeline de vendas' },
@@ -22,12 +19,11 @@ const SECTIONS: { key: Section; label: string; icon: IconName; desc: string; adm
   { key: 'smtp', label: 'E-mail (SMTP)', icon: 'mail', desc: 'Servidor de envio dos e-mails agendados', admin: true },
 ];
 const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export function Settings(): React.JSX.Element {
   const user = useOptionalUser();
   const sections = SECTIONS.filter((s) => !s.admin || user?.role === 'admin');
-  const [section, setSection] = useState<Section>('empresas');
+  const [section, setSection] = useState<Section>('cenarios');
   return (
     <div className="space-y-4 p-4 sm:p-6">
       <PageHeader title="Configurações" subtitle="Ajuste como o Rovva funciona para a sua operação." />
@@ -50,8 +46,6 @@ export function Settings(): React.JSX.Element {
           })}
         </nav>
         <div className="min-w-0 flex-1">
-          {section === 'empresas' && <RepresentadasEditor inputCls={inputCls} />}
-          {section === 'contatos' && <ContatosEditor inputCls={inputCls} />}
           {section === 'cenarios' && (
             <NamedListEditor inputCls={inputCls} path="scenarios" titulo="Cenários" icon="list"
               desc='Opções do dropdown "Cenário atual" na prospecção.' placeholder="Novo cenário (ex.: Já compra do concorrente)" />
@@ -417,222 +411,6 @@ function FunilEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
   );
 }
 
-/* ── Empresas representadas (marcas/fornecedores do rep) ──── */
-type EmpForm = { nome: string; cnpj: string; segmento: string; site: string; contato: string; notas: string };
-const EMPTY: EmpForm = { nome: '', cnpj: '', segmento: '', site: '', contato: '', notas: '' };
-const toForm = (e: RepresentedCompany): EmpForm => ({
-  nome: e.nome, cnpj: e.cnpj ?? '', segmento: e.segmento ?? '', site: e.site ?? '', contato: e.contato ?? '', notas: e.notas ?? '',
-});
-
-function RepresentadasEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
-  const { can } = useAuth();
-  const [list, setList] = useState<RepresentedCompany[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<number | 'new' | null>(null);
-
-  const load = async (): Promise<void> => {
-    const r = await api.get<{ empresas: RepresentedCompany[] }>('/api/represented');
-    setList(r.empresas);
-    setLoading(false);
-  };
-  useEffect(() => { void load(); }, []);
-
-  const create = async (f: EmpForm): Promise<void> => {
-    try {
-      const r = await api.post<{ empresa: RepresentedCompany }>('/api/represented', normalize(f));
-      setList((xs) => [...xs, r.empresa]);
-      setEditing(null);
-      toast.success('Representada criada.');
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Não foi possível criar.'); }
-  };
-  const update = async (id: number, f: EmpForm): Promise<void> => {
-    try {
-      const r = await api.patch<{ empresa: RepresentedCompany }>(`/api/represented/${id}`, normalize(f));
-      setList((xs) => xs.map((x) => (x.id === id ? r.empresa : x)));
-      setEditing(null);
-      toast.success('Representada salva.');
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Não foi possível salvar.'); }
-  };
-  const toggleAtivo = async (e: RepresentedCompany): Promise<void> => {
-    setList((xs) => xs.map((x) => (x.id === e.id ? { ...x, ativo: !x.ativo } : x)));
-    try { await api.patch(`/api/represented/${e.id}`, { ativo: !e.ativo }); }
-    catch { setList((xs) => xs.map((x) => (x.id === e.id ? { ...x, ativo: e.ativo } : x))); toast.error('Não foi possível atualizar.'); }
-  };
-  const remove = async (id: number): Promise<void> => {
-    if (!(await confirmDialog('Excluir esta empresa representada?'))) return;
-    const before = list;
-    setList((xs) => xs.filter((x) => x.id !== id));
-    try { await api.del(`/api/represented/${id}`); toast.success('Representada excluída.'); }
-    catch { setList(before); toast.error('Não foi possível excluir.'); }
-  };
-
-  if (loading) return <Spinner />;
-
-  return (
-    <Card className="p-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-ink-900">Empresas representadas</h3>
-          <p className="mt-0.5 text-xs text-ink-400">Marcas/fornecedores que você representa. Pode cadastrar várias.</p>
-        </div>
-        {can('represented.create') && editing !== 'new' && <Btn size="sm" icon="plus" onClick={() => setEditing('new')}>Nova</Btn>}
-      </div>
-
-      {editing === 'new' && (
-        <div className="mt-4">
-          <EmpresaForm inputCls={inputCls} initial={EMPTY} onSave={create} onCancel={() => setEditing(null)} />
-        </div>
-      )}
-
-      <div className="mt-4 space-y-2">
-        {list.length === 0 && editing !== 'new' && (
-          <EmptyState icon="building" title="Nenhuma empresa cadastrada" hint="Adicione as marcas/fornecedores que você representa." />
-        )}
-        {list.map((e) => editing === e.id ? (
-          <Card key={e.id} className="border-brand-200 bg-brand-50/40 p-3">
-            <EmpresaForm inputCls={inputCls} initial={toForm(e)} onSave={(f) => update(e.id, f)} onCancel={() => setEditing(null)} />
-            <div className="mt-3 border-t border-brand-200/60 pt-3">
-              <BrandsEditor representedId={e.id} inputCls={inputCls} />
-            </div>
-          </Card>
-        ) : (
-          <div key={e.id} className={cn('flex items-start gap-3 rounded-xl border border-ink-200/70 bg-surface p-3', !e.ativo && 'opacity-60')}>
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink-100 text-ink-500"><Icon name="building" size={18} /></span>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <p className="truncate text-sm font-semibold text-ink-800">{e.nome}</p>
-                {e.ativo ? <Badge tone="success">ativa</Badge> : <Badge tone="neutral">inativa</Badge>}
-                {e.segmento && <Badge tone="brand">{e.segmento}</Badge>}
-              </div>
-              <p className="mt-0.5 truncate text-xs text-ink-400">
-                {[e.cnpj, e.contato, e.site].filter(Boolean).join(' · ') || 'sem detalhes'}
-              </p>
-              {e.notas && <p className="mt-1 line-clamp-2 text-xs text-ink-500">{e.notas}</p>}
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              {can('represented.update') && (
-                <SafeButton onClick={() => toggleAtivo(e)} title={e.ativo ? 'Desativar' : 'Ativar'}
-                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100">
-                  <Icon name={e.ativo ? 'check' : 'x'} size={16} />
-                </SafeButton>
-              )}
-              {can('represented.update') && (
-                <button onClick={() => setEditing(e.id)} aria-label="Editar"
-                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
-              )}
-              {can('represented.delete') && (
-                <SafeButton onClick={() => remove(e.id)} aria-label="Excluir"
-                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></SafeButton>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function normalize(f: EmpForm): Record<string, string | null> {
-  const t = (s: string): string | null => (s.trim() === '' ? null : s.trim());
-  return { nome: f.nome.trim(), cnpj: t(f.cnpj), segmento: t(f.segmento), site: t(f.site), contato: t(f.contato), notas: t(f.notas) };
-}
-
-function EmpresaForm({ inputCls, initial, onSave, onCancel }: {
-  inputCls: string; initial: EmpForm; onSave: (f: EmpForm) => void | Promise<void>; onCancel: () => void;
-}): React.JSX.Element {
-  const [f, setF] = useState<EmpForm>(initial);
-  const [busy, setBusy] = useState(false);
-  const set = (k: keyof EmpForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((p) => ({ ...p, [k]: e.target.value }));
-
-  const submit = async (e: React.FormEvent): Promise<void> => {
-    e.preventDefault();
-    if (!f.nome.trim()) return;
-    setBusy(true);
-    try { await onSave(f); } finally { setBusy(false); }
-  };
-
-  // Autopreenche a partir da base de empresas (RFB).
-  const fillFrom = (c: CompanyHit): void => setF((p) => ({
-    ...p,
-    nome: c.nome_fantasia || c.razao_social,
-    cnpj: c.cnpj ?? p.cnpj,
-    contato: p.contato || c.telefone1 || c.email || '',
-  }));
-
-  return (
-    <form onSubmit={submit} className="space-y-2.5">
-      <CompanySearch onPick={fillFrom} placeholder="Buscar na base de empresas (CNPJ ou nome)…" />
-      <input autoFocus value={f.nome} onChange={set('nome')} maxLength={200} placeholder="Nome da empresa / marca *" className={inputCls} />
-      <div className="grid gap-2.5 sm:grid-cols-2">
-        <input value={f.segmento} onChange={set('segmento')} maxLength={120} placeholder="Segmento (ex.: Calçados)" className={inputCls} />
-        <input value={f.cnpj} inputMode="numeric" onChange={(e) => setF((p) => ({ ...p, cnpj: maskCNPJ(e.target.value) }))} placeholder="CNPJ" className={inputCls} />
-        <input type="text" value={f.contato} onChange={set('contato')} maxLength={120} placeholder="Contato (telefone/e-mail)" className={inputCls} />
-        <input value={f.site} onChange={set('site')} maxLength={200} placeholder="Site" className={inputCls} />
-      </div>
-      <textarea value={f.notas} onChange={set('notas')} maxLength={2000} placeholder="Notas (linha de produtos, comissão, etc.)" rows={2} className={cn(inputCls, 'resize-y')} />
-      <div className="flex justify-end gap-2">
-        <Btn variant="ghost" type="button" onClick={onCancel}>Cancelar</Btn>
-        <Btn icon="check" type="submit" disabled={busy}>{busy ? '…' : 'Salvar'}</Btn>
-      </div>
-    </form>
-  );
-}
-
-/* ── Marcas de uma empresa representada ────────────────────── */
-function BrandsEditor({ representedId, inputCls }: { representedId: number; inputCls: string }): React.JSX.Element {
-  const { can } = useAuth();
-  const [brands, setBrands] = useState<Brand[]>([]);
-  const [novo, setNovo] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    void api.get<{ brands: Brand[] }>(`/api/brands?represented_id=${representedId}`)
-      .then((r) => setBrands(r.brands)).catch(() => undefined);
-  }, [representedId]);
-
-  const add = async (e: React.FormEvent): Promise<void> => {
-    e.preventDefault();
-    const nome = novo.trim();
-    if (!nome) return;
-    setBusy(true);
-    try {
-      const r = await api.post<{ brand: Brand }>('/api/brands', { represented_id: representedId, nome });
-      setBrands((xs) => [...xs, r.brand]);
-      setNovo('');
-    } finally { setBusy(false); }
-  };
-  const remove = async (id: number): Promise<void> => {
-    setBrands((xs) => xs.filter((x) => x.id !== id));
-    await api.del(`/api/brands/${id}`);
-  };
-
-  return (
-    <div>
-      <p className="text-xs font-semibold text-ink-600">Marcas que esta empresa trabalha</p>
-      <p className="mt-0.5 text-xs text-ink-400">Aparecem no dropdown "Marca" da prospecção.</p>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {brands.map((b) => (
-          <span key={b.id} className="inline-flex items-center gap-1 rounded-full bg-surface px-2.5 py-1 text-xs font-medium text-ink-700 shadow-card">
-            {b.nome}
-            {can('brands.delete') && (
-              <SafeButton type="button" onClick={() => remove(b.id)} className="text-ink-300 hover:text-rose-500" aria-label="Remover">
-                <Icon name="x" size={13} />
-              </SafeButton>
-            )}
-          </span>
-        ))}
-        {brands.length === 0 && <span className="text-xs text-ink-300">Nenhuma marca ainda.</span>}
-      </div>
-      {can('brands.create') && (
-        <form onSubmit={add} className="mt-2 flex gap-2">
-          <input value={novo} onChange={(e) => setNovo(e.target.value)} maxLength={200} placeholder="Nova marca" className={cn(inputCls, 'flex-1')} />
-          <Btn size="sm" icon="plus" type="submit" disabled={busy}>Add</Btn>
-        </form>
-      )}
-    </div>
-  );
-}
-
 /* ── Lista nome-só (cenários, ações) ──────────────────────── */
 function NamedListEditor({ inputCls, path, titulo, desc, icon, placeholder }: {
   inputCls: string; path: 'scenarios' | 'actions'; titulo: string; desc: string; icon: IconName; placeholder: string;
@@ -710,174 +488,5 @@ function NamedListEditor({ inputCls, path, titulo, desc, icon, placeholder }: {
         </form>
       )}
     </Card>
-  );
-}
-
-/* ── Contatos ──────────────────────────────────────────────── */
-type ContactForm = {
-  nome: string; cargo: string; email: string; telefone: string; represented_id: string;
-  company_id: number | null; company_name: string | null;
-};
-const EMPTY_CONTACT: ContactForm = { nome: '', cargo: '', email: '', telefone: '', represented_id: '', company_id: null, company_name: null };
-const toContactForm = (c: Contact): ContactForm => ({
-  nome: c.nome, cargo: c.cargo ?? '', email: c.email ?? '', telefone: c.telefone ?? '',
-  represented_id: c.represented_id != null ? String(c.represented_id) : '',
-  company_id: c.company_id ?? null, company_name: c.company_name ?? null,
-});
-function contactBody(f: ContactForm): Record<string, unknown> {
-  const t = (s: string): string | null => (s.trim() === '' ? null : s.trim());
-  return {
-    nome: f.nome.trim(), cargo: t(f.cargo), email: t(f.email), telefone: t(f.telefone),
-    represented_id: f.represented_id === '' ? null : Number(f.represented_id),
-    company_id: f.company_id,
-  };
-}
-
-function ContatosEditor({ inputCls }: { inputCls: string }): React.JSX.Element {
-  const { can } = useAuth();
-  const [list, setList] = useState<Contact[]>([]);
-  const [reps, setReps] = useState<RepresentedCompany[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<number | 'new' | null>(null);
-
-  const load = async (): Promise<void> => {
-    const [c, r] = await Promise.all([
-      api.get<{ contacts: Contact[] }>('/api/contacts'),
-      api.get<{ empresas: RepresentedCompany[] }>('/api/represented'),
-    ]);
-    setList(c.contacts);
-    setReps(r.empresas);
-    setLoading(false);
-  };
-  useEffect(() => { void load(); }, []);
-
-  const repName = (id: number | null): string | null => reps.find((r) => r.id === id)?.nome ?? null;
-
-  const create = async (f: ContactForm): Promise<void> => {
-    try {
-      const r = await api.post<{ contact: Contact }>('/api/contacts', contactBody(f));
-      setList((xs) => [...xs, r.contact]);
-      setEditing(null);
-      toast.success('Contato criado.');
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Não foi possível criar o contato.'); }
-  };
-  const update = async (id: number, f: ContactForm): Promise<void> => {
-    try {
-      const r = await api.patch<{ contact: Contact }>(`/api/contacts/${id}`, contactBody(f));
-      setList((xs) => xs.map((x) => (x.id === id ? r.contact : x)));
-      setEditing(null);
-      toast.success('Contato salvo.');
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Não foi possível salvar o contato.'); }
-  };
-  const remove = async (id: number): Promise<void> => {
-    if (!(await confirmDialog('Excluir este contato?'))) return;
-    const before = list;
-    setList((xs) => xs.filter((x) => x.id !== id));
-    try { await api.del(`/api/contacts/${id}`); toast.success('Contato excluído.'); }
-    catch { setList(before); toast.error('Não foi possível excluir o contato.'); }
-  };
-
-  if (loading) return <Spinner />;
-
-  return (
-    <Card className="p-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-ink-900">Contatos</h3>
-          <p className="mt-0.5 text-xs text-ink-400">Pessoas que você pode vincular na prospecção. Contatos de uma empresa-cliente também podem ser criados direto no funil.</p>
-        </div>
-        {can('contacts.create') && editing !== 'new' && <Btn size="sm" icon="plus" onClick={() => setEditing('new')}>Novo</Btn>}
-      </div>
-
-      {editing === 'new' && (
-        <div className="mt-4"><ContatoForm inputCls={inputCls} reps={reps} initial={EMPTY_CONTACT} onSave={create} onCancel={() => setEditing(null)} /></div>
-      )}
-
-      <div className="mt-4 space-y-2">
-        {list.length === 0 && editing !== 'new' && (
-          <EmptyState icon="users" title="Nenhum contato" hint="Cadastre pessoas para selecionar na prospecção." />
-        )}
-        {list.map((c) => editing === c.id ? (
-          <Card key={c.id} className="border-brand-200 bg-brand-50/40 p-3">
-            <ContatoForm inputCls={inputCls} reps={reps} initial={toContactForm(c)} onSave={(f) => update(c.id, f)} onCancel={() => setEditing(null)} />
-          </Card>
-        ) : (
-          <div key={c.id} className="flex items-start gap-3 rounded-xl border border-ink-200/70 bg-surface p-3">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink-100 text-ink-500"><Icon name="users" size={18} /></span>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <p className="truncate text-sm font-semibold text-ink-800">{c.nome}</p>
-                {c.cargo && <Badge tone="neutral">{c.cargo}</Badge>}
-                {c.company_name && <Badge tone="neutral"><Icon name="building" size={12} />{c.company_name}</Badge>}
-                {repName(c.represented_id) && <Badge tone="brand">{repName(c.represented_id)}</Badge>}
-              </div>
-              <p className="mt-0.5 truncate text-xs text-ink-400">{[c.email, c.telefone].filter(Boolean).join(' · ') || 'sem contato'}</p>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              {can('contacts.update') && (
-                <button onClick={() => setEditing(c.id)} aria-label="Editar"
-                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="pencil" size={16} /></button>
-              )}
-              {can('contacts.delete') && (
-                <SafeButton onClick={() => remove(c.id)} aria-label="Excluir"
-                  className="grid h-8 w-8 place-items-center rounded-lg text-ink-300 hover:bg-rose-50 hover:text-rose-500"><Icon name="trash" size={16} /></SafeButton>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-function ContatoForm({ inputCls, reps, initial, onSave, onCancel }: {
-  inputCls: string; reps: RepresentedCompany[]; initial: ContactForm;
-  onSave: (f: ContactForm) => void | Promise<void>; onCancel: () => void;
-}): React.JSX.Element {
-  const [f, setF] = useState<ContactForm>(initial);
-  const [busy, setBusy] = useState(false);
-  const set = (k: keyof ContactForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF((p) => ({ ...p, [k]: e.target.value }));
-
-  const submit = async (e: React.FormEvent): Promise<void> => {
-    e.preventDefault();
-    if (!f.nome.trim()) return;
-    if (f.email.trim() && !EMAIL_RE.test(f.email.trim())) { toast.error('E-mail inválido.'); return; }
-    setBusy(true);
-    try { await onSave(f); } finally { setBusy(false); }
-  };
-
-  const pickCompany = (c: CompanyHit): void =>
-    setF((p) => ({ ...p, company_id: c.id, company_name: c.nome_fantasia || c.razao_social }));
-  const clearCompany = (): void => setF((p) => ({ ...p, company_id: null, company_name: null }));
-
-  return (
-    <form onSubmit={submit} className="space-y-2.5">
-      <input autoFocus value={f.nome} onChange={set('nome')} maxLength={120} placeholder="Nome *" className={inputCls} />
-      <div className="grid gap-2.5 sm:grid-cols-2">
-        <input value={f.cargo} onChange={set('cargo')} maxLength={120} placeholder="Cargo (ex.: Comprador)" className={inputCls} />
-        <select value={f.represented_id} onChange={set('represented_id')} className={inputCls}>
-          <option value="">Representada (opcional)</option>
-          {reps.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
-        </select>
-        <input type="email" value={f.email} onChange={set('email')} maxLength={160} placeholder="E-mail" className={inputCls} />
-        <input value={f.telefone} inputMode="tel" onChange={(e) => setF((p) => ({ ...p, telefone: maskPhone(e.target.value) }))} placeholder="Telefone" className={inputCls} />
-      </div>
-      <div>
-        {f.company_id != null ? (
-          <div className="flex items-center gap-2 rounded-xl border border-ink-200 bg-ink-50/50 px-3 py-2">
-            <Icon name="building" size={16} className="shrink-0 text-ink-400" />
-            <span className="min-w-0 flex-1 truncate text-sm text-ink-800">{f.company_name ?? `Empresa #${f.company_id}`}</span>
-            <button type="button" onClick={clearCompany} aria-label="Remover empresa"
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-ink-400 hover:bg-ink-100"><Icon name="x" size={15} /></button>
-          </div>
-        ) : (
-          <CompanySearch onPick={pickCompany} placeholder="Empresa-prospect (opcional) — buscar por CNPJ ou nome…" />
-        )}
-      </div>
-      <div className="flex justify-end gap-2">
-        <Btn variant="ghost" type="button" onClick={onCancel}>Cancelar</Btn>
-        <Btn icon="check" type="submit" disabled={busy}>{busy ? '…' : 'Salvar'}</Btn>
-      </div>
-    </form>
   );
 }

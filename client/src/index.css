@@ -138,6 +138,10 @@ select:-webkit-autofill {
 *::-webkit-scrollbar-thumb { background: var(--color-ink-200); border-radius: 9999px; }
 *::-webkit-scrollbar-thumb:hover { background: var(--color-ink-300); }
 
+/* rola sem exibir a barra (precisa ficar fora de @layer p/ vencer as regras * acima) */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 .leaflet-container { font: inherit; }
 
 /* popup do Leaflet segue o tema (default é branco fixo → texto some no escuro) */

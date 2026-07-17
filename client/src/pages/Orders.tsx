@@ -6,7 +6,7 @@ import { useSellers, SellerFilter } from '../lib/sellers.tsx';
 import type { Order, OrderStatus, RepresentedCompany } from '../lib/types.ts';
 import { Badge, Btn, Card, EmptyState, PageHeader, SafeButton, Spinner, StatCard, cn, type Tone } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
-import { brl, csvNum, fmtDate } from '../lib/format.ts';
+import { brl, csvNum, fmtDate, maskSearchCNPJ } from '../lib/format.ts';
 import { downloadCsv } from '../lib/export.ts';
 import { toast } from '../lib/toast.tsx';
 import { OrderModal } from '../lib/orderModal.tsx';
@@ -46,6 +46,9 @@ export function Orders(): React.JSX.Element {
   const [status, setStatus] = useState<'todos' | OrderStatus>('todos');
   const [representedId, setRepresentedId] = useState<'todos' | number>('todos');
   const [ownerId, setOwnerId] = useState<'todos' | number>('todos');
+  // Filtro de empresa (cliente) por nome ou CNPJ — vai debouncado ao servidor.
+  const [companyQ, setCompanyQ] = useState('');
+  const [companyTerm, setCompanyTerm] = useState('');
   const sellers = useSellers();
   const [editing, setEditing] = useState<Order | null>(null);
   const [adding, setAdding] = useState(false);
@@ -73,6 +76,7 @@ export function Orders(): React.JSX.Element {
     if (status !== 'todos') qs.set('status', status);
     if (representedId !== 'todos') qs.set('represented_id', String(representedId));
     if (ownerId !== 'todos') qs.set('owner_user_id', String(ownerId));
+    if (companyTerm) qs.set('q', companyTerm);
     return qs.toString();
   };
 
@@ -82,7 +86,13 @@ export function Orders(): React.JSX.Element {
     setHasMore(r.orders.length === PAGE);
     setLoading(false);
   };
-  useEffect(() => { void load(); }, [status, representedId, ownerId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(); }, [status, representedId, ownerId, companyTerm]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounce do campo de busca de empresa (300ms). <2 chars não filtra.
+  useEffect(() => {
+    const t = setTimeout(() => setCompanyTerm(companyQ.trim().length >= 2 ? companyQ.trim() : ''), 300);
+    return () => clearTimeout(t);
+  }, [companyQ]);
 
   const loadMore = async (): Promise<void> => {
     setLoadingMore(true);
@@ -193,6 +203,13 @@ export function Orders(): React.JSX.Element {
       </div>
 
       <Card className="flex flex-wrap items-center gap-3 p-3">
+        <div className="relative min-w-[220px] flex-1">
+          <Icon name="search" size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400" />
+          <input value={companyQ} onChange={(e) => setCompanyQ(maskSearchCNPJ(e.target.value))}
+            onKeyDown={(e) => { if (e.key === 'Enter') { const t = companyQ.trim(); setCompanyTerm(t.length >= 2 ? t : ''); } }}
+            aria-label="Filtrar por empresa (nome ou CNPJ)" placeholder="Empresa: nome ou CNPJ"
+            className="w-full rounded-lg border border-ink-200 bg-surface py-1.5 pl-8 pr-2.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400" />
+        </div>
         <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label="Filtrar por status"
           className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
           <option value="todos">Todos os status</option>

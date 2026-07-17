@@ -105,17 +105,17 @@ describe('App routing', () => {
     expect(screen.queryByText('PAGE-EQUIPE')).not.toBeInTheDocument();
   });
 
-  it('admin acessa /equipe e o menu mostra Equipe', async () => {
+  it('admin acessa /equipe e o menu mostra Vendedores', async () => {
     mount('/equipe');
     expect(await screen.findByText('PAGE-EQUIPE')).toBeInTheDocument();
-    expect(screen.getAllByText('Equipe').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Vendedores').length).toBeGreaterThan(0);
   });
 
-  it('menu de rep não tem Equipe; rota desconhecida cai na home', async () => {
+  it('menu de rep não tem Vendedores; rota desconhecida cai na home', async () => {
     useAuthMock.mockReturnValue(auth(rep));
     mount('/nao-existe');
     expect(await screen.findByText('PAGE-DASHBOARD')).toBeInTheDocument();
-    expect(screen.queryByText('Equipe')).not.toBeInTheDocument();
+    expect(screen.queryByText('Vendedores')).not.toBeInTheDocument();
   });
 
   it('/perfil redireciona para /config', async () => {
@@ -123,22 +123,22 @@ describe('App routing', () => {
     expect(await screen.findByText('PAGE-CONFIG')).toBeInTheDocument();
   });
 
-  it('conta individual: /equipe redireciona e o menu não tem Equipe/Grupos/Carteiras', async () => {
+  it('conta individual: /equipe redireciona e o menu não tem Vendedores/Grupos Usuários/Carteiras', async () => {
     useAuthMock.mockReturnValue(auth({ ...admin, tipo_conta: 'individual' }));
     mount('/equipe');
     expect(await screen.findByText('PAGE-DASHBOARD')).toBeInTheDocument();
     expect(screen.queryByText('PAGE-EQUIPE')).not.toBeInTheDocument();
-    expect(screen.queryByText('Equipe')).not.toBeInTheDocument();
-    expect(screen.queryByText('Grupos')).not.toBeInTheDocument();
+    expect(screen.queryByText('Vendedores')).not.toBeInTheDocument();
+    expect(screen.queryByText('Grupos Usuários')).not.toBeInTheDocument();
     expect(screen.queryByText('Carteiras')).not.toBeInTheDocument();
   });
 
-  it('conta escritório (admin): menu mostra Equipe/Grupos/Carteiras', async () => {
+  it('conta escritório (admin): menu mostra Vendedores/Grupos Usuários/Carteiras', async () => {
     useAuthMock.mockReturnValue(auth({ ...admin, tipo_conta: 'escritorio' }));
     mount('/');
     expect(await screen.findByText('PAGE-DASHBOARD')).toBeInTheDocument();
-    expect(screen.getAllByText('Equipe').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Grupos').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Vendedores').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Grupos Usuários').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Carteiras').length).toBeGreaterThan(0);
   });
 });

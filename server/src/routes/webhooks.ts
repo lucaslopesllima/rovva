@@ -161,19 +161,27 @@ export function webhookRoutes(app: FastifyInstance): void {
 
       if (event === 'messages.update') {
         // Atualização de status de entrega/leitura (saída). Reflete no registro.
+        // Evolution v2 manda o payload plano ({ keyId, status }); versões antigas
+        // aninham em key.id/update.status — aceita os dois formatos.
         const list = (Array.isArray(body.data) ? body.data : [body.data]).slice(0, MAX_WEBHOOK_BATCH);
-        for (const raw of list as Array<{ key?: WaKey; update?: { status?: string }; status?: string }>) {
-          const id = raw?.key?.id;
+        for (const raw of list as Array<{ key?: WaKey; keyId?: string; update?: { status?: string }; status?: string }>) {
+          const id = raw?.key?.id ?? raw?.keyId;
           const st = raw.update?.status ?? raw.status;
           if (!id || !st) continue;
           const map: Record<string, string> = { DELIVERY_ACK: 'entregue', READ: 'lido', PLAYED: 'lido', SERVER_ACK: 'enviado' };
           const status = map[String(st)] ?? null;
           if (!status) continue;
-          await query(
-            'UPDATE whatsapp_messages SET status = $3 WHERE org_id = $1 AND evolution_id = $2',
+          // Acks chegam fora de ordem (SERVER_ACK pode vir depois do READ) —
+          // nunca rebaixa: só aplica se o novo status avança na escala.
+          const updated = await query(
+            `UPDATE whatsapp_messages SET status = $3
+              WHERE org_id = $1 AND evolution_id = $2
+                AND COALESCE(CASE status WHEN 'enviado' THEN 1 WHEN 'entregue' THEN 2 WHEN 'lido' THEN 3 END, 0)
+                  < CASE $3 WHEN 'enviado' THEN 1 WHEN 'entregue' THEN 2 WHEN 'lido' THEN 3 ELSE 0 END
+              RETURNING id`,
             [orgId, id, status],
           );
-          broadcast(orgId, 'message-status', { evolution_id: id, status });
+          if (updated.length > 0) broadcast(orgId, 'message-status', { evolution_id: id, status });
         }
         return reply.code(200).send({ ok: true });
       }

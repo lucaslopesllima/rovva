@@ -338,6 +338,7 @@ export function orderRoutes(app: FastifyInstance): void {
           status: { type: 'string', enum: Object.keys(TRANSITIONS) },
           represented_id: { type: 'integer' },
           owner_user_id: { type: 'integer' },
+          q: { type: 'string' },
           from: { type: 'string' },
           to: { type: 'string' },
           limit: { type: 'integer', minimum: 1, maximum: 500, default: 100 },
@@ -349,7 +350,7 @@ export function orderRoutes(app: FastifyInstance): void {
     const orgId = req.auth!.orgId;
     const q = req.query as {
       status?: string; represented_id?: number; owner_user_id?: number;
-      from?: string; to?: string; limit?: number; offset?: number;
+      q?: string; from?: string; to?: string; limit?: number; offset?: number;
     };
     const { limit = 100, offset = 0 } = q;
     const where: string[] = ['o.org_id = $1'];
@@ -357,6 +358,19 @@ export function orderRoutes(app: FastifyInstance): void {
     scopeOwner(req, where, params, 'o.owner_user_id', q.owner_user_id);
     if (q.status) { params.push(q.status); where.push(`o.status = $${params.length}::order_status`); }
     if (q.represented_id !== undefined) { params.push(q.represented_id); where.push(`o.represented_id = $${params.length}`); }
+    // Filtro por empresa (cliente): só dígitos vira prefixo de CNPJ; senão ILIKE
+    // em razão/fantasia (mesma lógica de /api/companies/search).
+    const term = q.q?.trim();
+    if (term) {
+      const digits = term.replace(/\D/g, '');
+      if (digits.length >= 4 && !/[a-zA-Z]/.test(term)) {
+        params.push(`${digits}%`);
+        where.push(`c.cnpj LIKE $${params.length}`);
+      } else {
+        params.push(term);
+        where.push(`(c.razao_social ILIKE '%' || $${params.length} || '%' OR c.nome_fantasia ILIKE '%' || $${params.length} || '%')`);
+      }
+    }
     if (q.from) { params.push(q.from); where.push(`o.created_at >= $${params.length}`); }
     if (q.to) { params.push(q.to); where.push(`o.created_at < ($${params.length}::date + 1)`); }
     params.push(limit); const limIdx = params.length;

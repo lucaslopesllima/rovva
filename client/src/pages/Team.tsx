@@ -24,7 +24,7 @@ export function Team(): React.JSX.Element {
   return (
     <div className="space-y-5 p-4 sm:p-6">
       <PageHeader
-        title="Equipe"
+        title="Vendedores"
         subtitle="Vendedores, administradores e metas da sua organização."
         actions={
           <Segmented value={tab} onChange={setTab} options={[

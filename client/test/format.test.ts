@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { brl, brl0, fmtDate, todayStr, maskCEP, maskPlaca } from '../src/lib/format.ts';
+import { brl, brl0, fmtDate, todayStr, maskCEP, maskPhone, maskPlaca } from '../src/lib/format.ts';
 
 // Intl usa NBSP entre "R$" e o número — normaliza para comparar.
 const plain = (s: string): string => s.replace(/ /g, ' ');
@@ -31,6 +31,20 @@ describe('format', () => {
     expect(maskCEP('abc01310100xyz')).toBe('01310-100'); // só dígitos
     expect(maskCEP('013101009999')).toBe('01310-100');   // máx 8 dígitos
     expect(maskCEP('')).toBe('');
+  });
+
+  it('maskPhone formata fixo e celular', () => {
+    expect(maskPhone('1133334444')).toBe('(11) 3333-4444');
+    expect(maskPhone('11933334444')).toBe('(11) 93333-4444');
+    expect(maskPhone('11')).toBe('(11');
+    expect(maskPhone('')).toBe('('); // quirk pré-existente: \d{0,2} casa vazio
+  });
+
+  it('maskPhone descarta DDI 55 de número vindo do WhatsApp', () => {
+    expect(maskPhone('5547991788956')).toBe('(47) 99178-8956'); // 13 díg (celular)
+    expect(maskPhone('554791788956')).toBe('(47) 9178-8956');   // 12 díg (sem nono)
+    expect(maskPhone('5533334444')).toBe('(55) 3333-4444');     // DDD 55 nacional mantém
+    expect(maskPhone('55999998888')).toBe('(55) 99999-8888');   // celular DDD 55 mantém
   });
 
   it('maskPlaca uppercase, alfanumérico, máx 7 (Mercosul e antiga)', () => {

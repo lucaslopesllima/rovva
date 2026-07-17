@@ -175,16 +175,25 @@ describe('webhook — messages.upsert', () => {
 
 describe('webhook — messages.update', () => {
   const upd = (data: unknown): unknown => ({ event: 'messages.update', instance: `org_${org}`, data });
-  it('mapeia acks e ignora desconhecido/sem dados', async () => {
+  it('mapeia acks, ignora desconhecido/sem dados e nunca rebaixa status', async () => {
     await post(upsertEvent({ key: { remoteJid: '5511900000020@s.whatsapp.net', fromMe: true, id: 'UPD-1' }, message: { conversation: 'x' }, messageTimestamp: 1700000000 }));
     await post(upd([
-      { key: { id: 'UPD-1' }, update: { status: 'READ' } },  // → lido
+      { key: { id: 'UPD-1' }, update: { status: 'DELIVERY_ACK' } }, // → entregue
       { key: {}, status: 'DELIVERY_ACK' },                    // sem id → ignora
       { key: { id: 'UPD-1' }, status: 'DESCONHECIDO' },       // status não mapeado → ignora
-      { key: { id: 'UPD-1' }, status: 'DELIVERY_ACK' },       // via raw.status → entregue (sobrescreve)
+      { key: { id: 'UPD-1' }, update: { status: 'READ' } },   // → lido
+      { key: { id: 'UPD-1' }, status: 'SERVER_ACK' },         // ack atrasado → NÃO rebaixa
+      { key: { id: 'UPD-1' }, status: 'DELIVERY_ACK' },       // idem
     ]));
     const m = await one<{ status: string }>('SELECT status FROM whatsapp_messages WHERE org_id = $1 AND evolution_id = $2', [org, 'UPD-1']);
-    expect(m!.status).toBe('entregue');
+    expect(m!.status).toBe('lido');
+  });
+
+  it('aceita o formato plano do Evolution v2 ({ keyId, status })', async () => {
+    await post(upsertEvent({ key: { remoteJid: '5511900000021@s.whatsapp.net', fromMe: true, id: 'UPD-2' }, message: { conversation: 'x' }, messageTimestamp: 1700000000 }));
+    await post(upd({ keyId: 'UPD-2', remoteJid: '5511900000021@s.whatsapp.net', fromMe: true, status: 'READ' }));
+    const m = await one<{ status: string }>('SELECT status FROM whatsapp_messages WHERE org_id = $1 AND evolution_id = $2', [org, 'UPD-2']);
+    expect(m!.status).toBe('lido');
   });
 });
 

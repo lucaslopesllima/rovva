@@ -45,9 +45,13 @@ export const csvNum = (v: number | string): string => {
    Formatam enquanto o usuário digita; quando o backend espera número puro,
    guardar só os dígitos/parse no estado. Sem dependência — string slicing. */
 
-// telefone BR: (11) 3333-4444 / (11) 93333-4444
+// telefone BR: (11) 3333-4444 / (11) 93333-4444. Números vindos do WhatsApp
+// chegam com DDI 55 (12–13 dígitos); nacional tem no máx. 11, então ≥12
+// começando com 55 é DDI (não confunde com DDD 55) e cai fora antes da máscara.
 export const maskPhone = (v: string): string => {
-  const d = v.replace(/\D/g, '').slice(0, 11);
+  let d = v.replace(/\D/g, '');
+  if (d.length >= 12 && d.startsWith('55')) d = d.slice(2);
+  d = d.slice(0, 11);
   if (d.length <= 2) return d.replace(/^(\d{0,2})/, '($1');
   if (d.length <= 6) return d.replace(/^(\d{2})(\d{0,4})/, '($1) $2');
   if (d.length <= 10) return d.replace(/^(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3');

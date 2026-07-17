@@ -70,7 +70,9 @@ const now = Date.now();
 const iso = (ms: number): string => new Date(ms).toISOString();
 const OLD = '2020-01-01T10:00:00.000Z';
 const YEST = iso(now - 24 * 3600 * 1000);
-const TODAY = iso(now - 3600 * 1000);
+// 1 min atrás (não 1h): perto da meia-noite, 1h atrás cai no dia anterior e o
+// separador vira 'Ontem' — o teste dos separadores ficava flaky nessa janela.
+const TODAY = iso(now - 60 * 1000);
 
 const chatA = {
   id: 1, remote_jid: '11111@s.whatsapp.net', numero: '5511988887777', nome: 'Alice',
@@ -365,7 +367,7 @@ describe('WhatsApp — envio', () => {
     await waitFor(() => expect(m.post).not.toHaveBeenCalledWith(expect.stringContaining('/send'), expect.anything()));
   });
 
-  it('falha no envio restaura o rascunho e avisa', async () => {
+  it('falha no envio mantém o balão marcado como falha e avisa', async () => {
     m.post.mockImplementation((p: string) => (p.endsWith('/send') ? Promise.reject(new ApiError(500, 'no net')) : defaultPost(p)) as Promise<never>);
     await mountConnected();
     await openChat('Alice');
@@ -373,7 +375,30 @@ describe('WhatsApp — envio', () => {
     fireEvent.change(ta, { target: { value: 'oops' } });
     fireEvent.click(screen.getByLabelText('Enviar'));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('no net'));
-    expect((ta as HTMLTextAreaElement).value).toBe('oops');
+    // Como no WhatsApp Web: o balão continua na conversa com a exclamação
+    // vermelha de falha, e o rascunho não é restaurado.
+    expect(screen.getByText('oops')).toBeInTheDocument();
+    expect(screen.getByLabelText('Falha ao enviar')).toBeInTheDocument();
+    expect((ta as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('envio otimista: balão aparece antes da resposta da API', async () => {
+    let resolveSend: (v: unknown) => void = () => {};
+    m.post.mockImplementation((p: string) => (p.endsWith('/send')
+      ? new Promise((res) => { resolveSend = res; })
+      : defaultPost(p)) as Promise<never>);
+    await mountConnected();
+    await openChat('Alice');
+    const ta = await screen.findByPlaceholderText('Digite uma mensagem…');
+    fireEvent.change(ta, { target: { value: 'instantâneo' } });
+    fireEvent.click(screen.getByLabelText('Enviar'));
+    // Ainda sem resposta da API e o balão já está na conversa.
+    expect(await screen.findByText('instantâneo')).toBeInTheDocument();
+    await act(async () => {
+      resolveSend({ message: msg({ id: 902, from_me: true, tipo: 'texto', corpo: 'instantâneo', status: 'enviado' }) });
+    });
+    // O temporário é trocado pelo registro real, sem duplicar.
+    expect(screen.getAllByText('instantâneo')).toHaveLength(1);
   });
 
   it('needsNumber abre o modal de número em vez de enviar', async () => {

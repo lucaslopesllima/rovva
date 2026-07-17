@@ -10,7 +10,7 @@ import { addConn, removeConn, broadcast } from '../ws.ts';
 import {
   ensureSettings, setStatus, instanceName, upsertChat, insertMessage,
   CHAT_LABELS_SQL, relationshipForCompany, numeroToJid, mergeChats, deleteChat, syncGroupNames,
-  normalizeNumero, jidToNumero,
+  normalizeNumero, jidToNumero, findChatByNumero,
 } from '../whatsapp.ts';
 
 // Sincronização de nomes de grupo já feita nesta sessão (por org) — roda uma vez
@@ -558,7 +558,10 @@ export function whatsappRoutes(app: FastifyInstance): void {
     // Nome explícito (ex.: conversa iniciada por um contato vinculado) tem prioridade
     // sobre o nome da empresa, pra a conversa exibir o contato e não a empresa.
     const nome = nomeBody?.trim() || (co ? (co.nome_fantasia || co.razao_social) : null);
-    const chat = await upsertChat(orgId, jid, { nome, incNaoLidas: false });
+    // Retoma conversa existente do mesmo telefone (tolerante ao nono dígito /
+    // @lid) sem renomear nem mexer no histórico; só cria quando não há nenhuma.
+    const existing = await findChatByNumero(orgId, numero);
+    const chat = existing ?? await upsertChat(orgId, jid, { nome, incNaoLidas: false });
     const rel = await relationshipForCompany(orgId, company_id);
     await query('UPDATE whatsapp_chats SET company_id = $3, relationship_id = $4 WHERE id = $1 AND org_id = $2',
       [chat.id, orgId, company_id, rel?.id ?? null]);

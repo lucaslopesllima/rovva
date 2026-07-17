@@ -160,11 +160,21 @@ function ConnectPanel({ onConnected }: { onConnected: () => void }): React.JSX.E
   );
 }
 
-// Tique de status (saída): ✓ enviado, ✓✓ entregue, ✓✓ azul lido.
+// Tique de status (saída), como no WhatsApp Web: relógio enquanto envia,
+// ✓ enviado, ✓✓ entregue, ✓✓ azul lido, exclamação vermelha se falhou.
 function Tick({ m }: { m: WaMessage }): React.JSX.Element | null {
   if (!m.from_me) return null;
+  if (m.status === 'pendente') {
+    return <Icon name="clock" size={14} strokeWidth={2} className="shrink-0" />;
+  }
+  if (m.status === 'falhou') {
+    return <Icon name="alertCircle" size={15} strokeWidth={2} className="shrink-0" style={{ color: '#f15c6d' }} aria-label="Falha ao enviar" />;
+  }
   const two = m.status === 'entregue' || m.status === 'lido';
-  return <span style={{ color: m.status === 'lido' ? '#53bdeb' : undefined }}>{two ? '✓✓' : '✓'}</span>;
+  return (
+    <Icon name={two ? 'checkCheck' : 'check'} size={16} strokeWidth={2}
+      className="shrink-0" style={{ color: m.status === 'lido' ? '#53bdeb' : undefined }} />
+  );
 }
 
 // Balão de mensagem nativo (texto ou mídia), cores via vars --wa-* (tema-aware).
@@ -188,13 +198,15 @@ const MessageBubble = memo(function MessageBubble({ m, onImage }: { m: WaMessage
   }
   return (
     <div className={cn('flex px-[5%] py-0.5', m.from_me ? 'justify-end' : 'justify-start')}>
-      <div className={cn('max-w-[75%] rounded-lg px-2 py-1.5 text-[14.2px] leading-snug shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]',
+      <div className={cn('max-w-[75%] rounded-[7.5px] px-[9px] py-[6px] text-[14.2px] leading-[19px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]',
         m.from_me ? 'bg-[var(--wa-out)]' : 'bg-[var(--wa-in)]', 'text-[var(--wa-ink)]')}>
         {media}
         {m.tipo === 'texto'
           ? <span className="whitespace-pre-wrap break-words">{m.corpo}</span>
           : m.corpo && <div className="mt-1 whitespace-pre-wrap break-words">{m.corpo}</div>}
-        <span className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-[var(--wa-muted)]">
+        {/* Hora + tique inline no fim da última linha, como no WhatsApp Web:
+            float faz caber na mesma linha se houver espaço, senão desce sozinho. */}
+        <span className="float-right -mb-[3px] ml-2 mt-[7px] flex items-center gap-1 text-[11px] text-[var(--wa-muted)]">
           {hora(m.momento)} <Tick m={m} />
         </span>
       </div>
@@ -767,6 +779,8 @@ export function WhatsApp(): React.JSX.Element {
   const reloadChatsT = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const fileRef = useRef<HTMLInputElement>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const listContentRef = useRef<HTMLDivElement>(null);
   const openedParam = useRef(false);
   activeRef.current = activeId;
   chatsRef.current = chats;
@@ -948,13 +962,29 @@ export function WhatsApp(): React.JSX.Element {
     if (!text || activeId == null) return;
     if (needsNumber) { setNumberOpen(true); return; } // pede o número antes de enviar
     setDraft('');
+    // Otimista, como no WhatsApp Web: o balão entra na conversa na hora (relógio),
+    // e a chamada à API acontece depois. Id temporário negativo não colide com os
+    // ids reais do banco.
+    const tempId = -Date.now();
+    const temp: WaMessage = {
+      id: tempId, evolution_id: null, from_me: true, tipo: 'texto', corpo: text,
+      status: 'pendente', momento: new Date().toISOString(), mime: null, file_name: null,
+    };
+    setMessages((ms) => [...ms, temp]);
     try {
       const r = await api.post<{ message: WaMessage | null }>(`/api/whatsapp/chats/${activeId}/send`, { text });
-      if (r.message) setMessages((ms) => (ms.some((x) => x.id === r.message!.id) ? ms : [...ms, r.message!]));
+      setMessages((ms) => {
+        // Troca o balão temporário pelo registro real; se o WebSocket já entregou
+        // a mensagem real nesse meio-tempo, só remove o temporário.
+        const rest = ms.filter((x) => x.id !== tempId);
+        if (!r.message) return rest.length === ms.length ? ms : [...rest, { ...temp, status: 'enviado' }];
+        return rest.some((x) => x.id === r.message!.id) ? rest : [...rest, r.message!];
+      });
       void loadChats();
     } catch (e) {
+      // Mantém o balão na conversa marcado como falha (exclamação vermelha).
+      setMessages((ms) => ms.map((x) => (x.id === tempId ? { ...x, status: 'falhou' } : x)));
       toast.error(e instanceof ApiError ? e.message : 'Falha ao enviar');
-      setDraft(text);
     }
   };
 
@@ -999,6 +1029,23 @@ export function WhatsApp(): React.JSX.Element {
 
   // Rola pro fim ao trocar de conversa ou chegar mensagem (a lib fazia sozinha).
   useEffect(() => { listEndRef.current?.scrollIntoView({ block: 'end' }); }, [messages, activeId]);
+
+  // Mídia (imagens) carrega depois do scroll inicial e empurra a lista pra baixo.
+  // Enquanto o usuário estiver no fim (não rolou pra cima), qualquer crescimento
+  // do conteúdo re-ancora na última mensagem.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const content = listContentRef.current;
+    if (!canvas || !content || activeId == null || typeof ResizeObserver === 'undefined') return;
+    let stick = true;
+    const onScroll = (): void => {
+      stick = canvas.scrollHeight - canvas.scrollTop - canvas.clientHeight < 80;
+    };
+    canvas.addEventListener('scroll', onScroll);
+    const ro = new ResizeObserver(() => { if (stick) canvas.scrollTop = canvas.scrollHeight; });
+    ro.observe(content);
+    return () => { canvas.removeEventListener('scroll', onScroll); ro.disconnect(); };
+  }, [activeId]);
 
   if (status === null) return <Spinner label="Carregando…" />;
   if (!enabled) {
@@ -1135,14 +1182,16 @@ export function WhatsApp(): React.JSX.Element {
                 </div>
               </div>
 
-              <div className="wa-canvas min-h-0 flex-1 overflow-y-auto py-3">
-                {listItems}
-                {isTyping && (
-                  <div className="flex justify-start px-[5%] py-0.5">
-                    <div className="rounded-lg bg-[var(--wa-in)] px-3 py-2 text-[13px] italic text-[var(--wa-muted)] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">digitando…</div>
-                  </div>
-                )}
-                <div ref={listEndRef} />
+              <div ref={canvasRef} className="wa-canvas min-h-0 flex-1 overflow-y-auto py-3">
+                <div ref={listContentRef}>
+                  {listItems}
+                  {isTyping && (
+                    <div className="flex justify-start px-[5%] py-0.5">
+                      <div className="rounded-lg bg-[var(--wa-in)] px-3 py-2 text-[13px] italic text-[var(--wa-muted)] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">digitando…</div>
+                    </div>
+                  )}
+                  <div ref={listEndRef} />
+                </div>
               </div>
 
               <div className="flex items-end gap-2 bg-[var(--wa-panel)] px-3 py-2">

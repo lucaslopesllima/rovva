@@ -31,6 +31,8 @@ const ChangePassword = lazy(() => import('./pages/ChangePassword.tsx').then((m) 
 const EmailAgendado = lazy(() => import('./pages/EmailAgendado.tsx').then((m) => ({ default: m.EmailAgendado })));
 const WhatsApp = lazy(() => import('./pages/WhatsApp.tsx').then((m) => ({ default: m.WhatsApp })));
 const Groups = lazy(() => import('./pages/Groups.tsx').then((m) => ({ default: m.Groups })));
+const Contatos = lazy(() => import('./pages/Contatos.tsx').then((m) => ({ default: m.Contatos })));
+const Representadas = lazy(() => import('./pages/Representadas.tsx').then((m) => ({ default: m.Representadas })));
 
 function FullScreenSpinner(): React.JSX.Element {
   return (
@@ -76,17 +78,21 @@ const NAV_GROUPS: NavGroup[] = [
   { label: 'Vendas', items: [
     { to: '/prospeccao', label: 'Buscar Empresas', icon: 'target', requires: 'prospeccao.view' },
     { to: '/funil', label: 'Funil', icon: 'columns', requires: 'relationships.list' },
-    { to: '/clientes', label: 'Clientes', icon: 'users', requires: 'relationships.list' },
-    { to: '/carteiras', label: 'Carteiras', icon: 'layers', requires: 'carteiras.view', officeOnly: true },
     { to: '/pedidos', label: 'Pedidos', icon: 'list', requires: 'orders.list' },
     { to: '/whatsapp', label: 'WhatsApp', icon: 'phone', requires: 'whatsapp.view' },
     { to: '/email', label: 'E-mail', icon: 'mail', requires: 'email_schedules.list' },
     { to: '/agenda', label: 'Agenda', icon: 'calendar', requires: 'activities.list' },
   ] },
+  { label: 'Cadastros', items: [
+    { to: '/clientes', label: 'Clientes', icon: 'briefcase', requires: 'relationships.list' },
+    { to: '/contatos', label: 'Contatos', icon: 'idCard', requires: 'contacts.list' },
+    { to: '/carteiras', label: 'Carteiras', icon: 'layers', requires: 'carteiras.view', officeOnly: true },
+    { to: '/catalogo', label: 'Catálogo', icon: 'box', requires: 'catalog.list' },
+    { to: '/representadas', label: 'Representadas', icon: 'building', requires: 'represented.list' },
+  ] },
   { label: 'Logística', items: [
     { to: '/transportadoras', label: 'Transportadoras', icon: 'car', requires: 'carriers.list' },
     { to: '/rotas', label: 'Rotas', icon: 'route', requires: 'routes.list' },
-    { to: '/catalogo', label: 'Catálogo', icon: 'box', requires: 'catalog.list' },
   ] },
   { label: 'Financeiro', items: [
     { to: '/comissoes', label: 'Comissões', icon: 'percent', requires: 'commissions.list' },
@@ -94,8 +100,8 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/relatorios', label: 'Relatórios', icon: 'barChart', requires: 'reports.sales' },
   ] },
   { label: 'Sistema', items: [
-    { to: '/equipe', label: 'Equipe', icon: 'users', requires: 'users.list', officeOnly: true },
-    { to: '/grupos', label: 'Grupos', icon: 'layers', requires: 'groups.list', officeOnly: true },
+    { to: '/equipe', label: 'Vendedores', icon: 'users', requires: 'users.list', officeOnly: true },
+    { to: '/grupos', label: 'Grupos Usuários', icon: 'shield', requires: 'groups.list', officeOnly: true },
     { to: '/config', label: 'Config', icon: 'settings' },
   ] },
 ];
@@ -179,7 +185,8 @@ function Sidebar(): React.JSX.Element {
         </button>
       </div>
       {/* nav rola na vertical quando os grupos passam da altura da tela */}
-      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden">
+      {/* scrollbar invisível: rola, mas sem barra (.no-scrollbar definida no index.css) */}
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden no-scrollbar">
         {groups.map((g, gi) => {
           // acordeon só no modo expandido; recolhido sempre mostra os itens
           const isClosed = !collapsed && g.label != null && closed.has(g.label);
@@ -203,7 +210,10 @@ function Sidebar(): React.JSX.Element {
                 {({ isActive }) => (
                   <>
                     {isActive && <span className="absolute left-0 top-1/2 h-5 -translate-y-1/2 rounded-r-full bg-brand-400" style={{ width: 3 }} />}
-                    <Icon name={n.icon} size={19} className={isActive ? 'text-brand-300' : 'text-ink-400 group-hover:text-ink-200'} />
+                    {/* recolhido: escala após a transição de largura (delay = duration do aside) */}
+                    <Icon name={n.icon} size={19} className={cn('transition-transform duration-200 ease-out',
+                      collapsed && 'scale-[1.55] delay-300',
+                      isActive ? 'text-brand-300' : 'text-ink-400 group-hover:text-ink-200')} />
                     {!collapsed && n.label}
                   </>
                 )}
@@ -222,8 +232,8 @@ function Sidebar(): React.JSX.Element {
               {inicial}
             </NavLink>
             <button onClick={logout} aria-label="Sair"
-              className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-white/10 hover:text-white">
-              <Icon name="logout" size={17} />
+              className="grid h-10 w-10 place-items-center rounded-lg text-ink-400 hover:bg-white/10 hover:text-white">
+              <Icon name="logout" size={26} />
             </button>
           </div>
         ) : (
@@ -444,6 +454,8 @@ export function App(): React.JSX.Element {
       <Route path="/prospeccao" element={<RequireAuth><RequirePermission code="prospeccao.view"><Shell><Recommend /></Shell></RequirePermission></RequireAuth>} />
       <Route path="/perfil" element={<Navigate to="/config" replace />} />
       <Route path="/funil" element={<RequireAuth><RequirePermission code="relationships.list"><Shell><Kanban /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/contatos" element={<RequireAuth><RequirePermission code="contacts.list"><Shell><Contatos /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/representadas" element={<RequireAuth><RequirePermission code="represented.list"><Shell><Representadas /></Shell></RequirePermission></RequireAuth>} />
       <Route path="/clientes" element={<RequireAuth><RequirePermission code="relationships.list"><Shell><Clientes /></Shell></RequirePermission></RequireAuth>} />
       <Route path="/carteiras" element={<RequireAuth><RequireOffice><RequirePermission code="carteiras.view"><Shell><Carteiras /></Shell></RequirePermission></RequireOffice></RequireAuth>} />
       <Route path="/pedidos" element={<RequireAuth><RequirePermission code="orders.list"><Shell><Orders /></Shell></RequirePermission></RequireAuth>} />
