@@ -120,7 +120,8 @@ services:
     # Como o command começa com `sh` (não `nginx`), o entrypoint oficial pula os
     # scripts de init — então rodamos o envsubst do template à mão antes de subir.
     # O loop recarrega o nginx a cada 6h pra pegar cert renovado sem downtime.
-    command: sh -c "/docker-entrypoint.d/20-envsubst-on-templates.sh && { while :; do sleep 6h & wait $${!}; nginx -s reload; done & } && exec nginx -g 'daemon off;'"
+    # rm do default.conf: senão Host desconhecido cai na página de boas-vindas da imagem
+    command: sh -c "rm -f /etc/nginx/conf.d/default.conf && /docker-entrypoint.d/20-envsubst-on-templates.sh && { while :; do sleep 6h & wait $${!}; nginx -s reload; done & } && exec nginx -g 'daemon off;'"
     restart: unless-stopped
 
   # Renova o cert a cada 12h (no-op se faltar >30 dias). A emissão inicial é feita

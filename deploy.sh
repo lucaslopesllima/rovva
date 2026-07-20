@@ -166,6 +166,10 @@ issue_cert() {
   echo "    (o A/AAAA record de ${DOMAIN} precisa apontar pra esta VPS e a porta 80 estar aberta)"
   local staging_arg=""
   [ "${STAGING:-0}" = "1" ] && staging_arg="--staging"
+  # domínios extras no mesmo cert (ex.: CERT_EXTRA_DOMAINS="www.rovva.tech" no .env);
+  # cada um precisa de A/CNAME apontando pra VPS, senão a emissão inteira falha
+  local extra_d="" d
+  for d in ${CERT_EXTRA_DOMAINS:-}; do extra_d="$extra_d -d $d"; done
 
   echo "==> cert dummy pro nginx conseguir subir"
   "${COMPOSE[@]}" run --rm --entrypoint sh certbot -c "\
@@ -180,7 +184,7 @@ issue_cert() {
   "${COMPOSE[@]}" run --rm --entrypoint sh certbot -c "rm -rf ${cert_path}"
   "${COMPOSE[@]}" run --rm --entrypoint certbot certbot \
     certonly --webroot -w /var/www/certbot ${staging_arg} \
-    --email "${ACME_EMAIL}" -d "${DOMAIN}" --rsa-key-size 4096 \
+    --email "${ACME_EMAIL}" -d "${DOMAIN}" ${extra_d} --rsa-key-size 4096 \
     --agree-tos --no-eff-email --non-interactive
 
   echo "==> recarregando nginx com o cert real"
