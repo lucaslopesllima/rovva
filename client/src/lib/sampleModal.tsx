@@ -64,7 +64,8 @@ export function SampleRequestModal({ card, catalog, sample, onClose, onSaved }: 
   }, [card.company_id]);
 
   const produtos = catalog.filter((c) => c.ativo);
-  const produto = produtos.find((c) => c.id === catalogId) ?? null;
+  // c.id é STRING (/api/catalog); catalogId vem Number() do <select>.
+  const produto = produtos.find((c) => Number(c.id) === Number(catalogId)) ?? null;
 
   const submit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();

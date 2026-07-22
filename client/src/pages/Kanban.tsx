@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.tsx';
-import type { Brand, CatalogItem, Contact, KanbanCard, NamedItem, RepresentedCompany, Stage } from '../lib/types.ts';
+import type { Brand, CatalogItem, Contact, KanbanCard, NamedItem, PrivateLabel, RepresentedCompany, Stage } from '../lib/types.ts';
 import { Badge, Btn, PageHeader, SafeButton, Spinner, StatCard, cn, type Tone } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
 import { CompanyFilterBar, useCompanyFilter } from '../lib/companyFilter.tsx';
@@ -404,6 +404,9 @@ interface EditPatch {
 
 const txt = (s: string): string | null => (s.trim() === '' ? null : s.trim());
 const numOrNull = (s: string): number | null => (s === '' ? null : Number(s));
+// Id vindo da API pode ser number (json_agg) ou string (bigint em SELECT direto).
+// Normaliza para number antes de qualquer comparação/inclusão.
+const nid = (v: number | string): number => Number(v);
 const Field = ({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element => (
   <label className="block">
     <span className="mb-1 block text-xs font-medium text-ink-500">{label}</span>
@@ -424,8 +427,8 @@ function EditModal({ card, stages, reps, brands, scenarios, actions, catalog, on
   const [valor, setValor] = useState<string>(numStr(card.valor_estimado));
   const [representadaId, setRepresentadaId] = useState<number | null>(card.represented_id);
   const [marcaId, setMarcaId] = useState<number | null>(card.marca_id);
-  const [contatoIds, setContatoIds] = useState<number[]>(card.contatos.map((c) => c.id));
-  const [catalogoIds, setCatalogoIds] = useState<number[]>(card.catalogo.map((c) => c.id));
+  const [contatoIds, setContatoIds] = useState<number[]>(card.contatos.map((c) => nid(c.id)));
+  const [catalogoIds, setCatalogoIds] = useState<number[]>(card.catalogo.map((c) => nid(c.id)));
   const [cenarioId, setCenarioId] = useState<number | null>(card.cenario_id);
   const [acaoId, setAcaoId] = useState<number | null>(card.acao_id);
   const [dataContato, setDataContato] = useState<string>(card.data_contato ?? '');
@@ -440,29 +443,61 @@ function EditModal({ card, stages, reps, brands, scenarios, actions, catalog, on
   const [creatingProd, setCreatingProd] = useState(false);
   const [creatingActivity, setCreatingActivity] = useState(false);
 
+  // Private labels da EMPRESA (não do card): o vínculo vive em
+  // private_label_companies, então salvar faz PUT em /api/companies/:id/private-labels
+  // — separado do PATCH do relationship. `labelIni` detecta se houve mudança.
+  const verLabels = can('private_labels.list');
+  const editLabels = can('private_labels.update');
+  const [labels, setLabels] = useState<PrivateLabel[]>([]);
+  const [labelIds, setLabelIds] = useState<number[]>([]);
+  const [labelIni, setLabelIni] = useState<number[]>([]);
+  const [creatingLabel, setCreatingLabel] = useState(false);
+
   useEffect(() => {
     void api.get<{ contacts: Contact[] }>(`/api/contacts?company_id=${card.company_id}`)
       .then((r) => setContatos(r.contacts)).catch(() => undefined);
   }, [card.company_id]);
 
+  useEffect(() => {
+    if (!verLabels) return;
+    void api.get<{ labels: PrivateLabel[] }>('/api/private-labels')
+      .then((r) => setLabels(r.labels ?? [])).catch(() => undefined);
+    void api.get<{ labels: PrivateLabel[] }>(`/api/companies/${card.company_id}/private-labels`)
+      .then((r) => { const ids = (r.labels ?? []).map((l) => nid(l.id)); setLabelIds(ids); setLabelIni(ids); })
+      .catch(() => undefined);
+  }, [card.company_id, verLabels]);
+
   // Marca filtrada pela representada selecionada.
   const marcasFiltradas = brands.filter((b) => representadaId == null || b.represented_id === representadaId);
+  // Os ids das listas de apoio (/api/contacts, /api/catalog, /api/private-labels)
+  // chegam como STRING — bigint do pg sai como texto no SELECT direto. Já os ids
+  // dentro do card vêm de json_agg, onde bigint vira NUMBER. Comparar sem coagir
+  // (`"7" === 7`) faz o item nunca ser encontrado: o selecionado não vira pill e
+  // continua listado como disponível. Por isso `nid` nos dois lados.
   const selecionados = contatoIds
-    .map((id) => contatos.find((c) => c.id === id))
+    .map((id) => contatos.find((c) => nid(c.id) === id))
     .filter((c): c is Contact => !!c);
-  const disponiveis = contatos.filter((c) => !contatoIds.includes(c.id));
-  const catSel = catalogoIds.map((id) => catalog.find((c) => c.id === id)).filter((c): c is CatalogItem => !!c);
-  const catDisp = catalog.filter((c) => c.ativo && !catalogoIds.includes(c.id));
+  const disponiveis = contatos.filter((c) => !contatoIds.includes(nid(c.id)));
+  const catSel = catalogoIds.map((id) => catalog.find((c) => nid(c.id) === id)).filter((c): c is CatalogItem => !!c);
+  const catDisp = catalog.filter((c) => c.ativo && !catalogoIds.includes(nid(c.id)));
+  const labelSel = labelIds.map((id) => labels.find((l) => nid(l.id) === id)).filter((l): l is PrivateLabel => !!l);
+  const labelDisp = labels.filter((l) => !labelIds.includes(nid(l.id)));
 
   const onCreatedContato = (c: Contact): void => {
     setContatos((xs) => [...xs, c]);
-    setContatoIds((ids) => [...ids, c.id]);
+    setContatoIds((ids) => [...ids, nid(c.id)]);
     setCreating(false);
+  };
+
+  const onCreatedLabel = (l: PrivateLabel): void => {
+    setLabels((xs) => [...xs, l].sort((a, b) => a.nome.localeCompare(b.nome)));
+    setLabelIds((ids) => [...ids, nid(l.id)]);
+    setCreatingLabel(false);
   };
 
   const onCreatedProduto = (it: CatalogItem): void => {
     onCatalogCreated(it);
-    setCatalogoIds((ids) => [...ids, it.id]);
+    setCatalogoIds((ids) => [...ids, nid(it.id)]);
     setCreatingProd(false);
   };
 
@@ -470,6 +505,19 @@ function EditModal({ card, stages, reps, brands, scenarios, actions, catalog, on
     e.preventDefault();
     setBusy(true);
     try {
+      // Vínculo de private label é da empresa, em rota própria — vai antes do
+      // PATCH porque onSave fecha o modal em caso de sucesso.
+      const mudou = labelIds.length !== labelIni.length || labelIds.some((id) => !labelIni.includes(id));
+      if (editLabels && mudou) {
+        try {
+          await api.put(`/api/companies/${card.company_id}/private-labels`, { label_ids: labelIds });
+          api.invalidate('/api/private-labels'); // contagens do catálogo
+          setLabelIni(labelIds);
+        } catch (e2) {
+          toast.error(e2 instanceof Error ? e2.message : 'Não foi possível salvar as private labels.');
+          return;
+        }
+      }
       await onSave(card.id, {
         stage_id: stageId,
         status,
@@ -579,6 +627,39 @@ function EditModal({ card, stages, reps, brands, scenarios, actions, catalog, on
                   <Btn size="sm" variant="soft" type="button" icon="plus" onClick={() => setCreating(true)} title="Criar novo contato" />
                 </div>
               </div>
+              {verLabels && (
+                <div className="sm:col-span-2">
+                  <span className="mb-1 block text-xs font-medium text-ink-500">Private labels</span>
+                  {labelSel.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {labelSel.map((l) => (
+                        <span key={l.id} className="inline-flex items-center gap-1.5 rounded-full bg-ink-100 px-2.5 py-1 text-xs font-medium text-ink-700">
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: l.cor || '#94a3b8' }} />
+                          {l.nome}
+                          {editLabels && (
+                            <button type="button" onClick={() => setLabelIds((ids) => ids.filter((x) => x !== l.id))}
+                              className="text-ink-400 hover:text-rose-500" aria-label="Remover">
+                              <Icon name="x" size={13} />
+                            </button>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {editLabels && (
+                    <div className="flex gap-2">
+                      <select value="" onChange={(e) => { const id = numOrNull(e.target.value); if (id != null) setLabelIds((ids) => [...ids, id]); }}
+                        className={cn(inputCls, 'flex-1')} disabled={labelDisp.length === 0}>
+                        <option value="">{labels.length === 0 ? 'Nenhuma private label cadastrada' : labelDisp.length === 0 ? 'Todas adicionadas' : 'Adicionar private label…'}</option>
+                        {labelDisp.map((l) => <option key={l.id} value={l.id}>{l.nome}</option>)}
+                      </select>
+                      {can('private_labels.create') && (
+                        <Btn size="sm" variant="soft" type="button" icon="plus" onClick={() => setCreatingLabel(true)} title="Criar nova private label" />
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="sm:col-span-2">
                 <span className="mb-1 block text-xs font-medium text-ink-500">Catálogo</span>
                 {catSel.length > 0 && (
@@ -654,6 +735,9 @@ function EditModal({ card, stages, reps, brands, scenarios, actions, catalog, on
     {creating && (
       <NovoContato companyId={card.company_id} onCreated={onCreatedContato} onCancel={() => setCreating(false)} />
     )}
+    {creatingLabel && (
+      <NovaPrivateLabel onCreated={onCreatedLabel} onCancel={() => setCreatingLabel(false)} />
+    )}
     {creatingProd && (
       <NovoProduto reps={reps} onCreated={onCreatedProduto} onCancel={() => setCreatingProd(false)} />
     )}
@@ -676,6 +760,67 @@ function hojeAs9(): Date {
   const d = new Date();
   d.setHours(9, 0, 0, 0);
   return d;
+}
+
+// Modal "Criar nova private label" — cria no catálogo da org; quem vincula à
+// empresa é o EditModal, no submit (PUT /api/companies/:id/private-labels).
+const LABEL_PALETTE = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#8b5cf6', '#64748b'];
+
+function NovaPrivateLabel({ onCreated, onCancel }: {
+  onCreated: (l: PrivateLabel) => void; onCancel: () => void;
+}): React.JSX.Element {
+  const [nome, setNome] = useState('');
+  const [descricao, setDescricao] = useState('');
+  const [cor, setCor] = useState<string>(LABEL_PALETTE[0]);
+  const [busy, setBusy] = useState(false);
+
+  const save = async (): Promise<void> => {
+    if (!nome.trim()) return;
+    setBusy(true);
+    try {
+      const r = await api.post<{ label: PrivateLabel }>('/api/private-labels', {
+        nome: nome.trim(), descricao: txt(descricao), cor,
+      });
+      api.invalidate('/api/private-labels');
+      toast.success('Private label criada.');
+      onCreated(r.label);
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Não foi possível criar a private label.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4" onClick={onCancel}>
+      <div className="w-full max-w-md rounded-2xl border border-ink-200 bg-surface shadow-pop" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-3 border-b border-ink-100 p-5">
+          <h2 className="text-base font-semibold text-ink-800">Criar nova private label</h2>
+          <button type="button" onClick={onCancel}
+            className="rounded-lg p-1 text-ink-400 transition hover:bg-ink-100 hover:text-ink-700">
+            <Icon name="x" size={18} />
+          </button>
+        </div>
+        <div className="space-y-2.5 p-5">
+          <input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} maxLength={120}
+            placeholder="Nome *" className={inputCls} />
+          <input value={descricao} onChange={(e) => setDescricao(e.target.value)} maxLength={500}
+            placeholder="Descrição (opcional)" className={inputCls} />
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-ink-500">Cor</span>
+            {LABEL_PALETTE.map((c) => (
+              <button key={c} type="button" onClick={() => setCor(c)} aria-label={`Cor ${c}`}
+                className={cn('h-6 w-6 rounded-full ring-offset-2 transition', cor === c && 'ring-2 ring-ink-400')}
+                style={{ backgroundColor: c }} />
+            ))}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-ink-100 p-4">
+          <Btn variant="ghost" type="button" onClick={onCancel}>Cancelar</Btn>
+          <Btn icon="check" type="button" onClick={() => void save()} disabled={busy || !nome.trim()}>
+            {busy ? '…' : 'Criar'}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // Modal "Criar novo contato" — vincula o contato à empresa-cliente do card.

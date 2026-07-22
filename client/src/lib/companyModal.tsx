@@ -6,6 +6,7 @@ import { Icon } from './icons.tsx';
 import { Cnae, seedCnae } from './cnae.tsx';
 import { waLink } from './format.ts';
 import { toast } from './toast.tsx';
+import { EntityLabels } from './privateLabelPicker.tsx';
 
 // Modal só-leitura com TODOS os dados da empresa no banco (RFB) + quadro societário.
 const PORTE_LABEL: Record<string, string> = {
@@ -179,6 +180,12 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
                 <InfoRow label="Fax" value={fmtTel(data.fax)} />
                 <InfoRow label="E-mail" value={data.email} />
               </Section>
+
+              {/* EntityLabels se auto-oculta se a API negar (sem permissão) —
+                  por isso este bloco não consulta o contexto de auth: o modal é
+                  reaproveitado em telas/testes montados fora do AuthProvider. */}
+              <EntityLabels kind="company" id={companyId} title="Private labels" />
+
 
               <Section title="Situação cadastral">
                 <InfoRow label="Situação" value={data.situacao_cadastral} />

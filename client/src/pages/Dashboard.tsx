@@ -214,7 +214,7 @@ export function Dashboard(): React.JSX.Element {
 
           {isOffice && (
             <p className="text-center text-xs text-ink-300">
-              {user?.role === 'admin' && ownerId === 'todos' ? 'Visão consolidada da organização' : `Vendedor: ${ownerId === 'todos' ? (user?.nome ?? user?.email) : sellerLabel(sellers.find((s) => s.id === ownerId) ?? { id: 0, nome: null, email: String(ownerId), role: 'rep', ativo: true })}`}
+              {user?.role === 'admin' && ownerId === 'todos' ? 'Visão consolidada da organização' : `Vendedor: ${ownerId === 'todos' ? (user?.nome ?? user?.email) : sellerLabel(sellers.find((s) => Number(s.id) === ownerId) ?? { id: 0, nome: null, email: String(ownerId), role: 'rep', ativo: true })}`}
             </p>
           )}
         </>

@@ -131,7 +131,9 @@ function Planner({ vehicles }: { vehicles: Vehicle[] }): React.JSX.Element {
       setResult(r);
       if (r.skipped.length > 0) {
         const nomes = r.skipped
-          .map((id) => { const c = funnel.find((x) => x.company_id === id); return c ? (c.nome_fantasia || c.razao_social) : null; })
+          // skipped vem do body coagido pelo schema Fastify (number); funnel traz
+          // company_id string (bigint) — sem coagir, nenhum nome é resolvido.
+          .map((id) => { const c = funnel.find((x) => Number(x.company_id) === Number(id)); return c ? (c.nome_fantasia || c.razao_social) : null; })
           .filter(Boolean);
         setErr(`Sem localização, ignorada(s): ${nomes.length ? nomes.join(', ') : `${r.skipped.length} empresa(s)`}.`);
       }

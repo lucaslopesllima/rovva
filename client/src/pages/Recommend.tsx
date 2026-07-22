@@ -5,12 +5,14 @@ import { MapContainer, TileLayer, CircleMarker, Popup, Polyline, Tooltip, useMap
 import type { LatLngBoundsExpression } from 'leaflet';
 import { api, ApiError } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.tsx';
-import type { Recommendation, GeocodeResult } from '../lib/types.ts';
+import type { Recommendation, GeocodeResult, CompanyDetail } from '../lib/types.ts';
 import { Btn, Badge, Card, EmptyState, PageHeader, SafeButton, ScoreBar, Segmented, Spinner, StatCard, cn, type Tone } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
 import { CompanyFilterBar, useCompanyFilter } from '../lib/companyFilter.tsx';
 import { CompanyModal } from '../lib/companyModal.tsx';
+import { NewContactModal, EMPTY_CONTACT, contactBody, type ContactForm } from '../lib/contactForm.tsx';
 import { Cnae } from '../lib/cnae.tsx';
+import { maskPhone } from '../lib/format.ts';
 import { toast } from '../lib/toast.tsx';
 
 const MATCH_COLOR: Record<string, string> = {
@@ -127,6 +129,7 @@ export function Recommend(): React.JSX.Element {
     try { return localStorage.getItem(KPIS_OPEN_KEY) !== '0'; } catch { return true; }
   });
   const [viewing, setViewing] = useState<number | null>(null);
+  const [addingContact, setAddingContact] = useState<ContactForm | null>(null);
   const [focus, setFocus] = useState<MapFocus | null>(null);
   const [route, setRoute] = useState<RouteInfo | null>(null);
   const [routingId, setRoutingId] = useState<string | null>(null);
@@ -256,14 +259,36 @@ export function Recommend(): React.JSX.Element {
     try { localStorage.setItem(KPIS_OPEN_KEY, kpisOpen ? '1' : '0'); } catch { /* storage indisponível */ }
   }, [kpisOpen]);
 
+  // Monta o contato-base da empresa (nome + telefone do cadastro). O telefone não
+  // vem na recomendação — busca no detalhe (RFB); sem detalhe, fica só o nome.
+  const companyContactForm = async (rec: Recommendation): Promise<ContactForm> => {
+    const nome = rec.nome_fantasia || rec.razao_social;
+    const base: ContactForm = { ...EMPTY_CONTACT, nome, company_id: Number(rec.id), company_name: nome };
+    try {
+      const r = await api.get<{ company: CompanyDetail }>(`/api/companies/${rec.id}`);
+      const tel = r.company.telefone1 || r.company.telefone2;
+      return tel ? { ...base, telefone: maskPhone(tel) } : base;
+    } catch {
+      return base;
+    }
+  };
+
   const addToFunnel = async (rec: Recommendation): Promise<void> => {
     try {
       await api.post('/api/relationships', { company_id: Number(rec.id) });
       setAdded((s) => new Set(s).add(rec.id));
       toast.success(`${rec.nome_fantasia || rec.razao_social} adicionada ao funil.`);
+      // Cria o contato da empresa junto (best-effort): não bloqueia nem quebra o funil.
+      try { await api.post('/api/contacts', contactBody(await companyContactForm(rec))); }
+      catch { /* contato é acessório ao funil */ }
     } catch (e) {
       toast.error((e as Error).message || 'Não foi possível adicionar ao funil.');
     }
+  };
+
+  // Abre o cadastro de contato padrão pré-preenchido com os dados da empresa.
+  const addToContacts = async (rec: Recommendation): Promise<void> => {
+    setAddingContact(await companyContactForm(rec));
   };
 
   const verNoMapa = async (rec: Recommendation): Promise<void> => {
@@ -422,6 +447,7 @@ export function Recommend(): React.JSX.Element {
                         {added.has(r.id)
                           ? <span className="whitespace-nowrap text-xs text-emerald-600 dark:text-emerald-300">✓ no funil</span>
                           : can('relationships.create') && <SafeButton onClick={() => addToFunnel(r)} className="whitespace-nowrap text-xs font-semibold text-brand-700 underline dark:text-brand-300">+ Adicionar ao funil</SafeButton>}
+                        {can('contacts.create') && <SafeButton onClick={() => addToContacts(r)} className="whitespace-nowrap text-xs font-semibold text-brand-700 underline dark:text-brand-300">+ Adicionar aos contatos</SafeButton>}
                         <SafeButton onClick={() => traceRoute(r)} disabled={routingId === r.id}
                           className="whitespace-nowrap text-xs font-semibold text-blue-700 underline disabled:opacity-50 dark:text-blue-300">
                           {routingId === r.id ? 'Traçando…' : 'Traçar rota'}
@@ -448,6 +474,7 @@ export function Recommend(): React.JSX.Element {
         <div className="min-h-0 flex-1 space-y-3 overflow-auto px-4 pb-4 sm:px-6 sm:pb-6">
           {visibleRecs.map((r) => (
             <RecCard key={r.id} rec={r} added={added.has(r.id)} onAdd={() => addToFunnel(r)}
+              onAddContact={() => addToContacts(r)}
               onView={() => setViewing(Number(r.id))} onViewMap={() => verNoMapa(r)}
               onRoute={() => traceRoute(r)} routing={routingId === r.id} />
           ))}
@@ -472,11 +499,12 @@ export function Recommend(): React.JSX.Element {
       )}
 
       {viewing !== null && <CompanyModal companyId={viewing} onClose={() => setViewing(null)} />}
+      {addingContact && <NewContactModal initial={addingContact} onClose={() => setAddingContact(null)} />}
     </div>
   );
 }
 
-function RecCard({ rec, added, onAdd, onView, onViewMap, onRoute, routing }: { rec: Recommendation; added: boolean; onAdd: () => void; onView: () => void; onViewMap: () => void; onRoute: () => void; routing: boolean }): React.JSX.Element {
+function RecCard({ rec, added, onAdd, onAddContact, onView, onViewMap, onRoute, routing }: { rec: Recommendation; added: boolean; onAdd: () => void; onAddContact: () => void; onView: () => void; onViewMap: () => void; onRoute: () => void; routing: boolean }): React.JSX.Element {
   const { can } = useAuth();
   const c = rec.reason.componentes;
   const score = rec.score * 100;
@@ -523,6 +551,7 @@ function RecCard({ rec, added, onAdd, onView, onViewMap, onRoute, routing }: { r
         {added
           ? <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-600"><Icon name="check" size={16} /> Adicionado ao funil</span>
           : can('relationships.create') && <Btn size="sm" icon="plus" onClick={onAdd}>Adicionar ao funil</Btn>}
+        {can('contacts.create') && <Btn size="sm" variant="soft" icon="users" onClick={onAddContact}>Adicionar aos contatos</Btn>}
         {rec.lat != null && rec.lon != null && (
           <Btn size="sm" variant="soft" icon="map" onClick={onViewMap}>Ver no mapa</Btn>
         )}

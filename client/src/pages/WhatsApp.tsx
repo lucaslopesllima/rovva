@@ -1264,7 +1264,10 @@ export function WhatsApp(): React.JSX.Element {
     return () => { stop = true; clearTimeout(retry); clearTimeout(reloadChatsT.current); ws?.close(); };
   }, [status]);
 
-  const active = useMemo(() => chats.find((c) => c.id === activeId) ?? null, [chats, activeId]);
+  // c.id é STRING (bigint em SELECT direto) e activeId pode ser NUMBER — vem assim
+  // do payload WS de 'merged'. Sem coagir, a conversa aberta some da tela quando os
+  // chats de telefone e @lid se conciliam sozinhos durante a ingestão do webhook.
+  const active = useMemo(() => chats.find((c) => Number(c.id) === Number(activeId)) ?? null, [chats, activeId]);
   // Contato só-LID (sem número): não dá pra enviar até informar o telefone.
   const needsNumber = !!active && !active.numero && active.remote_jid.endsWith('@lid');
   const filtered = useMemo(() => {
@@ -1451,7 +1454,7 @@ export function WhatsApp(): React.JSX.Element {
             ) : filtered.map((c) => (
               <button key={c.id} onClick={() => openChat(c.id)}
                 className={cn('group flex w-full items-center gap-3 border-b border-[var(--wa-border)] px-3 py-2.5 text-left transition-colors',
-                  c.id === activeId ? 'bg-[var(--wa-active)]' : 'hover:bg-[var(--wa-hover)]')}>
+                  Number(c.id) === Number(activeId) ? 'bg-[var(--wa-active)]' : 'hover:bg-[var(--wa-hover)]')}>
                 <img src={avatarSrc(c)} alt="" className="h-12 w-12 shrink-0 rounded-full object-cover" />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">

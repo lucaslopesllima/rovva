@@ -14,6 +14,7 @@ import { stageRoutes } from './routes/stages.ts';
 import { activityRoutes } from './routes/activities.ts';
 import { representedRoutes } from './routes/represented.ts';
 import { cadastroRoutes } from './routes/cadastros.ts';
+import { privateLabelRoutes } from './routes/privateLabels.ts';
 import { companyRoutes } from './routes/companies.ts';
 import { catalogRoutes } from './routes/catalog.ts';
 import { accountRoutes } from './routes/account.ts';
@@ -102,6 +103,7 @@ export async function buildApp(opts: { logger?: boolean; authRateLimitMax?: numb
   activityRoutes(app);
   representedRoutes(app);
   cadastroRoutes(app);
+  privateLabelRoutes(app);
   companyRoutes(app);
   catalogRoutes(app);
   accountRoutes(app);

@@ -146,6 +146,11 @@ export const PERMISSIONS: Permission[] = [
   { code: 'contacts.update', label: 'Contatos: editar', module: 'Sistema' },
   { code: 'contacts.delete', label: 'Contatos: excluir', module: 'Sistema' },
 
+  { code: 'private_labels.list', label: 'Private labels: listar', module: 'Sistema' },
+  { code: 'private_labels.create', label: 'Private labels: criar', module: 'Sistema' },
+  { code: 'private_labels.update', label: 'Private labels: editar', module: 'Sistema' },
+  { code: 'private_labels.delete', label: 'Private labels: excluir', module: 'Sistema' },
+
   { code: 'scenarios.list', label: 'Cenários: listar', module: 'Sistema' },
   { code: 'scenarios.create', label: 'Cenários: criar', module: 'Sistema' },
   { code: 'scenarios.update', label: 'Cenários: editar', module: 'Sistema' },
@@ -206,6 +211,7 @@ const VENDEDOR_CADASTROS = [
   'represented.list', 'represented.create', 'represented.update', 'represented.delete',
   'brands.list', 'brands.create', 'brands.update', 'brands.delete',
   'contacts.list', 'contacts.create', 'contacts.update', 'contacts.delete',
+  'private_labels.list', 'private_labels.create', 'private_labels.update', 'private_labels.delete',
   'scenarios.list', 'scenarios.create', 'scenarios.update', 'scenarios.delete',
   'actions.list', 'actions.create', 'actions.update', 'actions.delete',
   'stages.list', 'stages.create', 'stages.update', 'stages.delete',

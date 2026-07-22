@@ -166,7 +166,9 @@ function TableForm({ reps, catalog, table, onClose, onSaved }: {
 
         <div className="space-y-1.5">
           {items.map((i, idx) => {
-            const cat = catalog.find((c) => c.id === i.catalog_item_id);
+            // catalog_item_id é string quando veio do servidor e number quando o
+            // item acabou de ser adicionado pelo <select> — coage os dois lados.
+            const cat = catalog.find((c) => Number(c.id) === Number(i.catalog_item_id));
             return (
               <div key={i.catalog_item_id} className="flex items-center gap-2 rounded-xl border border-ink-200/70 bg-surface p-2">
                 <span className="min-w-0 flex-1 truncate text-sm text-ink-700">{cat?.nome ?? `#${i.catalog_item_id}`}</span>

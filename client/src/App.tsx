@@ -32,6 +32,7 @@ const EmailAgendado = lazy(() => import('./pages/EmailAgendado.tsx').then((m) =>
 const WhatsApp = lazy(() => import('./pages/WhatsApp.tsx').then((m) => ({ default: m.WhatsApp })));
 const Groups = lazy(() => import('./pages/Groups.tsx').then((m) => ({ default: m.Groups })));
 const Contatos = lazy(() => import('./pages/Contatos.tsx').then((m) => ({ default: m.Contatos })));
+const PrivateLabels = lazy(() => import('./pages/PrivateLabels.tsx').then((m) => ({ default: m.PrivateLabels })));
 const Representadas = lazy(() => import('./pages/Representadas.tsx').then((m) => ({ default: m.Representadas })));
 
 function FullScreenSpinner(): React.JSX.Element {
@@ -86,6 +87,7 @@ const NAV_GROUPS: NavGroup[] = [
   { label: 'Cadastros', items: [
     { to: '/clientes', label: 'Clientes', icon: 'briefcase', requires: 'relationships.list' },
     { to: '/contatos', label: 'Contatos', icon: 'idCard', requires: 'contacts.list' },
+    { to: '/private-labels', label: 'Private Labels', icon: 'sparkles', requires: 'private_labels.list' },
     { to: '/carteiras', label: 'Carteiras', icon: 'layers', requires: 'carteiras.view', officeOnly: true },
     { to: '/catalogo', label: 'Catálogo', icon: 'box', requires: 'catalog.list' },
     { to: '/representadas', label: 'Representadas', icon: 'building', requires: 'represented.list' },
@@ -469,6 +471,7 @@ export function App(): React.JSX.Element {
       <Route path="/perfil" element={<Navigate to="/config" replace />} />
       <Route path="/funil" element={<RequireAuth><RequirePermission code="relationships.list"><Shell><Kanban /></Shell></RequirePermission></RequireAuth>} />
       <Route path="/contatos" element={<RequireAuth><RequirePermission code="contacts.list"><Shell><Contatos /></Shell></RequirePermission></RequireAuth>} />
+      <Route path="/private-labels" element={<RequireAuth><RequirePermission code="private_labels.list"><Shell><PrivateLabels /></Shell></RequirePermission></RequireAuth>} />
       <Route path="/representadas" element={<RequireAuth><RequirePermission code="represented.list"><Shell><Representadas /></Shell></RequirePermission></RequireAuth>} />
       <Route path="/clientes" element={<RequireAuth><RequirePermission code="relationships.list"><Shell><Clientes /></Shell></RequirePermission></RequireAuth>} />
       <Route path="/carteiras" element={<RequireAuth><RequireOffice><RequirePermission code="carteiras.view"><Shell><Carteiras /></Shell></RequirePermission></RequireOffice></RequireAuth>} />

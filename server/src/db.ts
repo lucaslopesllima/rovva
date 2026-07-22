@@ -7,6 +7,20 @@ import { config } from './config.ts';
 // front (data de vencimento sumindo). Mantém o valor cru, sem shift de fuso.
 pg.types.setTypeParser(1082, (v) => v);
 
+// bigint (OID 20) volta como STRING por padrão — o pg é conservador porque int8
+// vai até 2^63 e o Number do JS só é exato até 2^53. Só que aqui TODA coluna
+// bigint é id/FK de sequência IDENTITY (nenhuma outra existe no schema), então
+// chegar perto de 2^53 exigiria ~9 quatrilhões de linhas.
+//
+// O default custava caro: as interfaces do client tipam id como `number`, mas em
+// runtime chegava "7". Comparar id de duas origens (`"7" === 7`) falhava calado —
+// filtro de pedidos esvaziando a lista, contato que não dava pra selecionar no
+// funil, conversa do WhatsApp sumindo ao conciliar. Convertendo aqui, os ids são
+// number em todo lugar e os tipos param de mentir.
+//
+// Cuidado ao mexer: isto muda o JSON de toda a API ({"id":1}, não {"id":"1"}).
+pg.types.setTypeParser(20, (v) => Number(v));
+
 // Single shared pool. Raw parameterized SQL everywhere — no ORM.
 export const pool = new pg.Pool({
   connectionString: config.databaseUrl,

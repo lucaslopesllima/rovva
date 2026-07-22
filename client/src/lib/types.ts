@@ -110,6 +110,17 @@ export interface Contact {
 }
 export interface NamedItem { id: number; nome: string }
 
+// Private label = marca própria que a empresa fornece p/ terceiros marcarem.
+// Org-scoped, N:N com empresas (base global) e contatos. Ver rota /api/private-labels.
+export interface PrivateLabel {
+  id: number; nome: string; descricao: string | null; cor: string | null;
+  created_at: string; companies_count?: number; contacts_count?: number;
+}
+// Empresa vinculada a uma label (subset da base global RFB).
+export interface PrivateLabelCompany {
+  id: number; cnpj: string; razao_social: string; nome_fantasia: string | null; uf: string;
+}
+
 export interface AccountOrg {
   id: number; nome: string; cnpj: string | null; telefone: string | null;
   cep: string | null; logradouro: string | null; numero: string | null; complemento: string | null;

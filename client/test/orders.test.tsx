@@ -204,6 +204,26 @@ describe('Orders', () => {
       .some((u) => u.startsWith('/api/orders?') && new URLSearchParams(u.split('?')[1]).get('represented_id') === '5')).toBe(true));
   });
 
+  // Regressão: /api/orders devolve represented_id/owner_user_id como STRING
+  // (bigint do pg), mas o <select> guarda Number(). Sem coagir, o refino local
+  // descartava TODA linha e a tabela ficava vazia ao filtrar.
+  it('filtrar por representada com ids string não esvazia a lista', async () => {
+    m.get.mockImplementation(async (p: string) => {
+      if (p.startsWith('/api/orders?')) {
+        return { orders: [order({ id: 1, represented_id: '5', owner_user_id: '1' })] };
+      }
+      if (p.startsWith('/api/orders/')) return { order: order({ id: 1 }) };
+      if (p === '/api/represented') return { empresas: [{ id: '5', nome: 'Indústria X', ativo: true }] };
+      if (p === '/api/kanban') return { cards: [CARD] };
+      return {};
+    });
+    mount();
+    await screen.findByText('Cliente Um LTDA');
+    await userEvent.selectOptions(screen.getByLabelText('Filtrar por representada'), '5');
+    // a linha tem de continuar visível depois do filtro
+    await waitFor(() => expect(screen.getByText('Cliente Um LTDA')).toBeInTheDocument());
+  });
+
   it('novo pedido: item do catálogo com imposto, item livre, cotação e salva', async () => {
     m.get.mockImplementation(async (p: string) => {
       if (p.startsWith('/api/orders?')) return { orders: [order({ id: 1, status: 'rascunho' })] };

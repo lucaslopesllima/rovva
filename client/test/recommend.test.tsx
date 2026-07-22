@@ -91,14 +91,30 @@ describe('Recommend', () => {
     expect(url).toContain('munis=100');
   });
 
-  it('adicionar ao funil marca o card como adicionado', async () => {
+  it('adicionar ao funil marca o card e cria o contato da empresa', async () => {
     comTerritorio();
-    m.post.mockResolvedValueOnce({ relationship: { id: 1 } });
+    m.post.mockResolvedValue({ relationship: { id: 1 } });
     mount();
     await screen.findByText('Loja Alvo', undefined, { timeout: 2000 });
     await userEvent.click(screen.getByRole('button', { name: /Adicionar ao funil/ }));
     expect(m.post).toHaveBeenCalledWith('/api/relationships', { company_id: 1 });
     expect(await screen.findByText('Adicionado ao funil')).toBeInTheDocument();
+    // contato da empresa criado junto (best-effort)
+    await waitFor(() => expect(m.post).toHaveBeenCalledWith('/api/contacts',
+      expect.objectContaining({ nome: 'Loja Alvo', company_id: 1 })));
+  });
+
+  it('funil segue mesmo se a criação do contato falhar', async () => {
+    comTerritorio();
+    m.post.mockImplementation(async (p: string) => {
+      if (p === '/api/relationships') return { relationship: { id: 1 } };
+      throw new Error('contato falhou'); // /api/contacts
+    });
+    mount();
+    await screen.findByText('Loja Alvo', undefined, { timeout: 2000 });
+    await userEvent.click(screen.getByRole('button', { name: /Adicionar ao funil/ }));
+    expect(await screen.findByText('Adicionado ao funil')).toBeInTheDocument();
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
   });
 
   it('erro da busca (400) mostra card com ação de ajustar filtros', async () => {
@@ -306,6 +322,7 @@ describe('Recommend — mapa, rota e interações', () => {
     mount();
     await screen.findByText('Loja Alvo', undefined, { timeout: 2000 });
     expect(screen.queryByRole('button', { name: /Adicionar ao funil/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Adicionar aos contatos/ })).not.toBeInTheDocument();
   });
 
   it('território definido mas sem resultados mostra vazio', async () => {
@@ -393,5 +410,91 @@ describe('Recommend — cobertura extra', () => {
     expect(await screen.findByText('Dados da empresa')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Dados da empresa').closest('.fixed')!); // backdrop → onClose
     await waitFor(() => expect(screen.queryByText('Dados da empresa')).not.toBeInTheDocument());
+  });
+});
+
+describe('Recommend — adicionar aos contatos', () => {
+  const rep = { id: 5, nome: 'ACME', cnpj: null, segmento: null, site: null, contato: null, notas: null, ativo: true };
+
+  // Detalhe da empresa com telefone + representadas, para o modal pré-preenchido.
+  const withDetail = (over: { telefone1?: string | null; telefone2?: string | null } = {}): void => {
+    m.get.mockImplementation(async (p: string) => {
+      if (p.startsWith('/api/recommend')) return { results: [rec({})], page: { count: 1 } };
+      if (p === '/api/municipios/ufs') return { ufs: [] };
+      if (p === '/api/represented') return { empresas: [rep] };
+      if (/\/api\/companies\/\d+$/.test(p)) return { company: { id: 1, razao_social: 'Alvo', nome_fantasia: 'Loja Alvo', telefone1: over.telefone1 ?? null, telefone2: over.telefone2 ?? null } };
+      if (p.includes('/geocode')) return { geocode: { lat: -23.5, lon: -46.6, precisao: 'rua' } };
+      return {};
+    });
+  };
+
+  it('pré-preenche nome + telefone da empresa e cria o contato', async () => {
+    comTerritorio();
+    withDetail({ telefone1: '4830001111' });
+    m.post.mockResolvedValueOnce({ contact: { id: 9, nome: 'Loja Alvo' } });
+    mount();
+    await screen.findByText('Loja Alvo', undefined, { timeout: 2000 });
+    await userEvent.click(screen.getByRole('button', { name: /Adicionar aos contatos/ }));
+
+    expect(await screen.findByText('Novo contato')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Nome *')).toHaveValue('Loja Alvo');
+    expect(screen.getByPlaceholderText('Telefone')).toHaveValue('(48) 3000-1111');
+    // empresa vem vinculada como chip (não abre o buscador)
+    expect(screen.getAllByText('Loja Alvo').length).toBeGreaterThan(0);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(m.post).toHaveBeenCalledWith('/api/contacts',
+      expect.objectContaining({ nome: 'Loja Alvo', telefone: '(48) 3000-1111', company_id: 1 })));
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith('Contato criado.');
+    // modal fecha após criar
+    await waitFor(() => expect(screen.queryByText('Novo contato')).not.toBeInTheDocument());
+  });
+
+  it('sem telefone no cadastro abre o modal só com o nome; erro ao criar avisa', async () => {
+    comTerritorio();
+    withDetail(); // telefone1/2 null → sem telefone
+    m.post.mockRejectedValueOnce(new Error('cc-fail'));
+    mount();
+    await screen.findByText('Loja Alvo', undefined, { timeout: 2000 });
+    await userEvent.click(screen.getByRole('button', { name: /Adicionar aos contatos/ }));
+    await screen.findByText('Novo contato');
+    expect(screen.getByPlaceholderText('Telefone')).toHaveValue('');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith('cc-fail'));
+  });
+
+  it('falha ao buscar o detalhe ainda abre o modal com nome + empresa', async () => {
+    comTerritorio();
+    m.get.mockImplementation(async (p: string) => {
+      if (p.startsWith('/api/recommend')) return { results: [rec({})], page: { count: 1 } };
+      if (p === '/api/municipios/ufs') return { ufs: [] };
+      if (p === '/api/represented') return { empresas: [rep] };
+      if (/\/api\/companies\/\d+$/.test(p)) throw new Error('detalhe falhou');
+      return {};
+    });
+    mount();
+    await screen.findByText('Loja Alvo', undefined, { timeout: 2000 });
+    await userEvent.click(screen.getByRole('button', { name: /Adicionar aos contatos/ }));
+    await screen.findByText('Novo contato');
+    expect(screen.getByPlaceholderText('Nome *')).toHaveValue('Loja Alvo');
+
+    // fecha pelo Cancelar (onClose)
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => expect(screen.queryByText('Novo contato')).not.toBeInTheDocument());
+  });
+
+  it('também disponível no popup do mapa', async () => {
+    comTerritorio();
+    withDetail({ telefone1: '4830001111' });
+    mount();
+    await screen.findByText('Loja Alvo', undefined, { timeout: 2000 });
+    await userEvent.click(screen.getByRole('button', { name: 'Mapa' }));
+    await screen.findByTestId('map');
+    await userEvent.click(screen.getByRole('button', { name: /Adicionar aos contatos/ }));
+    expect(await screen.findByText('Novo contato')).toBeInTheDocument();
+    // fecha pelo backdrop (onClose)
+    fireEvent.click(screen.getByText('Novo contato').closest('.fixed')!);
+    await waitFor(() => expect(screen.queryByText('Novo contato')).not.toBeInTheDocument());
   });
 });

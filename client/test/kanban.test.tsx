@@ -305,6 +305,37 @@ describe('Kanban', () => {
       expect.objectContaining({ status: 'descartado', motivo_descarte: 'Preço alto', represented_id: 7, marca_id: 3 })));
   });
 
+  // Regressão: /api/contacts devolve o bigint do pg como STRING ("2"), enquanto os
+  // ids dentro do card vêm de json_agg como NUMBER. Sem coagir os dois lados, o
+  // contato escolhido nunca virava pill e seguia listado como disponível — na
+  // prática, "não dá para selecionar o contato na prospecção".
+  it('modal de edição: contato com id string (bigint do pg) é selecionável', async () => {
+    m.get.mockImplementation(kanbanGet({
+      '/api/kanban': { stages: STAGES, cards: [card({ id: 1,
+        contatos: [{ id: 1, nome: 'Contato A', cargo: 'CEO' }] })] },
+      '/api/contacts': { contacts: [
+        { id: '1', nome: 'Contato A', cargo: 'CEO', telefone: null },
+        { id: '2', nome: 'Contato B', cargo: null, telefone: null },
+      ] },
+    }));
+    const d = await openEdit();
+    const sel = within(d).getByRole('option', { name: /Adicionar contato/ }).closest('select')!;
+
+    // o já vinculado é reconhecido: virou pill (tem "Remover") e saiu do dropdown
+    await waitFor(() => expect(within(d).getAllByRole('button', { name: 'Remover' })).toHaveLength(1));
+    expect(within(sel).queryByRole('option', { name: /Contato A/ })).toBeNull();
+
+    // selecionar o disponível também funciona
+    await userEvent.selectOptions(sel, '2');
+    await waitFor(() => expect(within(d).getAllByRole('button', { name: 'Remover' })).toHaveLength(2));
+    expect(within(sel).queryByRole('option', { name: /Contato B/ })).toBeNull();
+
+    m.patch.mockResolvedValueOnce({ relationship: { status: 'prospect' } });
+    await userEvent.click(within(d).getByRole('button', { name: /Salvar/ }));
+    await waitFor(() => expect(m.patch).toHaveBeenCalledWith('/api/relationships/1',
+      expect.objectContaining({ contato_ids: [1, 2] })));
+  });
+
   it('modal de edição: falha ao salvar mantém o modal aberto', async () => {
     editMock();
     m.patch.mockRejectedValueOnce(new Error('offline'));

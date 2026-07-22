@@ -56,7 +56,7 @@ async function request<T>(method: string, path: string, body?: unknown, opts?: R
 const CACHE_TTL_MS = 60_000;
 const CACHEABLE_PREFIXES = [
   '/api/represented', '/api/catalog', '/api/users', '/api/stages',
-  '/api/carriers', '/api/price-tables', '/api/cnae',
+  '/api/carriers', '/api/price-tables', '/api/cnae', '/api/private-labels',
 ];
 const cache = new Map<string, { promise: Promise<unknown>; expira: number }>();
 

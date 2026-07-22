@@ -189,7 +189,8 @@ export function Carteiras(): React.JSX.Element {
                   <select value="" onChange={(e) => { if (e.target.value) void trocarVendedor(Number(e.target.value)); }}
                     className="rounded-lg border border-ink-200 bg-surface px-2 py-1.5 text-xs">
                     <option value="">escolha…</option>
-                    {ativos.filter((u) => u.id !== sel.ownerId).map((u) => <option key={u.id} value={u.id}>{u.nome ?? u.email}</option>)}
+                    {/* u.id vem string da API; sel.ownerId é Number() — coage p/ excluir o dono atual */}
+                    {ativos.filter((u) => Number(u.id) !== sel.ownerId).map((u) => <option key={u.id} value={u.id}>{u.nome ?? u.email}</option>)}
                   </select>
                 </label>
               )}

@@ -130,10 +130,13 @@ export function Orders(): React.JSX.Element {
 
   // O servidor já filtra; o refino local só esconde linhas que deixaram de
   // casar após uma mutação otimista (ex.: transição de status).
+  // Os ids do pedido vêm como STRING (bigint do pg em SELECT direto), enquanto os
+  // filtros guardam NUMBER (Number(e.target.value) do <select>). Sem coagir,
+  // `"7" === 7` é falso e escolher qualquer representada/vendedor esvazia a lista.
   const filtered = useMemo(() => orders.filter((o) =>
     (status === 'todos' || o.status === status)
-    && (representedId === 'todos' || o.represented_id === representedId)
-    && (ownerId === 'todos' || o.owner_user_id === ownerId)
+    && (representedId === 'todos' || Number(o.represented_id) === representedId)
+    && (ownerId === 'todos' || Number(o.owner_user_id) === ownerId)
   ), [orders, status, representedId, ownerId]);
 
   const kpis = useMemo(() => {
