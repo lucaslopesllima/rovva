@@ -116,7 +116,15 @@ describe('webhook — messages.upsert', () => {
     ['sticker', { message: { stickerMessage: { mimetype: 'image/webp' } }, key: { remoteJid: '5511900000013@s.whatsapp.net', fromMe: false, id: 'T-stk' } }, null, 'imagem'],
     ['audio', { message: { audioMessage: { mimetype: 'audio/ogg' } }, key: { remoteJid: '5511900000014@s.whatsapp.net', fromMe: false, id: 'T-aud' } }, null, 'audio'],
     ['documento', { message: { documentMessage: { fileName: 'a.pdf', mimetype: 'application/pdf' } }, key: { remoteJid: '5511900000015@s.whatsapp.net', fromMe: false, id: 'T-doc' } }, null, 'documento'],
-    ['sem message', { message: undefined, key: { remoteJid: '5511900000016@s.whatsapp.net', fromMe: false, id: 'T-nil' } }, null, 'texto'],
+    ['ptv (vídeo-recado)', { message: { ptvMessage: { mimetype: 'video/mp4' } }, key: { remoteJid: '5511900000019@s.whatsapp.net', fromMe: false, id: 'T-ptv' } }, null, 'video'],
+    ['localização', { message: { locationMessage: { name: 'Praça da Sé' } }, key: { remoteJid: '5511900000020@s.whatsapp.net', fromMe: false, id: 'T-loc' } }, '📍 Praça da Sé', 'texto'],
+    ['contato', { message: { contactMessage: { displayName: 'Fulano' } }, key: { remoteJid: '5511900000021@s.whatsapp.net', fromMe: false, id: 'T-ctt' } }, '👤 Fulano', 'texto'],
+    ['enquete', { message: { pollCreationMessageV3: { name: 'Almoço onde?' } }, key: { remoteJid: '5511900000022@s.whatsapp.net', fromMe: false, id: 'T-poll' } }, '📊 Almoço onde?', 'texto'],
+    ['resposta de botão', { message: { buttonsResponseMessage: { selectedDisplayText: 'Sim' } }, key: { remoteJid: '5511900000023@s.whatsapp.net', fromMe: false, id: 'T-btn' } }, 'Sim', 'texto'],
+    // Envelopes: o conteúdo real vem aninhado — sem desembrulhar o balão entrava vazio.
+    ['efêmera (envelope)', { message: { ephemeralMessage: { message: { conversation: 'some em 24h' } } }, key: { remoteJid: '5511900000024@s.whatsapp.net', fromMe: false, id: 'T-eph' } }, 'some em 24h', 'texto'],
+    ['visualização única (envelope)', { message: { viewOnceMessageV2: { message: { imageMessage: { caption: 'vo', mimetype: 'image/png' } } } }, key: { remoteJid: '5511900000025@s.whatsapp.net', fromMe: false, id: 'T-vo' } }, 'vo', 'imagem'],
+    ['documento com legenda (envelope)', { message: { documentWithCaptionMessage: { message: { documentMessage: { fileName: 'b.pdf', mimetype: 'application/pdf', caption: 'contrato' } } } }, key: { remoteJid: '5511900000026@s.whatsapp.net', fromMe: false, id: 'T-dwc' } }, 'contrato', 'documento'],
   ])('texto/tipo: %s', async (_label, over, corpoEsperado, tipoEsperado) => {
     profilePicture.mockResolvedValueOnce(null);
     await post(upsertEvent(msg(over as Record<string, unknown>)));
@@ -125,6 +133,20 @@ describe('webhook — messages.upsert', () => {
       'SELECT corpo, tipo FROM whatsapp_messages WHERE org_id = $1 AND evolution_id = $2', [org, key]);
     expect(m!.corpo).toBe(corpoEsperado);
     expect(m!.tipo).toBe(tipoEsperado);
+  });
+
+  // Ruído de protocolo não é balão: entrava como mensagem vazia (e ainda somava
+  // não-lidas / virava prévia da conversa).
+  it.each([
+    ['sem message', { message: undefined, key: { remoteJid: '5511900000016@s.whatsapp.net', fromMe: false, id: 'N-nil' } }],
+    ['reação', { message: { reactionMessage: { text: '👍' } }, key: { remoteJid: '5511900000016@s.whatsapp.net', fromMe: false, id: 'N-rea' } }],
+    ['distribuição de chave', { message: { senderKeyDistributionMessage: {} }, key: { remoteJid: '5511900000016@s.whatsapp.net', fromMe: false, id: 'N-key' } }],
+    ['revogação', { message: { protocolMessage: { type: 'REVOKE' } }, key: { remoteJid: '5511900000016@s.whatsapp.net', fromMe: false, id: 'N-rev' } }],
+  ])('ignora ruído de protocolo: %s', async (_label, over) => {
+    await post(upsertEvent(msg(over as Record<string, unknown>)));
+    const key = (over as { key: { id: string } }).key.id;
+    const rows = await query('SELECT id FROM whatsapp_messages WHERE org_id = $1 AND evolution_id = $2', [org, key]);
+    expect(rows.length).toBe(0);
   });
 
   it('timestamp inválido cai em agora (não quebra)', async () => {

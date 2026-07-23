@@ -152,6 +152,33 @@ describe('whatsapp — chats/messages/read', () => {
     expect(after!.nao_lidas).toBe(0);
   });
 
+  // O momento vem do WhatsApp em segundos: mensagens da mesma rajada empatam e,
+  // só por momento, o Postgres devolve em ordem arbitrária. Desempate = id.
+  it('messages: mesma hora sai na ordem de gravação (desempate por id)', async () => {
+    const chat = await mkChat('5511800000031@s.whatsapp.net', '5511800000031');
+    for (const c of ['a', 'b', 'c', 'd']) {
+      await query(
+        `INSERT INTO whatsapp_messages (org_id, chat_id, evolution_id, from_me, corpo, momento)
+         VALUES ($1,$2,$3,true,$4,'2026-01-01T10:00:00Z')`, [org, chat, `ORD-${c}`, c]);
+    }
+    const r = await inj('GET', `/api/whatsapp/chats/${chat}/messages`);
+    expect(r.json().messages.map((m: { corpo: string }) => m.corpo)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  // Janela de 500: precisa ser as MAIS RECENTES. Antes o LIMIT pegava as mais
+  // antigas e a conversa longa abria escondendo as mensagens de hoje.
+  it('messages: janela traz as mais recentes, em ordem cronológica', async () => {
+    const chat = await mkChat('5511800000032@s.whatsapp.net', '5511800000032');
+    await query(
+      `INSERT INTO whatsapp_messages (org_id, chat_id, evolution_id, from_me, corpo, momento)
+       SELECT $1, $2, 'W-' || i, true, i::text, timestamptz '2026-01-01T00:00:00Z' + (i || ' minutes')::interval
+         FROM generate_series(1, 520) i`, [org, chat]);
+    const msgs = (await inj('GET', `/api/whatsapp/chats/${chat}/messages`)).json().messages as Array<{ corpo: string }>;
+    expect(msgs.length).toBe(500);
+    expect(msgs[0].corpo).toBe('21');   // as 20 mais antigas ficam de fora
+    expect(msgs[499].corpo).toBe('520'); // a última é a mais recente
+  });
+
   it('messages: sem não-lidas não chama markRead', async () => {
     const chat = await mkChat('5511800000003@s.whatsapp.net', '5511800000003');
     await inj('GET', `/api/whatsapp/chats/${chat}/messages`);

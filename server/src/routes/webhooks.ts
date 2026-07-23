@@ -16,28 +16,82 @@ const groupNameDone = new Set<string>();
 // data[] gigante enfileire milhares de queries/chamadas Evolution (DoS).
 const MAX_WEBHOOK_BATCH = 200;
 
-// Extrai o texto da mensagem dos vários formatos do Baileys/Evolution.
-function extractText(message: Record<string, unknown> | undefined): string | null {
-  if (!message) return null;
-  const ext = message.extendedTextMessage as { text?: string } | undefined;
-  const img = message.imageMessage as { caption?: string } | undefined;
-  const vid = message.videoMessage as { caption?: string } | undefined;
-  return (message.conversation as string) ?? ext?.text ?? img?.caption ?? vid?.caption ?? null;
+type Msg = Record<string, unknown> | undefined;
+
+// O conteúdo real vem embrulhado em envelopes: mensagem temporária
+// (ephemeralMessage), visualização única (viewOnce*), documento com legenda e
+// mensagem editada. Sem desembrulhar, extractText/mediaTipo não acham nada e o
+// balão entra vazio ("a mensagem sumiu"). Desce até o miolo (teto de 5 pra não
+// girar em payload malformado com ciclo).
+function unwrap(message: Msg): Msg {
+  let m = message;
+  for (let i = 0; i < 5 && m; i++) {
+    const inner = (m.ephemeralMessage ?? m.viewOnceMessage ?? m.viewOnceMessageV2 ?? m.viewOnceMessageV2Extension
+      ?? m.documentWithCaptionMessage ?? m.editedMessage) as { message?: Record<string, unknown> } | undefined;
+    const edited = (m.protocolMessage as { editedMessage?: Record<string, unknown> } | undefined)?.editedMessage;
+    const next = inner?.message ?? edited;
+    if (!next) return m;
+    m = next;
+  }
+  return m;
 }
 
-function mediaTipo(message: Record<string, unknown> | undefined): string {
+// Chaves que carregam conteúdo exibível. O que não tem nenhuma delas é ruído de
+// protocolo (senderKeyDistributionMessage, messageContextInfo, reactionMessage,
+// protocolMessage de revogação, messageHistoryNotice, secretEncryptedMessage) —
+// isso NÃO é mensagem de conversa e não pode virar balão vazio nem mexer na
+// prévia/contador de não-lidas.
+const CONTENT_KEYS = [
+  'conversation', 'extendedTextMessage', 'imageMessage', 'videoMessage', 'audioMessage',
+  'documentMessage', 'stickerMessage', 'ptvMessage', 'contactMessage', 'contactsArrayMessage',
+  'locationMessage', 'liveLocationMessage', 'pollCreationMessage', 'pollCreationMessageV2',
+  'pollCreationMessageV3', 'templateMessage', 'buttonsMessage', 'listMessage',
+  'buttonsResponseMessage', 'listResponseMessage', 'templateButtonReplyMessage',
+  'interactiveMessage', 'interactiveResponseMessage', 'productMessage', 'eventMessage',
+];
+function hasContent(message: Msg): boolean {
+  return !!message && CONTENT_KEYS.some((k) => message[k]);
+}
+
+// Extrai o texto da mensagem dos vários formatos do Baileys/Evolution.
+function extractText(message: Msg): string | null {
+  if (!message) return null;
+  const s = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
+  const cap = (k: string): string | undefined => s((message[k] as { caption?: string } | undefined)?.caption);
+  const loc = message.locationMessage as { name?: string; address?: string } | undefined;
+  const contato = message.contactMessage as { displayName?: string } | undefined;
+  const enquete = (message.pollCreationMessage ?? message.pollCreationMessageV2 ?? message.pollCreationMessageV3) as { name?: string } | undefined;
+  return s((message.conversation as string))
+    ?? s((message.extendedTextMessage as { text?: string } | undefined)?.text)
+    ?? cap('imageMessage') ?? cap('videoMessage') ?? cap('ptvMessage') ?? cap('documentMessage')
+    // Respostas de botão/lista: o que o contato escolheu é o texto da mensagem.
+    ?? s((message.buttonsResponseMessage as { selectedDisplayText?: string } | undefined)?.selectedDisplayText)
+    ?? s((message.templateButtonReplyMessage as { selectedDisplayText?: string } | undefined)?.selectedDisplayText)
+    ?? s((message.listResponseMessage as { title?: string } | undefined)?.title)
+    ?? s((message.interactiveResponseMessage as { body?: { text?: string } } | undefined)?.body?.text)
+    ?? (contato ? `👤 ${contato.displayName ?? 'Contato'}` : undefined)
+    ?? (message.contactsArrayMessage ? '👤 Contatos' : undefined)
+    ?? (loc ? `📍 ${loc.name ?? loc.address ?? 'Localização'}` : undefined)
+    ?? (message.liveLocationMessage ? '📍 Localização em tempo real' : undefined)
+    ?? (enquete ? `📊 ${enquete.name ?? 'Enquete'}` : undefined)
+    ?? s((message.eventMessage as { name?: string } | undefined)?.name)
+    ?? null;
+}
+
+function mediaTipo(message: Msg): string {
   if (!message) return 'texto';
   if (message.imageMessage) return 'imagem';
   if (message.stickerMessage) return 'imagem'; // figurinha = webp, renderiza como imagem
   if (message.audioMessage) return 'audio';
-  if (message.videoMessage) return 'video';
+  if (message.videoMessage || message.ptvMessage) return 'video'; // ptv = vídeo-recado redondo
   if (message.documentMessage) return 'documento';
   return 'texto';
 }
 
 // mimetype/filename do metadata da mídia (o binário é baixado sob demanda).
-function mediaMeta(message: Record<string, unknown> | undefined): { mime: string | null; fileName: string | null } {
-  const pick = (message?.imageMessage ?? message?.stickerMessage ?? message?.audioMessage ?? message?.videoMessage ?? message?.documentMessage) as
+function mediaMeta(message: Msg): { mime: string | null; fileName: string | null } {
+  const pick = (message?.imageMessage ?? message?.stickerMessage ?? message?.audioMessage ?? message?.videoMessage
+    ?? message?.ptvMessage ?? message?.documentMessage) as
     { mimetype?: string; fileName?: string } | undefined;
   return { mime: pick?.mimetype ?? null, fileName: pick?.fileName ?? null };
 }
@@ -68,6 +122,67 @@ function altJidOf(key: WaKey | undefined): string | null {
 interface WaMsg {
   key?: WaKey; pushName?: string; message?: Record<string, unknown>;
   messageTimestamp?: number; status?: string;
+}
+
+// Espelha UMA mensagem recebida no webhook: resolve a conversa, grava e avisa o
+// front. Lança em erro de banco/Evolution — quem chama isola por mensagem.
+async function processUpsert(orgId: number, raw: WaMsg): Promise<void> {
+  const jid = raw?.key?.remoteJid;
+  if (!jid || jid === 'status@broadcast') return;
+  const fromMe = !!raw.key?.fromMe;
+  const isGroup = jid.endsWith('@g.us');
+  // Grupo não tem dedup telefone/lid (remoteJid é o grupo); só 1:1.
+  const altJid = isGroup ? null : altJidOf(raw.key);
+  const message = unwrap(raw.message);
+  // Ruído de protocolo (reação, distribuição de chave, revogação...): não é
+  // balão de conversa — sai antes de mexer na prévia/contador de não-lidas.
+  if (!hasContent(message)) return;
+  const texto = extractText(message);
+  const tipo = mediaTipo(message);
+  const meta = mediaMeta(message);
+  const momento = tsToIso(raw.messageTimestamp);
+  const chat = await upsertChat(orgId, jid, {
+    // Em grupo o pushName é do PARTICIPANTE que enviou, não do grupo — não
+    // usa como nome da conversa (o subject vem do groupInfo abaixo).
+    nome: fromMe || isGroup ? null : (raw.pushName ?? null),
+    preview: texto ?? `[${tipo === 'texto' ? 'mídia' : tipo}]`,
+    momento,
+    incNaoLidas: !fromMe,
+  }, altJid);
+  const msg = await insertMessage(orgId, chat.id, {
+    evolutionId: raw.key?.id ?? null,
+    fromMe,
+    tipo,
+    corpo: texto,
+    momento,
+    status: fromMe ? 'enviado' : null,
+    mime: meta.mime,
+    fileName: meta.fileName,
+  });
+  if (msg) broadcast(orgId, 'message', { chat_id: Number(chat.id), message: msg, chat });
+  // Foto de perfil na 1ª aparição da conversa (best-effort, assíncrono).
+  if (!chat.foto_url && jid.endsWith('@s.whatsapp.net')) {
+    evo.profilePicture(instanceName(orgId), jidToNumero(jid)).then(
+      (url) => { if (url) { void updateFoto(orgId, jid, url); broadcast(orgId, 'chat-foto', { chat_id: Number(chat.id), foto_url: url }); } },
+      () => undefined,
+    );
+  }
+  // Nome do grupo (subject): o webhook não traz: busca uma vez por
+  // grupo/processo e corrige conversas que pegaram nome de participante.
+  if (isGroup) {
+    const key = `${orgId}:${jid}`;
+    if (!groupNameDone.has(key)) {
+      groupNameDone.add(key);
+      evo.groupInfo(instanceName(orgId), jid).then(
+        (g) => {
+          if (g.subject) void updateNome(orgId, chat.id, g.subject);
+          if (g.pictureUrl) void updateFoto(orgId, jid, g.pictureUrl);
+          if (g.subject || g.pictureUrl) broadcast(orgId, 'chat-foto', { chat_id: Number(chat.id) });
+        },
+        () => { groupNameDone.delete(key); }, // permite nova tentativa depois
+      );
+    }
+  }
 }
 
 export function webhookRoutes(app: FastifyInstance): void {
@@ -102,58 +217,14 @@ export function webhookRoutes(app: FastifyInstance): void {
         // data pode vir como objeto único ou lista de mensagens.
         const list = (Array.isArray(body.data) ? body.data : [body.data]).slice(0, MAX_WEBHOOK_BATCH);
         for (const raw of list as WaMsg[]) {
-          const jid = raw?.key?.remoteJid;
-          if (!jid || jid === 'status@broadcast') continue;
-          const fromMe = !!raw.key?.fromMe;
-          const isGroup = jid.endsWith('@g.us');
-          // Grupo não tem dedup telefone/lid (remoteJid é o grupo); só 1:1.
-          const altJid = isGroup ? null : altJidOf(raw.key);
-          const message = raw.message;
-          const texto = extractText(message);
-          const tipo = mediaTipo(message);
-          const meta = mediaMeta(message);
-          const momento = tsToIso(raw.messageTimestamp);
-          const chat = await upsertChat(orgId, jid, {
-            // Em grupo o pushName é do PARTICIPANTE que enviou, não do grupo — não
-            // usa como nome da conversa (o subject vem do groupInfo abaixo).
-            nome: fromMe || isGroup ? null : (raw.pushName ?? null),
-            preview: texto ?? `[${tipo === 'texto' ? 'mídia' : tipo}]`,
-            momento,
-            incNaoLidas: !fromMe,
-          }, altJid);
-          const msg = await insertMessage(orgId, chat.id, {
-            evolutionId: raw.key?.id ?? null,
-            fromMe,
-            tipo,
-            corpo: texto,
-            momento,
-            status: fromMe ? 'enviado' : null,
-            mime: meta.mime,
-            fileName: meta.fileName,
-          });
-          if (msg) broadcast(orgId, 'message', { chat_id: Number(chat.id), message: msg, chat });
-          // Foto de perfil na 1ª aparição da conversa (best-effort, assíncrono).
-          if (!chat.foto_url && jid.endsWith('@s.whatsapp.net')) {
-            evo.profilePicture(instanceName(orgId), jidToNumero(jid)).then(
-              (url) => { if (url) { void updateFoto(orgId, jid, url); broadcast(orgId, 'chat-foto', { chat_id: Number(chat.id), foto_url: url }); } },
-              () => undefined,
-            );
-          }
-          // Nome do grupo (subject): o webhook não traz: busca uma vez por
-          // grupo/processo e corrige conversas que pegaram nome de participante.
-          if (isGroup) {
-            const key = `${orgId}:${jid}`;
-            if (!groupNameDone.has(key)) {
-              groupNameDone.add(key);
-              evo.groupInfo(instanceName(orgId), jid).then(
-                (g) => {
-                  if (g.subject) void updateNome(orgId, chat.id, g.subject);
-                  if (g.pictureUrl) void updateFoto(orgId, jid, g.pictureUrl);
-                  if (g.subject || g.pictureUrl) broadcast(orgId, 'chat-foto', { chat_id: Number(chat.id) });
-                },
-                () => { groupNameDone.delete(key); }, // permite nova tentativa depois
-              );
-            }
+          // Falha numa mensagem não pode derrubar as seguintes: sem isolar, o
+          // primeiro erro abortava o resto do lote e, como a resposta é sempre
+          // 200 (pra Evolution não reentregar em loop), as mensagens do lote se
+          // perdiam de vez.
+          try {
+            await processUpsert(orgId, raw);
+          } catch (e) {
+            req.log.error({ err: e, jid: raw?.key?.remoteJid }, 'falha ao processar mensagem do lote');
           }
         }
         return reply.code(200).send({ ok: true });
