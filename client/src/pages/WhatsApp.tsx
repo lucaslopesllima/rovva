@@ -1636,9 +1636,11 @@ export function WhatsApp(): React.JSX.Element {
               {/* Barra de digitação compacta no mobile (metade da altura): tela pequena
                   precisa do espaço pras mensagens. A partir de md volta ao tamanho cheio. */}
               <div className={cn('px-2 pt-1 md:px-3 md:pt-2',
+                // focus-within cobre o caso do teclado aberto sem depender do
+                // visualViewport (iOS PWA às vezes não reporta o encolhimento).
                 kbOpen
                   ? 'pb-1 md:pb-2'
-                  : 'pb-[max(env(safe-area-inset-bottom),0.25rem)] md:pb-[max(env(safe-area-inset-bottom),0.5rem)]',
+                  : 'pb-[max(env(safe-area-inset-bottom),0.25rem)] focus-within:pb-1 md:pb-[max(env(safe-area-inset-bottom),0.5rem)] md:focus-within:pb-2',
                 noteMode ? 'bg-amber-100 dark:bg-amber-400/15' : 'bg-[var(--wa-panel)]')}>
                 {/* Chip da mensagem citada: a nota vai pendurada nela. */}
                 {noteMode && noteReplyTo && (
