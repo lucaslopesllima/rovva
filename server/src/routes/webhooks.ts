@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { config } from '../config.ts';
 import { query } from '../db.ts';
 import { broadcast } from '../ws.ts';
@@ -36,21 +36,22 @@ function unwrap(message: Msg): Msg {
   return m;
 }
 
-// Chaves que carregam conteúdo exibível. O que não tem nenhuma delas é ruído de
-// protocolo (senderKeyDistributionMessage, messageContextInfo, reactionMessage,
-// protocolMessage de revogação, messageHistoryNotice, secretEncryptedMessage) —
-// isso NÃO é mensagem de conversa e não pode virar balão vazio nem mexer na
-// prévia/contador de não-lidas.
-const CONTENT_KEYS = [
-  'conversation', 'extendedTextMessage', 'imageMessage', 'videoMessage', 'audioMessage',
-  'documentMessage', 'stickerMessage', 'ptvMessage', 'contactMessage', 'contactsArrayMessage',
-  'locationMessage', 'liveLocationMessage', 'pollCreationMessage', 'pollCreationMessageV2',
-  'pollCreationMessageV3', 'templateMessage', 'buttonsMessage', 'listMessage',
-  'buttonsResponseMessage', 'listResponseMessage', 'templateButtonReplyMessage',
-  'interactiveMessage', 'interactiveResponseMessage', 'productMessage', 'eventMessage',
-];
-function hasContent(message: Msg): boolean {
-  return !!message && CONTENT_KEYS.some((k) => message[k]);
+// Eventos de protocolo que chegam pelo MESMO canal (messages.upsert) e não são
+// mensagem de conversa: reação, distribuição de chave, revogação/edição, aviso
+// de sincronia de histórico, voto de enquete cifrado, cabeçalho de álbum (as
+// mídias vêm em mensagens próprias). Viravam balão vazio — e ainda somavam
+// não-lidas e viravam prévia da conversa.
+const RUIDO_KEYS = new Set([
+  'messageContextInfo', 'senderKeyDistributionMessage', 'reactionMessage', 'encReactionMessage',
+  'protocolMessage', 'messageHistoryNotice', 'secretEncryptedMessage', 'albumMessage',
+  'pollUpdateMessage', 'keepInChatMessage', 'stickerSyncRmrMessage', 'placeholderMessage',
+]);
+// Lista NEGRA, não branca: o WhatsApp inventa tipo novo o tempo todo, e com
+// lista branca o tipo desconhecido sumiria calado — o mesmo sintoma de novo, com
+// causa nova. Aqui, o que não é ruído conhecido vira balão (com aviso no log e
+// texto de fallback, se não soubermos ler): visível, nunca perdido.
+function chavesDeConteudo(message: Msg): string[] {
+  return message ? Object.keys(message).filter((k) => !RUIDO_KEYS.has(k) && message[k] != null) : [];
 }
 
 // Extrai o texto da mensagem dos vários formatos do Baileys/Evolution.
@@ -137,7 +138,7 @@ interface WaMsg {
 
 // Espelha UMA mensagem recebida no webhook: resolve a conversa, grava e avisa o
 // front. Lança em erro de banco/Evolution — quem chama isola por mensagem.
-async function processUpsert(orgId: number, raw: WaMsg): Promise<void> {
+async function processUpsert(orgId: number, raw: WaMsg, log: FastifyBaseLogger): Promise<void> {
   const jid = raw?.key?.remoteJid;
   if (!jid || jid === 'status@broadcast') return;
   const fromMe = !!raw.key?.fromMe;
@@ -147,9 +148,16 @@ async function processUpsert(orgId: number, raw: WaMsg): Promise<void> {
   const message = unwrap(raw.message);
   // Ruído de protocolo (reação, distribuição de chave, revogação...): não é
   // balão de conversa — sai antes de mexer na prévia/contador de não-lidas.
-  if (!hasContent(message)) return;
-  const texto = extractText(message);
+  const chaves = chavesDeConteudo(message);
+  if (!chaves.length) return;
   const tipo = mediaTipo(message);
+  let texto = extractText(message);
+  // Tipo que ainda não sabemos ler: entra com rótulo em vez de balão vazio, e
+  // avisa no log (com as chaves do payload) pra virar suporte de verdade.
+  if (texto == null && tipo === 'texto') {
+    log.warn({ chaves, jid }, 'tipo de mensagem sem suporte — gravada com rótulo');
+    texto = '[mensagem sem suporte no app — abra no WhatsApp]';
+  }
   const meta = mediaMeta(message);
   const momento = tsToIso(raw.messageTimestamp);
   const chat = await upsertChat(orgId, jid, {
@@ -233,7 +241,7 @@ export function webhookRoutes(app: FastifyInstance): void {
           // 200 (pra Evolution não reentregar em loop), as mensagens do lote se
           // perdiam de vez.
           try {
-            await processUpsert(orgId, raw);
+            await processUpsert(orgId, raw, req.log);
           } catch (e) {
             req.log.error({ err: e, jid: raw?.key?.remoteJid }, 'falha ao processar mensagem do lote');
           }

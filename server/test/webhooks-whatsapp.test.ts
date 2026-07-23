@@ -155,6 +155,30 @@ describe('webhook — messages.upsert', () => {
     expect(rows.length).toBe(0);
   });
 
+  // O WhatsApp cria tipo novo o tempo todo. Com lista branca, o desconhecido
+  // sumia calado (mesmo sintoma, causa nova) — tem que virar balão com rótulo.
+  it('tipo desconhecido entra com rótulo, não some nem fica vazio', async () => {
+    await post(upsertEvent(msg({
+      message: { tipoQueAindaNaoExisteMessage: { algo: 1 } },
+      key: { remoteJid: '5511900000029@s.whatsapp.net', fromMe: false, id: 'T-novo' },
+    })));
+    const m = await one<{ corpo: string | null }>(
+      'SELECT corpo FROM whatsapp_messages WHERE org_id = $1 AND evolution_id = $2', [org, 'T-novo']);
+    expect(m!.corpo).toContain('sem suporte');
+  });
+
+  // Mídia sem legenda segue com corpo nulo (o balão renderiza o anexo) — o
+  // rótulo de fallback é só pra tipo texto sem texto nenhum.
+  it('mídia sem legenda não ganha rótulo de fallback', async () => {
+    await post(upsertEvent(msg({
+      message: { imageMessage: { mimetype: 'image/png' } },
+      key: { remoteJid: '5511900000030@s.whatsapp.net', fromMe: false, id: 'T-img2' },
+    })));
+    const m = await one<{ corpo: string | null; tipo: string }>(
+      'SELECT corpo, tipo FROM whatsapp_messages WHERE org_id = $1 AND evolution_id = $2', [org, 'T-img2']);
+    expect(m).toMatchObject({ corpo: null, tipo: 'imagem' });
+  });
+
   it('timestamp inválido cai em agora (não quebra)', async () => {
     const r = await post(upsertEvent(msg({ messageTimestamp: -1, key: { remoteJid: '5511900000017@s.whatsapp.net', fromMe: false, id: 'TS-bad' } })));
     expect(r.statusCode).toBe(200);
