@@ -1615,7 +1615,10 @@ export function WhatsApp(): React.JSX.Element {
                 </div>
               </div>
 
-              <div className={cn('px-3 pt-2 pb-[max(env(safe-area-inset-bottom),0.5rem)]', noteMode ? 'bg-amber-100 dark:bg-amber-400/15' : 'bg-[var(--wa-panel)]')}>
+              {/* Barra de digitação compacta no mobile (metade da altura): tela pequena
+                  precisa do espaço pras mensagens. A partir de md volta ao tamanho cheio. */}
+              <div className={cn('px-2 pt-1 pb-[max(env(safe-area-inset-bottom),0.25rem)] md:px-3 md:pt-2 md:pb-[max(env(safe-area-inset-bottom),0.5rem)]',
+                noteMode ? 'bg-amber-100 dark:bg-amber-400/15' : 'bg-[var(--wa-panel)]')}>
                 {/* Chip da mensagem citada: a nota vai pendurada nela. */}
                 {noteMode && noteReplyTo && (
                   <div className="mb-1.5 flex items-start gap-2 rounded-lg border-l-[3px] border-amber-500 bg-amber-200/60 px-2.5 py-1.5 dark:bg-amber-400/10">
@@ -1633,24 +1636,24 @@ export function WhatsApp(): React.JSX.Element {
                 {/* Alterna entre enviar mensagem e criar nota interna (só a equipe vê). */}
                 <button onClick={() => { setNoteMode((v) => { if (v) setNoteReplyTo(null); return !v; }); }} aria-pressed={noteMode}
                   title={noteMode ? 'Modo nota interna (clique para voltar a enviar)' : 'Nota interna (não enviada ao contato)'}
-                  className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-full',
+                  className={cn('grid h-8 w-8 shrink-0 place-items-center rounded-full md:h-10 md:w-10',
                     noteMode ? 'bg-amber-400/30 text-amber-700 dark:text-amber-300' : 'text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]')}>
                   <Icon name="pencil" size={20} />
                 </button>
                 {!noteMode && can('whatsapp.send') && (
                   <button onClick={() => fileRef.current?.click()} aria-label="Anexar"
-                    className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)] md:h-10 md:w-10">
                     <Icon name="paperclip" size={20} />
                   </button>
                 )}
                 <textarea ref={composerRef} value={draft} maxLength={2000} onChange={(e) => setDraft(e.target.value)} rows={1} autoFocus
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (noteMode) void sendNote(); else if (can('whatsapp.send')) void send(); } }}
                   placeholder={noteMode ? 'Nota interna — só a equipe vê…' : 'Digite uma mensagem…'}
-                  className={cn('max-h-32 min-h-[40px] min-w-0 flex-1 resize-none rounded-lg px-3 py-2 text-sm outline-none',
+                  className={cn('max-h-24 min-h-[28px] min-w-0 flex-1 resize-none rounded-lg px-3 py-1 text-sm leading-tight outline-none md:max-h-32 md:min-h-[40px] md:py-2 md:leading-normal',
                     noteMode ? 'bg-amber-50 text-amber-900 placeholder:text-amber-700/60 dark:bg-amber-400/10 dark:text-amber-100' : 'bg-[var(--wa-in)] text-[var(--wa-ink)] placeholder:text-[var(--wa-muted)]')} />
                 {(noteMode || can('whatsapp.send')) && (
                   <SafeButton onClick={() => (noteMode ? sendNote() : send())} aria-label={noteMode ? 'Salvar nota' : 'Enviar'}
-                    className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-full hover:bg-[var(--wa-hover)]',
+                    className={cn('grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-[var(--wa-hover)] md:h-10 md:w-10',
                       noteMode ? 'text-amber-700 dark:text-amber-300' : 'text-[var(--wa-green)]')}>
                     <Icon name={noteMode ? 'check' : 'send'} size={20} />
                   </SafeButton>
