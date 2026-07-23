@@ -42,7 +42,8 @@ const rec = (over: Record<string, unknown>): Record<string, unknown> => ({
   lat: -23.5, lon: -46.6, score: 0.82,
   reason: {
     cnae_match: 'classe', cnae_principal: 4781400, distancia_km: 4.2, porte: 'pequeno',
-    capital_social: '100000', componentes: { cnae: 0.5, proximidade: 0.22, porte: 0.1 },
+    capital_social: '100000', idade_anos: 12.4,
+    componentes: { cnae: 0.5, proximidade: 0.22, porte: 0.1, capital: 0.08, idade: 0.06 },
   }, ...over,
 });
 

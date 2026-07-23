@@ -17,7 +17,8 @@ export interface Recommendation {
     distancia_km: number;
     porte: string;
     capital_social: number;
-    componentes: { cnae: number; proximidade: number; porte: number };
+    idade_anos: number | null;
+    componentes: { cnae: number; proximidade: number; porte: number; capital: number; idade: number };
   };
 }
 

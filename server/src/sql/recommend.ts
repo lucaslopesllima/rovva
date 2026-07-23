@@ -25,6 +25,7 @@
 const DEFAULT_NORM_M = 150_000; // proximity normalization in municipio mode (~150km)
 const CAPITAL_REF = 1_000_000;  // capital_social normalization reference
 const LN_CAPREF = Math.log(1 + CAPITAL_REF); // divisor pré-calculado do ln (float)
+const IDADE_REF_ANOS = 20;      // tempo de vida que satura o componente idade
 
 // Acima disto o CASE de proximidade fica grande demais p/ valer a pena; com
 // território tão amplo a proximidade por município é sinal fraco -> usa a média
@@ -34,7 +35,7 @@ const MAX_PROX_CASE = 300;
 export interface RecommendProfile {
   cnaes_alvo: number[];
   territorio_municipios: number[];
-  pesos: { cnae?: number; proximidade?: number; porte?: number };
+  pesos: { cnae?: number; proximidade?: number; porte?: number; capital?: number; idade?: number };
   // Endereço de partida (origem das rotas) definido nos filtros. Quando presente,
   // a proximidade é medida a partir daqui em vez do centroide do território.
   partida?: { lat: number; lon: number } | null;
@@ -42,8 +43,11 @@ export interface RecommendProfile {
 
 export interface RecommendFilters {
   q?: string;            // texto: razão / fantasia / cnpj
-  uf?: string[];         // UFs
   porte?: string;        // porte_emp
+  capMin?: number;       // capital social (R$) — faixa
+  capMax?: number;
+  idadeMin?: number;     // tempo de vida (anos) — faixa
+  idadeMax?: number;
 }
 
 export interface RecommendArgs {
@@ -85,19 +89,23 @@ export function buildRecommendQuery(args: RecommendArgs): { text: string; params
   const cnaes = profile.cnaes_alvo ?? [];
   const municipios = profile.territorio_municipios ?? [];
 
-  const wCnae = profile.pesos?.cnae ?? 0.5;
-  const wPorte = profile.pesos?.porte ?? 0.2;
+  const wCnae = profile.pesos?.cnae ?? 0.4;
+  const wPorte = profile.pesos?.porte ?? 0.15;
+  const wCapital = profile.pesos?.capital ?? 0.1;
+  const wIdade = profile.pesos?.idade ?? 0.1;
 
   // $1 municipios, $2 orgId, $3 wCnae, $4 wPorte, $5 cnaes, $6 divisoesAlvo,
   // $7 secoesAlvo, $8 pruneDivisoes, $9 regioesUf, $10 regioesRegiao,
-  // $11 limit, $12 offset, $13 originLat, $14 originLon, $15+ filtros
+  // $11 limit, $12 offset, $13 originLat, $14 originLon,
+  // $15 wCapital, $16 wIdade, $17+ filtros
   const params: unknown[] = [
     municipios, orgId, wCnae, wPorte,
     cnaes, args.divisoesAlvo, args.secoesAlvo, args.pruneDivisoes,
     args.regioesUf, args.regioesRegiao, limit, offset,
     args.origin.lat, args.origin.lon,
+    wCapital, wIdade,
   ];
-  let p = params.length; // último índice usado (=14)
+  let p = params.length; // último índice usado (=16)
 
   const prox = proximityExpr(args.muniProx);
 
@@ -113,14 +121,32 @@ export function buildRecommendQuery(args: RecommendArgs): { text: string; params
   // (cardinality 0) o filtro é TRUE e varre o território todo.
   const cnaePredicate = `(cardinality($5::int[]) = 0 OR c.cnae_divisao = ANY($8::smallint[]))`;
 
-  const porteS = `(0.5*(CASE c.porte WHEN 'demais' THEN 1.0 WHEN 'pequeno' THEN 0.7 WHEN 'micro' THEN 0.4 ELSE 0.2 END)
-     + 0.5*LEAST(ln(1 + c.capital_social::float8) / ${LN_CAPREF}, 1.0))`;
+  // porte, capital social e tempo de vida são componentes independentes (cada um
+  // com o seu peso) — antes capital estava embutido no componente porte.
+  const porteS = `(CASE c.porte WHEN 'demais' THEN 1.0 WHEN 'pequeno' THEN 0.7 WHEN 'micro' THEN 0.4 ELSE 0.2 END)::float8`;
+  const capitalS = `LEAST(ln(1 + COALESCE(c.capital_social, 0)::float8) / ${LN_CAPREF}, 1.0)`;
+  // tempo de vida: linear até ${IDADE_REF_ANOS} anos (satura em 1). Sem data de
+  // início (base RFB tem nulos) o componente é 0, não penaliza nem premia.
+  const idadeS = `LEAST(GREATEST((CURRENT_DATE - COALESCE(c.data_inicio_atividade, CURRENT_DATE))::float8 / 365.25, 0) / ${IDADE_REF_ANOS}::float8, 1.0)`;
 
   // Filtros server-side (WHERE sobre toda a base dentro do território/alvo).
   const f = args.filters ?? {};
   const extra: string[] = [];
-  if (f.uf && f.uf.length > 0) { params.push(f.uf); extra.push(`c.uf = ANY($${++p}::text[])`); }
   if (f.porte) { params.push(f.porte); extra.push(`c.porte = $${++p}::porte_emp`); }
+  // Faixas de capital social e tempo de vida. Ambas as colunas estão no INCLUDE
+  // do índice de cobertura (migração 068), então o filtro não custa heap.
+  if (f.capMin != null) { params.push(f.capMin); extra.push(`c.capital_social >= $${++p}::numeric`); }
+  if (f.capMax != null) { params.push(f.capMax); extra.push(`c.capital_social <= $${++p}::numeric`); }
+  // idade em anos -> data limite. Empresa sem data_inicio_atividade (nulo na base
+  // RFB) sai do resultado quando a faixa é usada — não dá p/ afirmar a idade dela.
+  if (f.idadeMin != null) {
+    params.push(f.idadeMin);
+    extra.push(`c.data_inicio_atividade <= CURRENT_DATE - ($${++p}::float8 * 365.25)::int`);
+  }
+  if (f.idadeMax != null) {
+    params.push(f.idadeMax);
+    extra.push(`c.data_inicio_atividade >= CURRENT_DATE - ($${++p}::float8 * 365.25)::int`);
+  }
   if (f.q) {
     const digits = f.q.replace(/\D/g, '');
     params.push(`%${f.q}%`); const a = ++p;
@@ -137,13 +163,15 @@ export function buildRecommendQuery(args: RecommendArgs): { text: string; params
 WITH cand AS (
   -- score num nível externo p/ o ORDER BY referenciar prox/fit/porte_comp por nome
   -- (aliases não são visíveis dentro de expressões do mesmo SELECT).
-  SELECT raw.*, (raw.prox + $3 * raw.fit + raw.porte_comp) AS score
+  SELECT raw.*, (raw.prox + $3 * raw.fit + raw.porte_comp + raw.capital_comp + raw.idade_comp) AS score
   FROM (
     SELECT
       c.id, c.municipio_id, c.cnae_principal,
       ${fitExpr} AS fit,
       (${prox}) AS prox,
-      ($4 * ${porteS}) AS porte_comp
+      ($4 * ${porteS}) AS porte_comp,
+      ($15::float8 * ${capitalS}) AS capital_comp,
+      ($16::float8 * ${idadeS}) AS idade_comp
     FROM companies c
     ${cdsJoin}
     WHERE c.situacao_cadastral = 'ativa'
@@ -159,10 +187,10 @@ WITH cand AS (
 )
 SELECT
   cand.id, c2.cnpj, c2.razao_social, c2.nome_fantasia, cand.cnae_principal,
-  cand.municipio_id, c2.uf, c2.porte, c2.capital_social,
+  cand.municipio_id, c2.uf, c2.porte, c2.capital_social, c2.data_inicio_atividade,
   -- ponto exibido: geocode de rua/cep (exato) -> geom da empresa -> centroide do município
   ST_Y(pt.g::geometry) AS lat, ST_X(pt.g::geometry) AS lon,
-  (cand.prox + $3 * cand.fit + cand.porte_comp) AS score,
+  cand.score,
   jsonb_build_object(
     'cnae_match', CASE WHEN cand.fit >= 1.0 THEN 'classe' WHEN cand.fit >= 0.6 THEN 'divisao'
                        WHEN cand.fit >= 0.3 THEN 'secao' ELSE 'nenhum' END,
@@ -171,10 +199,14 @@ SELECT
     'distancia_km', round((ST_Distance(pt.g, ST_SetSRID(ST_MakePoint($14::float8, $13::float8), 4326)::geography, false) / 1000.0)::numeric, 1),
     'porte', c2.porte,
     'capital_social', c2.capital_social,
+    'idade_anos', CASE WHEN c2.data_inicio_atividade IS NOT NULL
+                       THEN round(((CURRENT_DATE - c2.data_inicio_atividade)::numeric / 365.25), 1) END,
     'componentes', jsonb_build_object(
       'cnae', round(($3 * cand.fit)::numeric, 3),
       'proximidade', round(cand.prox::numeric, 3),
-      'porte', round(cand.porte_comp::numeric, 3)
+      'porte', round(cand.porte_comp::numeric, 3),
+      'capital', round(cand.capital_comp::numeric, 3),
+      'idade', round(cand.idade_comp::numeric, 3)
     )
   ) AS reason
 FROM cand

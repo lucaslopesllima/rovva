@@ -44,12 +44,18 @@ describe('buildRecommendQuery', () => {
     origin: { lat: -23.55, lon: -46.63 },
   };
 
-  it('modo município usa = ANY($1) e pesos default (wCnae $3, wPorte $4)', () => {
+  it('modo município usa = ANY($1) e pesos default (wCnae $3, wPorte $4, wCapital $15, wIdade $16)', () => {
     const { text, params } = buildRecommendQuery(base);
     expect(text).toContain('c.municipio_id = ANY($1::int[])');
     expect(params[0]).toEqual([3550308]); // municipios
-    expect(params[2]).toBe(0.5);          // wCnae default
-    expect(params[3]).toBe(0.2);          // wPorte default
+    expect(params[2]).toBe(0.4);          // wCnae default
+    expect(params[3]).toBe(0.15);         // wPorte default
+    expect(params[14]).toBe(0.1);         // wCapital default
+    expect(params[15]).toBe(0.1);         // wIdade default
+    // capital social e tempo de vida entram como componentes próprios do score
+    expect(text).toContain('capital_comp');
+    expect(text).toContain('idade_comp');
+    expect(text).toContain('c.data_inicio_atividade');
   });
 
   it('regiões habilitadas entram como arrays escalares ($9/$10)', () => {

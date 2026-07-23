@@ -27,7 +27,7 @@
   --wa-in:      #202c33;
   --wa-ink:     #e9edef;
   --wa-muted:   #8696a0;
-  --wa-border:  #2a373f;
+  --wa-border:  #3a4952;  /* divisórias — WA Web usa #2a373f, clareado p/ visibilidade */
   --wa-hover:   #202c33;
   --wa-active:  #2a3942;
   --wa-sep:     rgba(32, 44, 51, 0.9);

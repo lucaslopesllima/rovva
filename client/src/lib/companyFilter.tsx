@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './api.ts';
 import type { Municipio } from './types.ts';
-import { maskSearchCNPJ, maskCEP } from './format.ts';
-import { Btn, SafeButton, cn } from './ui.tsx';
+import { maskSearchCNPJ, maskCEP, maskMoney, dec } from './format.ts';
+import { Btn, SafeButton, Hint, cn } from './ui.tsx';
 import { Icon } from './icons.tsx';
 import { Cnae, seedCnae } from './cnae.tsx';
 
@@ -14,14 +14,36 @@ import { Cnae, seedCnae } from './cnae.tsx';
 const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200';
 const onlyDigits = (s: string): string => s.replace(/\D/g, '');
 const parseCodes = (s: string): number[] => s.split(/[,\s]+/).map((x) => onlyDigits(x)).filter(Boolean).map(Number);
-const parseUfs = (s: string): string[] => s.split(/[,\s]+/).map((x) => x.trim().toUpperCase()).filter((x) => x.length === 2);
+// anos inteiros (tempo de vida): só dígitos, máx. 3 casas (999 anos)
+const maskAnos = (v: string): string => onlyDigits(v).slice(0, 3);
 const PORTE_OPTS = [
   { v: 'micro', l: 'Micro' }, { v: 'pequeno', l: 'Pequeno' },
   { v: 'demais', l: 'Demais' }, { v: 'nao_informado', l: 'Não informado' },
 ];
 
-export interface Pesos { cnae: number; proximidade: number; porte: number }
-export const DEFAULT_PESOS: Pesos = { cnae: 0.5, proximidade: 0.3, porte: 0.2 };
+export interface Pesos { cnae: number; proximidade: number; porte: number; capital: number; idade: number }
+export const DEFAULT_PESOS: Pesos = { cnae: 0.4, proximidade: 0.25, porte: 0.15, capital: 0.1, idade: 0.1 };
+export const PESO_LABEL: Record<keyof Pesos, string> = {
+  cnae: 'CNAE',
+  proximidade: 'Proximidade',
+  porte: 'Porte',
+  capital: 'Capital social',
+  idade: 'Tempo de vida',
+};
+// Explica o que cada fator mede e como o peso age (tooltip ao lado do slider).
+export const PESO_HINT: Record<keyof Pesos, string> = {
+  cnae: 'Quanto a atividade da empresa se parece com os CNAEs-alvo: mesma classe vale 1,0; mesma divisão 0,6; mesma seção 0,3; nada em comum 0.',
+  proximidade: 'Distância do município da empresa até o endereço de partida (ou o centro do território). Colada na origem vale 1,0 e cai até 0 em 150 km.',
+  porte: 'Porte declarado na Receita Federal: demais (grande/média) 1,0 · pequeno 0,7 · micro 0,4 · não informado 0,2.',
+  capital: 'Capital social registrado, em escala logarítmica: R$ 1 milhão ou mais vale 1,0 e valores baixos caem suavemente. Mede porte financeiro, não faturamento.',
+  idade: 'Tempo desde a abertura da empresa: 20 anos ou mais vale 1,0, proporcional abaixo disso. Sem data na base, o fator fica 0 (não pesa contra).',
+};
+const PESO_SLIDER_HINT = 'O peso multiplica o fator: 0 desliga, 1 faz ele pesar o máximo. O score final é a soma dos cinco fatores.';
+
+// Faixas (filtro duro) de capital social e tempo de vida. Strings porque os
+// campos guardam o valor editável mascarado; '' = sem limite naquela ponta.
+export interface Faixas { capMin: string; capMax: string; idadeMin: string; idadeMax: string }
+export const FAIXAS_VAZIAS: Faixas = { capMin: '', capMax: '', idadeMin: '', idadeMax: '' };
 
 // Endereço de partida das rotas: origem que o usuário define à mão nos filtros,
 // geocodificada para lat/lon. Sobrescreve o endereço da conta nos cálculos de
@@ -63,19 +85,19 @@ export interface FilterableCompany {
 export interface CompanyFilter {
   fq: string; setFq: (s: string) => void;
   fCnae: string; setFCnae: (s: string) => void;
-  fUf: string; setFUf: (s: string) => void;
   fPorte: string; setFPorte: (s: string) => void;
   usarAlvo: boolean; setUsarAlvo: (b: boolean) => void;
   // config da recomendação (modo recommend)
   territorio: Municipio[]; setTerritorio: (m: Municipio[]) => void;
   pesos: Pesos; setPesos: (p: Pesos) => void;
   partida: Partida | null; setPartida: (p: Partida | null) => void;
+  faixas: Faixas; setFaixas: (f: Faixas) => void;
   filtroAtivo: boolean;
   limpar: () => void;
   apply: <T extends FilterableCompany>(items: T[]) => T[];
 }
 
-interface Persisted { fq: string; fCnae: string; fUf: string; fPorte: string; usarAlvo: boolean }
+interface Persisted { fq: string; fCnae: string; fPorte: string; usarAlvo: boolean; faixas?: Faixas }
 
 function loadSaved(key: string): Persisted | null {
   try {
@@ -92,19 +114,19 @@ export function useCompanyFilter(storageKey = 'default'): CompanyFilter {
 
   const [fq, setFq] = useState(saved?.fq ?? '');
   const [fCnae, setFCnae] = useState(saved?.fCnae ?? '');
-  const [fUf, setFUf] = useState(saved?.fUf ?? '');
   const [fPorte, setFPorte] = useState(saved?.fPorte ?? '');
   const [usarAlvo, setUsarAlvo] = useState(saved?.usarAlvo ?? true);
   const [territorio, setTerritorio] = useState<Municipio[]>(reco.munis);
   const [pesos, setPesos] = useState<Pesos>(reco.pesos);
   const [partida, setPartida] = useState<Partida | null>(reco.partida);
+  const [faixas, setFaixas] = useState<Faixas>({ ...FAIXAS_VAZIAS, ...saved?.faixas });
 
   // Persiste o estado do filtro a cada mudança.
   useEffect(() => {
     try {
-      localStorage.setItem(key, JSON.stringify({ fq, fCnae, fUf, fPorte, usarAlvo }));
+      localStorage.setItem(key, JSON.stringify({ fq, fCnae, fPorte, usarAlvo, faixas }));
     } catch { /* storage indisponível */ }
-  }, [key, fq, fCnae, fUf, fPorte, usarAlvo]);
+  }, [key, fq, fCnae, fPorte, usarAlvo, faixas]);
 
   // Persiste a config da recomendação (compartilhada).
   useEffect(() => {
@@ -117,7 +139,6 @@ export function useCompanyFilter(storageKey = 'default'): CompanyFilter {
 
   const apply = useMemo(() => {
     const cnaes = parseCodes(fCnae);
-    const ufs = parseUfs(fUf);
     const muniSet = new Set(muniIds);
     const qd = onlyDigits(fq);
     const ql = fq.trim().toLowerCase();
@@ -128,21 +149,23 @@ export function useCompanyFilter(storageKey = 'default'): CompanyFilter {
       }
       if (cnaes.length && !cnaes.includes(c.cnae_principal)) return false;
       if (fPorte && c.porte !== fPorte) return false;
-      if (ufs.length) {
-        if (!ufs.includes(c.uf)) return false;             // UF da tela sobrescreve território
-      } else if (usarAlvo && muniSet.size > 0) {
+      if (usarAlvo && muniSet.size > 0) {
         if (c.municipio_id == null || !muniSet.has(c.municipio_id)) return false;
       }
       return true;
     });
-  }, [fq, fCnae, fUf, fPorte, usarAlvo, muniIds]);
+  }, [fq, fCnae, fPorte, usarAlvo, muniIds]);
 
-  const filtroAtivo = fq.trim() !== '' || fCnae.trim() !== '' || fUf.trim() !== '' || fPorte !== '' || usarAlvo;
-  const limpar = (): void => { setFq(''); setFCnae(''); setFUf(''); setFPorte(''); setUsarAlvo(false); };
+  const faixaAtiva = Object.values(faixas).some((v) => v.trim() !== '');
+  const filtroAtivo = fq.trim() !== '' || fCnae.trim() !== '' || fPorte !== '' || usarAlvo || faixaAtiva;
+  const limpar = (): void => {
+    setFq(''); setFCnae(''); setFPorte(''); setUsarAlvo(false);
+    setFaixas({ ...FAIXAS_VAZIAS });
+  };
 
   return {
-    fq, setFq, fCnae, setFCnae, fUf, setFUf, fPorte, setFPorte, usarAlvo, setUsarAlvo,
-    territorio, setTerritorio, pesos, setPesos, partida, setPartida,
+    fq, setFq, fCnae, setFCnae, fPorte, setFPorte, usarAlvo, setUsarAlvo,
+    territorio, setTerritorio, pesos, setPesos, partida, setPartida, faixas, setFaixas,
     filtroAtivo, limpar, apply,
   };
 }
@@ -307,9 +330,10 @@ function PartidaInput({ value, onChange }: { value: Partida | null; onChange: (p
   );
 }
 
-// Seção colapsável (acordeão) reutilizada para básico/avançado. Mesmo padrão
+// Seção colapsável (acordeão) — hoje só o bloco "Filtros avançados" a usa (o
+// básico fica sempre visível quando a barra abre). Mesmo padrão
 // grid-rows-[1fr]/[0fr] + overflow-hidden usado no Recommend para animar altura.
-// `nested` deixa o cabeçalho discreto (avançado dentro do básico).
+// `nested` deixa o cabeçalho discreto (bloco dentro do card da barra).
 export function FilterSection({ title, open, onToggle, nested = false, children }: {
   title: string; open: boolean; onToggle: () => void; nested?: boolean; children: React.ReactNode;
 }): React.JSX.Element {
@@ -331,15 +355,16 @@ export function FilterSection({ title, open, onToggle, nested = false, children 
 }
 
 export function CompanyFilterBar({ f, recommend = false }: { f: CompanyFilter; recommend?: boolean }): React.JSX.Element {
-  const [basicoOpen, setBasicoOpen] = useState(true);
   // No modo recommend o território (avançado) é necessário para haver resultado —
   // começa aberto. No funil é opcional, começa recolhido.
   const [avancadoOpen, setAvancadoOpen] = useState(recommend);
 
+  // Sem acordeão no básico: o botão "Filtros" da página já abre/fecha a barra
+  // inteira. Só o avançado colapsa aqui dentro.
   return (
     <div className="space-y-3">
-      <div className="rounded-2xl border border-ink-200/70 bg-surface shadow-card">
-        <FilterSection title="Filtros" open={basicoOpen} onToggle={() => setBasicoOpen((v) => !v)}>
+      <div className="rounded-2xl border border-ink-200/70 bg-surface p-3 shadow-card">
+        <div>
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-ink-500">Nome / CNPJ</span>
@@ -353,9 +378,24 @@ export function CompanyFilterBar({ f, recommend = false }: { f: CompanyFilter; r
                 {PORTE_OPTS.map((p) => <option key={p.v} value={p.v}>{p.l}</option>)}
               </select>
             </label>
+            {/* Faixas (só no recommend): corte duro no servidor, antes do ranqueamento.
+                No funil não entram — o filtro do funil é client-side e a lista
+                carregada não traz capital social nem data de abertura. */}
+            {recommend && (
+              <>
+                <FaixaField label="Capital social" unidade="R$" hint={FAIXA_HINT.capital} mask={maskMoney}
+                  min={f.faixas.capMin} max={f.faixas.capMax}
+                  onMin={(v) => f.setFaixas({ ...f.faixas, capMin: v })}
+                  onMax={(v) => f.setFaixas({ ...f.faixas, capMax: v })} />
+                <FaixaField label="Tempo de vida" unidade="anos" hint={FAIXA_HINT.idade} mask={maskAnos}
+                  min={f.faixas.idadeMin} max={f.faixas.idadeMax}
+                  onMin={(v) => f.setFaixas({ ...f.faixas, idadeMin: v })}
+                  onMax={(v) => f.setFaixas({ ...f.faixas, idadeMax: v })} />
+              </>
+            )}
           </div>
 
-          {/* Avançado aninhado dentro do básico */}
+          {/* Único acordeão da barra */}
           <div className="mt-2.5">
             <FilterSection title="Filtros avançados" open={avancadoOpen} onToggle={() => setAvancadoOpen((v) => !v)} nested>
               {recommend ? (
@@ -370,7 +410,6 @@ export function CompanyFilterBar({ f, recommend = false }: { f: CompanyFilter; r
                       Restringir ao território
                       {f.territorio.length > 0 && <span className="text-ink-400">({f.territorio.length} municípios)</span>}
                     </label>
-                    <span className="text-xs text-ink-400">UF da tela sobrescreve o território.</span>
                     <div className="ml-auto">
                       <Btn size="sm" variant="ghost" type="button" onClick={f.limpar}>Limpar</Btn>
                     </div>
@@ -379,8 +418,51 @@ export function CompanyFilterBar({ f, recommend = false }: { f: CompanyFilter; r
               )}
             </FilterSection>
           </div>
-        </FilterSection>
+        </div>
       </div>
+    </div>
+  );
+}
+
+// Faixas de capital social e tempo de vida: filtro duro (corta a base antes do
+// ranqueamento), diferente dos pesos — que só reordenam o que passou. Ponta
+// vazia = sem limite. Vai para o /api/recommend como cap_min/cap_max e
+// idade_min/idade_max.
+const FAIXA_HINT = {
+  capital: 'Capital social declarado na Receita Federal (o valor que os sócios registraram na abertura ou na última alteração). Empresas fora da faixa somem do resultado.',
+  idade: 'Anos desde a abertura da empresa (data de início de atividade). Empresas sem essa data na base saem do resultado quando você usa a faixa.',
+} as const;
+
+export function faixasParams(f: Faixas): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (f.capMin.trim()) out.cap_min = String(dec(f.capMin));
+  if (f.capMax.trim()) out.cap_max = String(dec(f.capMax));
+  if (f.idadeMin.trim()) out.idade_min = String(dec(f.idadeMin));
+  if (f.idadeMax.trim()) out.idade_max = String(dec(f.idadeMax));
+  return out;
+}
+
+// Um par mín/máx no grid do filtro simples (mesma célula que Nome/CNAE/Porte).
+function FaixaField({ label, unidade, hint, mask, min, max, onMin, onMax }: {
+  label: string; unidade: string; hint: string; mask: (v: string) => string;
+  min: string; max: string; onMin: (v: string) => void; onMax: (v: string) => void;
+}): React.JSX.Element {
+  const invalido = min.trim() !== '' && max.trim() !== '' && dec(min) > dec(max);
+  return (
+    <div className="block">
+      <span className="mb-1 flex items-center gap-1.5 text-xs font-medium text-ink-500">
+        {label} <span className="text-ink-300">({unidade})</span> <Hint text={hint} />
+      </span>
+      <div className="flex items-center gap-2">
+        <input value={min} inputMode="decimal" placeholder="mín." maxLength={16}
+          onChange={(e) => onMin(mask(e.target.value))}
+          aria-label={`${label} mínimo`} className={inputCls} />
+        <span className="shrink-0 text-xs text-ink-400">até</span>
+        <input value={max} inputMode="decimal" placeholder="máx." maxLength={16}
+          onChange={(e) => onMax(mask(e.target.value))}
+          aria-label={`${label} máximo`} className={inputCls} />
+      </div>
+      {invalido && <p className="mt-1 text-[11px] text-rose-600">Mínimo maior que o máximo.</p>}
     </div>
   );
 }
@@ -506,12 +588,15 @@ function RecommendConfig({ f }: { f: CompanyFilter }): React.JSX.Element {
 
       {/* Pesos do score */}
       <div className="rounded-2xl border border-ink-200/70 bg-surface p-3 shadow-card">
-        <h4 className="text-sm font-semibold text-ink-900">Pesos do score</h4>
+        <h4 className="flex items-center gap-1.5 text-sm font-semibold text-ink-900">
+          Pesos do score <Hint text={PESO_SLIDER_HINT} />
+        </h4>
         <p className="mt-0.5 text-xs text-ink-400">Quanto cada fator influencia o ranqueamento.</p>
-        {(['cnae', 'proximidade', 'porte'] as const).map((k) => (
+        {(['cnae', 'proximidade', 'porte', 'capital', 'idade'] as const).map((k) => (
           <label key={k} className="mt-3 block">
             <div className="flex justify-between text-xs font-semibold text-ink-600">
-              <span className="capitalize">{k}</span><span className="tabnums text-brand-600">{f.pesos[k].toFixed(2)}</span>
+              <span className="inline-flex items-center gap-1.5">{PESO_LABEL[k]} <Hint text={PESO_HINT[k]} /></span>
+              <span className="tabnums text-brand-600">{f.pesos[k].toFixed(2)}</span>
             </div>
             <input type="range" min={0} max={1} step={0.05} value={f.pesos[k]}
               onChange={(e) => f.setPesos({ ...f.pesos, [k]: Number(e.target.value) })}

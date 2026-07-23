@@ -277,9 +277,48 @@ describe('recommend', () => {
     // q curto (<3) é ignorado — não filtra nada
     expect((await inj(solo, 'GET', `/api/recommend?${base}&q=ab&limit=100`)).statusCode).toBe(200);
     expect(has((await inj(solo, 'GET', `/api/recommend?${base}&limit=100`)).json() as Page)).toBe(true);
-    expect(has((await inj(solo, 'GET', `/api/recommend?${base}&uf=SP&porte=micro&limit=100`)).json() as Page)).toBe(true);
+    expect(has((await inj(solo, 'GET', `/api/recommend?${base}&porte=micro&limit=100`)).json() as Page)).toBe(true);
     expect(has((await inj(solo, 'GET', `/api/recommend?${base}&porte=demais&limit=100`)).json() as Page)).toBe(false);
     // q com dígitos aciona a busca por prefixo de cnpj
     expect((await inj(solo, 'GET', `/api/recommend?${base}&q=99 999&limit=100`)).statusCode).toBe(200);
+  });
+
+  it('faixas de capital social e tempo de vida cortam a base', async () => {
+    const solo = await register(app, 'rec3');
+    const nova = await makeCompany({
+      municipioId: SP, lat: -23.55, lon: -46.63, cnae: 4781400,
+      capital: 50_000, abertura: '2024-01-10',
+    });
+    const antiga = await makeCompany({
+      municipioId: SP, lat: -23.55, lon: -46.63, cnae: 4781400,
+      capital: 5_000_000, abertura: '1998-03-02',
+    });
+    const semData = await makeCompany({
+      municipioId: SP, lat: -23.55, lon: -46.63, cnae: 4781400, capital: 5_000_000,
+    });
+    const base = `munis=${SP}&cnae=4781400&limit=100`;
+
+    interface Page { results: { id: string }[] }
+    const ids = async (qs: string): Promise<number[]> =>
+      ((await inj(solo, 'GET', `/api/recommend?${base}&${qs}`)).json() as Page).results.map((x) => Number(x.id));
+
+    const capAlto = await ids('cap_min=1000000');
+    expect(capAlto).toContain(antiga);
+    expect(capAlto).not.toContain(nova);
+
+    const capBaixo = await ids('cap_max=100000');
+    expect(capBaixo).toContain(nova);
+    expect(capBaixo).not.toContain(antiga);
+
+    // >=20 anos: só a antiga (a sem data_inicio_atividade sai quando há faixa)
+    const velhas = await ids('idade_min=20');
+    expect(velhas).toContain(antiga);
+    expect(velhas).not.toContain(nova);
+    expect(velhas).not.toContain(semData);
+
+    // <=5 anos: só a nova
+    const jovens = await ids('idade_max=5');
+    expect(jovens).toContain(nova);
+    expect(jovens).not.toContain(antiga);
   });
 });

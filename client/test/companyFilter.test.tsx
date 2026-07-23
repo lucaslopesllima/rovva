@@ -2,9 +2,9 @@
 // O perfil-alvo foi removido; o território (municípios) agora vive no filtro,
 // persistido no navegador (companyFilter:reco) e aplicado ao client-side.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { renderHook, render, screen, waitFor, fireEvent, act, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useCompanyFilter, CompanyFilterBar, loadPartida, loadTerritorioIds, type FilterableCompany } from '../src/lib/companyFilter.tsx';
+import { useCompanyFilter, CompanyFilterBar, loadPartida, loadTerritorioIds, faixasParams, PESO_HINT, type FilterableCompany, type Faixas } from '../src/lib/companyFilter.tsx';
 import { api } from '../src/lib/api.ts';
 import type { Municipio } from '../src/lib/types.ts';
 
@@ -58,14 +58,6 @@ describe('useCompanyFilter', () => {
     expect(result.current.apply([co({ porte: 'micro' }), co({})])).toHaveLength(1);
   });
 
-  it('UF da tela sobrescreve o território', () => {
-    const { result } = renderHook(() => useCompanyFilter('t3'));
-    act(() => result.current.setTerritorio([mun(100)]));
-    act(() => result.current.setFUf('sc, pr'));
-    const sc = co({ uf: 'SC', municipio_id: 999 }); // fora do território, mas UF manda
-    expect(result.current.apply([sc, co({ uf: 'SP' })])).toEqual([sc]);
-  });
-
   it('limpar zera os filtros e desliga o território', () => {
     const { result } = renderHook(() => useCompanyFilter('t4'));
     act(() => { result.current.setFq('x'); result.current.setTerritorio([mun(100)]); });
@@ -89,7 +81,7 @@ describe('useCompanyFilter', () => {
 
   it('estado salvo tem precedência sobre o default', () => {
     localStorage.setItem('companyFilter:t6',
-      JSON.stringify({ fq: 'salvo', fCnae: '999', fUf: '', fPorte: '', usarAlvo: false }));
+      JSON.stringify({ fq: 'salvo', fCnae: '999', fPorte: '', usarAlvo: false }));
     const { result } = renderHook(() => useCompanyFilter('t6'));
     expect(result.current.fq).toBe('salvo');
     expect(result.current.fCnae).toBe('999');
@@ -104,19 +96,20 @@ function Bar({ recommend }: { recommend?: boolean }): React.JSX.Element {
 }
 
 describe('CompanyFilterBar — funil', () => {
-  it('colapsa/expande a seção básica', async () => {
+  it('básico não tem acordeão; só o avançado colapsa', async () => {
     render(<Bar />);
-    const nome = screen.getByPlaceholderText('Razão, fantasia ou CNPJ');
-    expect(nome).toBeVisible();
-    await userEvent.click(screen.getByRole('button', { name: 'Filtros' }));
-    // seção fecha (grid-rows-[0fr]); o input segue no DOM mas colapsado — apenas exercita o toggle
-    await userEvent.click(screen.getByRole('button', { name: 'Filtros' }));
+    expect(screen.getByPlaceholderText('Razão, fantasia ou CNPJ')).toBeVisible();
+    // o único toggle da barra é o avançado (o básico abre junto com a barra)
+    expect(screen.queryByRole('button', { name: 'Filtros' })).toBeNull();
+    const avancado = screen.getByRole('button', { name: /Filtros avançados/ });
+    expect(avancado).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(avancado);
+    expect(avancado).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('máscara de nome/CNPJ, UF e porte atualizam o filtro', async () => {
+  it('máscara de nome/CNPJ e porte atualizam o filtro', async () => {
     render(<Bar />);
     await userEvent.type(screen.getByPlaceholderText('Razão, fantasia ou CNPJ'), '11222333');
-    await userEvent.type(screen.getByPlaceholderText('Ex.: SC, PR'), 'SC');
     await userEvent.selectOptions(screen.getByRole('combobox'), 'micro');
     expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('micro');
   });
@@ -254,6 +247,89 @@ describe('RecommendConfig', () => {
     const ranges = screen.getAllByRole('slider');
     fireEvent.change(ranges[0], { target: { value: '0.8' } });
     await userEvent.click(screen.getByRole('button', { name: 'Limpar filtros' }));
+  });
+
+  it('faixas de capital/idade ficam no filtro simples (sem abrir o avançado)', async () => {
+    render(<Bar recommend />);
+    expect(screen.getByLabelText('Capital social mínimo')).toBeVisible();
+    // no funil não aparecem (filtro client-side não tem esses dados)
+    cleanup();
+    render(<Bar />);
+    expect(screen.queryByLabelText('Capital social mínimo')).toBeNull();
+  });
+
+  it('faixas de capital/idade: máscara, aviso de min>max, persistência e params', async () => {
+    render(<Bar recommend />);
+    await userEvent.type(screen.getByLabelText('Capital social mínimo'), '1000000');
+    await userEvent.type(screen.getByLabelText('Capital social máximo'), '500000');
+    expect(await screen.findByText('Mínimo maior que o máximo.')).toBeInTheDocument();
+
+    // anos só aceita dígitos (máx. 3)
+    const idadeMin = screen.getByLabelText('Tempo de vida mínimo');
+    await userEvent.type(idadeMin, 'a12b');
+    expect((idadeMin as HTMLInputElement).value).toBe('12');
+
+    await waitFor(() => {
+      const saved = JSON.parse(localStorage.getItem('companyFilter:bar') ?? '{}') as { faixas?: Faixas };
+      expect(saved.faixas?.idadeMin).toBe('12');
+    });
+
+    expect(faixasParams({ capMin: '1000000', capMax: '', idadeMin: '12', idadeMax: '' }))
+      .toEqual({ cap_min: '1000000', idade_min: '12' });
+    expect(faixasParams({ capMin: '', capMax: '', idadeMin: '', idadeMax: '' })).toEqual({});
+
+    // "Limpar filtros" zera as faixas
+    await userEvent.click(screen.getByRole('button', { name: 'Limpar filtros' }));
+    expect((screen.getByLabelText('Capital social mínimo') as HTMLInputElement).value).toBe('');
+  });
+
+  it('tudo que o usuário digita sobrevive a remontar a tela (localStorage)', async () => {
+    render(<Bar recommend />);
+    await userEvent.type(screen.getByPlaceholderText('Razão, fantasia ou CNPJ'), '11222333');
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'micro');
+    await userEvent.type(screen.getByLabelText('Capital social mínimo'), '250000');
+    await userEvent.type(screen.getByLabelText('Tempo de vida mínimo'), '7');
+    fireEvent.change(screen.getAllByRole('slider')[4]!, { target: { value: '0.55' } }); // peso idade
+
+    // território entra pelo fluxo de cidade (vai para a chave compartilhada)
+    await userEvent.type(screen.getByPlaceholderText(/Buscar cidade/), 'Blu');
+    await userEvent.click(await screen.findByText('Cidade 100', undefined, { timeout: 2000 }));
+
+    await waitFor(() => {
+      const tela = JSON.parse(localStorage.getItem('companyFilter:bar') ?? '{}') as
+        { fq: string; fPorte: string; faixas: Faixas };
+      const reco = JSON.parse(localStorage.getItem('companyFilter:reco') ?? '{}') as
+        { munis: { id: number }[]; pesos: { idade: number } };
+      expect(tela.fq).toBe('11.222.333');       // guardado já mascarado
+      expect(tela.fPorte).toBe('micro');
+      expect(tela.faixas.capMin).toBe('250000');
+      expect(tela.faixas.idadeMin).toBe('7');
+      expect(reco.pesos.idade).toBe(0.55);
+      expect(reco.munis.map((m) => m.id)).toContain(100);
+    });
+
+    // remonta: o estado volta da persistência
+    cleanup();
+    render(<Bar recommend />);
+    expect((screen.getByPlaceholderText('Razão, fantasia ou CNPJ') as HTMLInputElement).value).toBe('11.222.333');
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('micro');
+    expect((screen.getByLabelText('Capital social mínimo') as HTMLInputElement).value).toBe('250000');
+    expect((screen.getByLabelText('Tempo de vida mínimo') as HTMLInputElement).value).toBe('7');
+    expect((screen.getAllByRole('slider')[4] as HTMLInputElement).value).toBe('0.55');
+    expect(loadTerritorioIds()).toContain(100);
+  });
+
+  it('cada peso e cada faixa tem tooltip explicando o conceito', async () => {
+    render(<Bar recommend />);
+    // sem title nativo (duplicava o balão) — o texto vive em aria-label
+    for (const t of Object.values(PESO_HINT)) expect(screen.getByLabelText(t)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Capital social declarado na Receita Federal/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Anos desde a abertura da empresa/)).toBeInTheDocument();
+    // hover mostra o balão (portal no body) e clique no "?" é inerte (só informativo)
+    const btn = screen.getByLabelText(PESO_HINT.idade);
+    await userEvent.hover(btn);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(PESO_HINT.idade);
+    await userEvent.click(btn);
   });
 
   it('cidade já selecionada fica desabilitada; sem resultado avisa', async () => {

@@ -1,6 +1,7 @@
 // Shared UI primitives — the visual vocabulary of the design system.
 // Pages compose these so spacing, radius, color and motion stay consistent.
 import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon, type IconName } from './icons.tsx';
 
 export const cn = (...xs: (string | false | null | undefined)[]): string => xs.filter(Boolean).join(' ');
@@ -158,6 +159,47 @@ export function EmptyState({ icon, title, hint }: { icon: IconName; title: strin
       <p className="text-sm font-medium text-ink-600">{title}</p>
       {hint && <p className="max-w-xs text-xs text-ink-400">{hint}</p>}
     </div>
+  );
+}
+
+/* ── Tooltip de ajuda ───────────────────────────────────────
+   Ícone "?" que explica um conceito. O balão sai em portal no body com
+   position:fixed — dentro do fluxo ele era cortado pelo overflow-hidden dos
+   acordeões/scrollers (z-index não resolve clipping). Abre sempre para cima
+   do ícone, com clamp horizontal para não vazar da viewport. Sem title nativo
+   (duplicaria o balão); o texto vai em aria-label para leitor de tela. */
+const HINT_W = 224; // w-56
+
+export function Hint({ text, className }: { text: string; className?: string }): React.JSX.Element {
+  const ref = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  const show = useCallback(() => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    const half = HINT_W / 2;
+    const left = Math.min(Math.max(r.left + r.width / 2, half + 8), window.innerWidth - half - 8);
+    setPos({ top: r.top - 6, left });
+  }, []);
+  const hide = useCallback(() => setPos(null), []);
+
+  return (
+    <span className={cn('inline-flex align-middle', className)}>
+      <button type="button" ref={ref} aria-label={text}
+        // só informativo: não deve submeter nem "fazer" nada ao clicar
+        onClick={(e) => e.preventDefault()}
+        onPointerEnter={show} onPointerLeave={hide} onFocus={show} onBlur={hide}
+        className="grid h-4 w-4 place-items-center rounded-full text-ink-300 transition hover:text-brand-600 focus:text-brand-600 focus:outline-none">
+        <Icon name="alertCircle" size={13} />
+      </button>
+      {pos !== null && createPortal(
+        <span role="tooltip" style={{ top: pos.top, left: pos.left, width: HINT_W }}
+          className="pointer-events-none fixed z-[100] -translate-x-1/2 -translate-y-full rounded-lg bg-ink-900 px-2.5 py-1.5 text-[11px] font-normal normal-case leading-snug tracking-normal text-ink-50 shadow-pop">
+          {text}
+        </span>,
+        document.body,
+      )}
+    </span>
   );
 }
 

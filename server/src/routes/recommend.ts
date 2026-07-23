@@ -77,24 +77,37 @@ async function cnaeTiers(cnaesAlvo: number[]): Promise<{
 const parseInts = (s?: string): number[] =>
   (s ?? '').split(/[,\s]+/).map((x) => parseInt(x, 10)).filter(Number.isFinite);
 
-function parseFilters(q: { q?: string; uf?: string; porte?: string }): RecommendFilters {
-  const uf = (q.uf ?? '').split(/[,\s]+/).map((x) => x.trim().toUpperCase()).filter((x) => x.length === 2);
+function parseFilters(q: {
+  q?: string; porte?: string;
+  cap_min?: number; cap_max?: number; idade_min?: number; idade_max?: number;
+}): RecommendFilters {
   const texto = (q.q ?? '').trim();
+  const num = (v: number | undefined): number | undefined =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined;
   return {
+    capMin: num(q.cap_min), capMax: num(q.cap_max),
+    idadeMin: num(q.idade_min), idadeMax: num(q.idade_max),
     // <3 chars: o GIN trgm não indexa o padrão -> ILIKE '%x%' vira seq scan
     // na base inteira a cada tecla. Ignora até o termo ficar utilizável.
     q: texto.length >= 3 ? texto : undefined,
-    uf: uf.length ? uf : undefined,
     porte: q.porte && PORTES.has(q.porte) ? q.porte : undefined,
   };
 }
 
 // Pesos do score vêm do filtro (cliente). Mantém o default antigo do perfil-alvo
 // quando o cliente não envia o valor, p/ a recomendação não zerar um fator.
-function parsePesos(q: { w_cnae?: number; w_prox?: number; w_porte?: number }): RecommendProfile['pesos'] {
+function parsePesos(
+  q: { w_cnae?: number; w_prox?: number; w_porte?: number; w_capital?: number; w_idade?: number },
+): RecommendProfile['pesos'] {
   const num = (v: number | undefined, d: number): number =>
     typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : d;
-  return { cnae: num(q.w_cnae, 0.5), proximidade: num(q.w_prox, 0.3), porte: num(q.w_porte, 0.2) };
+  return {
+    cnae: num(q.w_cnae, 0.4),
+    proximidade: num(q.w_prox, 0.25),
+    porte: num(q.w_porte, 0.15),
+    capital: num(q.w_capital, 0.1),
+    idade: num(q.w_idade, 0.1),
+  };
 }
 
 export function recommendRoutes(app: FastifyInstance): void {
@@ -109,11 +122,16 @@ export function recommendRoutes(app: FastifyInstance): void {
           q: { type: 'string' },
           cnae: { type: 'string' },   // CNAEs-alvo (fit em tiers) — csv
           munis: { type: 'string' },  // território: ids de município — csv
-          uf: { type: 'string' },
           porte: { type: 'string' },
           w_cnae: { type: 'number', minimum: 0, maximum: 1 },
           w_prox: { type: 'number', minimum: 0, maximum: 1 },
           w_porte: { type: 'number', minimum: 0, maximum: 1 },
+          w_capital: { type: 'number', minimum: 0, maximum: 1 }, // capital social
+          w_idade: { type: 'number', minimum: 0, maximum: 1 },   // tempo de vida da empresa
+          cap_min: { type: 'number', minimum: 0 },               // faixa de capital social (R$)
+          cap_max: { type: 'number', minimum: 0 },
+          idade_min: { type: 'number', minimum: 0, maximum: 200 }, // faixa de tempo de vida (anos)
+          idade_max: { type: 'number', minimum: 0, maximum: 200 },
           partida_lat: { type: 'number', minimum: -90, maximum: 90 },   // origem da proximidade
           partida_lon: { type: 'number', minimum: -180, maximum: 180 },
         },
@@ -123,7 +141,9 @@ export function recommendRoutes(app: FastifyInstance): void {
     const orgId = req.auth!.orgId;
     const query = req.query as {
       limit?: number; offset?: number; q?: string; cnae?: string; munis?: string;
-      uf?: string; porte?: string; w_cnae?: number; w_prox?: number; w_porte?: number;
+      porte?: string; w_cnae?: number; w_prox?: number; w_porte?: number;
+      w_capital?: number; w_idade?: number;
+      cap_min?: number; cap_max?: number; idade_min?: number; idade_max?: number;
       partida_lat?: number; partida_lon?: number;
     };
     const { limit = 20, offset = 0 } = query;

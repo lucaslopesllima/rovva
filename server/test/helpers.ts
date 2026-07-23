@@ -33,6 +33,7 @@ export async function register(app: FastifyInstance, tag: string, opts: { tipo_c
 export async function makeCompany(opts: {
   municipioId?: number; lat?: number; lon?: number; cnae?: number; uf?: string;
   regiao?: string; porte?: string; capital?: number; razao?: string; fantasia?: string;
+  abertura?: string; // data_inicio_atividade (ISO) — faixa de tempo de vida
 } = {}): Promise<number> {
   // 8 dígitos do timestamp + 5 de sequência: módulos de arquivos diferentes
   // (run próprio cada um) não colidem — com %1000 bastava carregar dois
@@ -42,12 +43,12 @@ export async function makeCompany(opts: {
     ? `ST_SetSRID(ST_MakePoint(${opts.lon}, ${opts.lat}), 4326)::geography` : 'NULL';
   const c = await one<{ id: number }>(
     `INSERT INTO companies (cnpj, razao_social, nome_fantasia, cnae_principal, municipio_id, uf, regiao,
-                            geom, porte, capital_social, situacao_cadastral)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::regiao_br, ${geom}, COALESCE($8::porte_emp,'pequeno'), $9, 'ativa')
+                            geom, porte, capital_social, data_inicio_atividade, situacao_cadastral)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::regiao_br, ${geom}, COALESCE($8::porte_emp,'pequeno'), $9, $10::date, 'ativa')
      RETURNING id`,
     [cnpj, opts.razao ?? `Empresa ${cnpj}`, opts.fantasia ?? null, opts.cnae ?? 4781400,
       opts.municipioId ?? null, opts.uf ?? 'SP', opts.regiao ?? 'SE', opts.porte ?? null,
-      opts.capital ?? 100000],
+      opts.capital ?? 100000, opts.abertura ?? null],
   );
   return Number(c!.id); // bigint vem como string do driver
 }

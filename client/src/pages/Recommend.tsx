@@ -8,7 +8,7 @@ import { useAuth } from '../lib/auth.tsx';
 import type { Recommendation, GeocodeResult, CompanyDetail } from '../lib/types.ts';
 import { Btn, Badge, Card, EmptyState, PageHeader, SafeButton, ScoreBar, Segmented, Spinner, StatCard, cn, type Tone } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
-import { CompanyFilterBar, useCompanyFilter } from '../lib/companyFilter.tsx';
+import { CompanyFilterBar, useCompanyFilter, faixasParams } from '../lib/companyFilter.tsx';
 import { CompanyModal } from '../lib/companyModal.tsx';
 import { NewContactModal, EMPTY_CONTACT, contactBody, type ContactForm } from '../lib/contactForm.tsx';
 import { Cnae } from '../lib/cnae.tsx';
@@ -212,9 +212,12 @@ export function Recommend(): React.JSX.Element {
       qs.set('w_cnae', String(filter.pesos.cnae));
       qs.set('w_prox', String(filter.pesos.proximidade));
       qs.set('w_porte', String(filter.pesos.porte));
+      qs.set('w_capital', String(filter.pesos.capital));
+      qs.set('w_idade', String(filter.pesos.idade));
+      // faixas (capital social / tempo de vida): filtro duro no servidor
+      for (const [k, v] of Object.entries(faixasParams(filter.faixas))) qs.set(k, v);
       if (filter.fq.trim()) qs.set('q', filter.fq.trim());
       if (filter.fCnae.trim()) qs.set('cnae', filter.fCnae.trim());
-      if (filter.fUf.trim()) qs.set('uf', filter.fUf.trim());
       if (filter.fPorte) qs.set('porte', filter.fPorte);
       if (filter.partida) { qs.set('partida_lat', String(filter.partida.lat)); qs.set('partida_lon', String(filter.partida.lon)); }
       const r = await api.get<{ results: Recommendation[]; page: { count: number } }>(
@@ -243,8 +246,10 @@ export function Recommend(): React.JSX.Element {
     const t = setTimeout(() => { void load(0); }, 350);
     return () => clearTimeout(t);
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
-  }, [filter.fq, filter.fCnae, filter.fUf, filter.fPorte, territorioIds.join(','),
+  }, [filter.fq, filter.fCnae, filter.fPorte, territorioIds.join(','),
     filter.pesos.cnae, filter.pesos.proximidade, filter.pesos.porte,
+    filter.pesos.capital, filter.pesos.idade,
+    filter.faixas.capMin, filter.faixas.capMax, filter.faixas.idadeMin, filter.faixas.idadeMax,
     filter.partida?.lat, filter.partida?.lon]);
 
   // No mapa, plota só o que já está carregado na lista — sem auto-paginar.
@@ -356,9 +361,37 @@ export function Recommend(): React.JSX.Element {
     );
   }
 
+  // Filtro e indicadores rolam JUNTO com a lista (ficam dentro do mesmo scroller,
+  // logo abaixo do header) — antes viviam num bloco fixo acima e, abertos,
+  // comiam a altura útil da lista de forma permanente. Só o header fica fixo.
+  const painelLista = (
+    <div className="space-y-4">
+      <div className={cn('grid transition-[grid-template-rows] duration-200 ease-out',
+        filtersOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')}>
+        <div className={cn('overflow-hidden transition-opacity duration-200 ease-out',
+          filtersOpen ? 'opacity-100' : 'opacity-0')}>
+          <CompanyFilterBar f={filter} recommend />
+        </div>
+      </div>
+
+      <div className={cn('grid transition-[grid-template-rows] duration-200 ease-out',
+        kpisOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')}>
+        <div className={cn('overflow-hidden transition-opacity duration-200 ease-out',
+          kpisOpen ? 'opacity-100' : 'opacity-0')}>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatCard label={filter.filtroAtivo ? 'Resultados (filtrados)' : 'Recomendações'} value={kpi.n} icon="building" tone="brand" />
+            <StatCard label="Score médio" value={(kpi.avg * 100).toFixed(0)} sub="de 100" icon="trendingUp" tone="success" />
+            <StatCard label="CNAE exato" value={kpi.exact} sub="match de classe" icon="target" tone="info" />
+            <StatCard label="Mais próxima" value={`${kpi.near.toFixed(0)} km`} icon="mapPin" tone="warn" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex h-full flex-col">
-      <div className="space-y-4 p-4 sm:p-6">
+      <div className="p-4 pb-0 sm:p-6 sm:pb-0">
         <PageHeader
           title="Empresas recomendadas"
           subtitle={semTerritorio ? 'Defina o território nos filtros para buscar empresas' : `${recs.length} resultado(s) · ranqueados por fit`}
@@ -390,34 +423,10 @@ export function Recommend(): React.JSX.Element {
           }
         />
 
-        {view === 'lista' && (
-          <div className={cn('grid transition-[grid-template-rows] duration-[1500ms] ease-in-out',
-            filtersOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')}>
-            <div className={cn('overflow-hidden transition-opacity duration-[1500ms] ease-in-out',
-              filtersOpen ? 'opacity-100' : 'opacity-0')}>
-              <CompanyFilterBar f={filter} recommend />
-            </div>
-          </div>
-        )}
-
-        {view === 'lista' && (
-          <div className={cn('grid transition-[grid-template-rows] duration-[1000ms] ease-in-out',
-            kpisOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')}>
-            <div className={cn('overflow-hidden transition-opacity duration-[1000ms] ease-in-out',
-              kpisOpen ? 'opacity-100' : 'opacity-0')}>
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <StatCard label={filter.filtroAtivo ? 'Resultados (filtrados)' : 'Recomendações'} value={kpi.n} icon="building" tone="brand" />
-                <StatCard label="Score médio" value={(kpi.avg * 100).toFixed(0)} sub="de 100" icon="trendingUp" tone="success" />
-                <StatCard label="CNAE exato" value={kpi.exact} sub="match de classe" icon="target" tone="info" />
-                <StatCard label="Mais próxima" value={`${kpi.near.toFixed(0)} km`} icon="mapPin" tone="warn" />
-              </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {view === 'mapa' ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-2 px-4 pb-4 sm:px-6 sm:pb-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 px-4 pb-4 pt-4 sm:px-6 sm:pb-6">
           {route && (
             <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm">
               <Icon name="map" size={16} className="text-blue-600" />
@@ -471,7 +480,8 @@ export function Recommend(): React.JSX.Element {
           </Card>
         </div>
       ) : (
-        <div className="min-h-0 flex-1 space-y-3 overflow-auto px-4 pb-4 sm:px-6 sm:pb-6">
+        <div className="min-h-0 flex-1 space-y-3 overflow-auto px-4 pb-4 pt-4 sm:px-6 sm:pb-6">
+          {painelLista}
           {visibleRecs.map((r) => (
             <RecCard key={r.id} rec={r} added={added.has(r.id)} onAdd={() => addToFunnel(r)}
               onAddContact={() => addToContacts(r)}
@@ -539,12 +549,17 @@ function RecCard({ rec, added, onAdd, onAddContact, onView, onViewMap, onRoute, 
         <Badge tone="neutral"><Cnae code={rec.cnae_principal} /></Badge>
         <Badge tone="neutral"><Icon name="mapPin" size={12} />{rec.reason.distancia_km} km</Badge>
         <Badge tone="neutral">porte {rec.reason.porte}</Badge>
+        {rec.reason.idade_anos != null && (
+          <Badge tone="neutral">{Math.floor(rec.reason.idade_anos)} anos</Badge>
+        )}
       </div>
 
       <div className="mt-3 flex gap-2">
         <ScoreBar label="CNAE" value={c.cnae} />
         <ScoreBar label="Prox." value={c.proximidade} />
         <ScoreBar label="Porte" value={c.porte} />
+        <ScoreBar label="Capital" value={c.capital} />
+        <ScoreBar label="Idade" value={c.idade} />
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">

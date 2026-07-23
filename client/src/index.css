@@ -68,9 +68,9 @@
      mas começando no quase-preto. Mid-tones (300–500) ajustados p/ texto
      secundário legível, não pelo espelho matemático. */
   --color-ink-50:  #0e111b;  /* canvas */
-  --color-ink-100: #171b29;  /* superfície sutilmente elevada / hover */
-  --color-ink-200: #232838;  /* bordas, divisores */
-  --color-ink-300: #475068;  /* borda forte / texto bem fraco */
+  --color-ink-100: #1c2130;  /* superfície sutilmente elevada / hover */
+  --color-ink-200: #39415a;  /* bordas, divisores (≈1.9:1 sobre surface) */
+  --color-ink-300: #59637f;  /* borda forte / texto bem fraco */
   --color-ink-400: #8b93ab;  /* texto secundário (uso mais comum) */
   --color-ink-500: #9aa2ba;  /* texto secundário forte */
   --color-ink-600: #b3bacd;
@@ -85,6 +85,12 @@
   --shadow-card: 0 1px 2px 0 rgb(0 0 0 / 0.40);
   --shadow-pop:  0 12px 32px -12px rgb(0 0 0 / 0.65);
 }
+
+/* `ink-100` é fundo elevado/hover no escuro — como cor de BORDA ele encosta no
+   canvas e some. Remapeia só o papel de borda/divisor p/ o mesmo tom das demais
+   divisórias, sem alterar os `bg-ink-100`/`hover:bg-ink-100`. */
+.dark :where(.border-ink-100, [class*='border-ink-100']) { border-color: var(--color-ink-200); }
+.dark :where(.divide-ink-100) > :not([hidden]) ~ :not([hidden]) { border-color: var(--color-ink-200); }
 
 /* CHROME sempre-escuro (sidebar, header mobile, painel do Login).
    Esses blocos já são escuros no tema claro e seus filhos foram escritos
