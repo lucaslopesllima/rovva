@@ -73,8 +73,9 @@ type NavItem = { to: string; label: string; icon: IconName; requires?: string; o
 type NavGroup = { label?: string; items: NavItem[] };
 
 // Menu agrupado por intenção (chunking): reduz carga cognitiva e aproxima
-// itens do mesmo fluxo de trabalho. Dashboard fica solto no topo; config no fim.
-const NAV_GROUPS: NavGroup[] = [
+// itens do mesmo fluxo de trabalho. Dashboard fica solto no topo; grupos e
+// itens em ordem alfabética (pt-BR, ignora acento) — ver sortNav abaixo.
+const NAV_GROUPS_RAW: NavGroup[] = [
   { items: [{ to: '/', label: 'Dashboard', icon: 'gauge' }] },
   { label: 'Vendas', items: [
     { to: '/prospeccao', label: 'Buscar Empresas', icon: 'target', requires: 'prospeccao.view' },
@@ -107,6 +108,13 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/config', label: 'Config', icon: 'settings' },
   ] },
 ];
+
+// Ordena grupos e itens por label (pt-BR, insensível a acento/caixa). O grupo
+// sem label (Dashboard) fica sempre no topo.
+const byLabel = (a: string, b: string): number => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' });
+const NAV_GROUPS: NavGroup[] = NAV_GROUPS_RAW
+  .map((g) => ({ ...g, items: [...g.items].sort((a, b) => byLabel(a.label, b.label)) }))
+  .sort((a, b) => (a.label == null ? -1 : b.label == null ? 1 : byLabel(a.label, b.label)));
 
 // Lista achatada — mobile (barra + folha "Mais") e título da página usam ordem linear.
 const NAV: NavItem[] = NAV_GROUPS.flatMap((g) => g.items);
