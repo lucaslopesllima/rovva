@@ -22,6 +22,15 @@ const comTitular = (identifier: string, type = 'cnpj'): unknown => ({
 });
 
 describe('consultarDominio', () => {
+  // Chamadas concorrentes não podem disparar juntas: o registro.br derruba
+  // conexão paralela. 3 chamadas = pelo menos 2 intervalos entre o 1º e o último fetch.
+  it('throttle serializa chamadas concorrentes', async () => {
+    const t: number[] = [];
+    fetchMock.mockImplementation(() => { t.push(Date.now()); return Promise.resolve(naoEncontrado()); });
+    await Promise.all(['a1.com.br', 'a2.com.br', 'a3.com.br'].map((d) => consultarDominio(d)));
+    expect(t[2]! - t[0]!).toBeGreaterThanOrEqual(1350);
+  });
+
   it('404 -> livre', async () => {
     fetchMock.mockResolvedValueOnce(naoEncontrado());
     expect(await consultarDominio('naoexiste.com.br')).toEqual({ estado: 'livre' });

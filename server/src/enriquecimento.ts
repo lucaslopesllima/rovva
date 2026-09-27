@@ -122,10 +122,22 @@ export async function descobrirDominio(e: EmpresaParaEnriquecer): Promise<Domini
   // Consulta primeiro, inclusive .br: Registro.br confirma titularidade, mas
   // não pode bloquear descoberta de site quando a titularidade divergir ou a
   // resposta estiver censurada. Só aceita site de pé, com confiança menor.
+  let emailAlheio = false; // já sabido que o domínio do e-mail é de outro CNPJ
   const porEmail = async (): Promise<DominioEmpresa | null> => {
     if (!emailDom) return null;
     const site = await siteDoDominio(emailDom);
     if (site.status !== 'vivo' && site.status !== 'bloqueado') return null;
+    // .br: confere a posse antes de aceitar. Domínio de contador (contabilizei,
+    // maismei) tem site no ar e CNPJ de outra raiz — não é o site da empresa.
+    // Censura/falha não bloqueia: entra com confiança de e-mail.
+    if (emailDom.endsWith('.br')) {
+      const titular = await titularNoRegistro(emailDom);
+      if (typeof titular === 'string' && titular !== 'censurado') {
+        if (titular.slice(0, 8) === raiz) return achou(emailDom, site);
+        emailAlheio = true;
+        return null;
+      }
+    }
     return achou(emailDom, site, 'email_rfb', CONFIANCA_EMAIL);
   };
 
@@ -154,12 +166,12 @@ export async function descobrirDominio(e: EmpresaParaEnriquecer): Promise<Domini
   const marcas = (e.nome_fantasia ? candidatosDominio(e.nome_fantasia, null) : [])
     .filter((c) => c.length >= 4).slice(0, 2);
   const dominiosMarca = new Set(marcas.map((m) => `${m}.com.br`));
-  const alvos = dominiosAlvo(candidatosDominio(e.razao_social, e.nome_fantasia), emailDom);
 
-  // E-mail corporativo é sondado antes de Registro.br. Se responder, evita
-  // consulta externa desnecessária e mantém prioridade sobre qualquer palpite.
+  // E-mail corporativo é sondado antes da varredura e tem prioridade sobre
+  // qualquer palpite derivado do nome.
   const emailEncontrado = await porEmail();
   if (emailEncontrado) return emailEncontrado;
+  const alvos = dominiosAlvo(candidatosDominio(e.razao_social, e.nome_fantasia), emailAlheio ? null : emailDom);
 
   // 1. Portão: CNPJ sem domínio nenhum -> não há o que varrer. null (RDAP
   //    instável) cai na varredura, para não gravar falso negativo.

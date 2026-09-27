@@ -35,10 +35,13 @@ export type ResultadoDominio =
 //    falso negativo. Só 'livre' e 'confirmado' concluem algo.
 const INTERVALO_MS = 700;
 let ultimaChamada = 0;
+// Reserva o horário ANTES de esperar: gravando depois, chamadas concorrentes
+// liam o mesmo valor e disparavam juntas.
 async function throttle(): Promise<void> {
-  const espera = Math.max(0, ultimaChamada + INTERVALO_MS - Date.now());
+  const agora = Date.now();
+  ultimaChamada = Math.max(agora, ultimaChamada + INTERVALO_MS);
+  const espera = ultimaChamada - agora;
   if (espera > 0) await new Promise((r) => setTimeout(r, espera));
-  ultimaChamada = Date.now();
 }
 
 // null = indeterminado (rede/timeout/5xx).
@@ -131,8 +134,8 @@ const EMAIL_GRATUITO = new Set([
 //
 // Não filtra contabilidade (contabilizei.com.br e maismei.com.br estão entre os
 // domínios mais comuns da base) porque não precisa: o domínio ainda passa pela
-// confirmação por CNPJ no registro.br, e o CNPJ do contador não bate com o da
-// empresa. O filtro aqui é só dos provedores gratuitos, que gastariam consulta à toa.
+// confirmação por CNPJ no registro.br (enriquecimento.ts, porEmail), e o CNPJ do
+// contador não bate com o da empresa. O filtro aqui é só dos provedores gratuitos.
 export function dominioDeEmail(email?: string | null): string | null {
   const dom = (email ?? '').trim().toLowerCase().split('@')[1];
   if (!dom) return null;
