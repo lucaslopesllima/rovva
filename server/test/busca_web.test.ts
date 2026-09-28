@@ -1,7 +1,7 @@
 // buscarNaWeb com fetch mockado: leitura do Maps, filtro por nome, redes
 // sociais, contatos nos trechos e os dois modos de falha.
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
-import { buscarNaWeb, BuscaWebDesligadaError, citaEmpresa, citaPessoa, deAgregador, redesSociais } from '../src/busca_web.ts';
+import { buscarNaWeb, BuscaWebDesligadaError, citaEmpresa, citaPessoa, deAgregador, pessoaDoLinkedin, redesSociais } from '../src/busca_web.ts';
 import { config } from '../src/config.ts';
 
 const fetchMock = vi.fn();
@@ -66,7 +66,9 @@ describe('buscarNaWeb', () => {
       [String(u).split('/').pop(), init as RequestInit]));
     expect((chamadas.maps!.headers as Record<string, string>)['X-API-KEY']).toBe('k');
     expect(JSON.parse(String(chamadas.maps!.body)).q).toBe('MALINSKI Brusque SC');
-    expect(JSON.parse(String(chamadas.search!.body)).q).toMatch(/^\("MALINSKI" OR "MALINSKI MADEIRAS"\) Brusque -site:cnpja\.com /);
+    const qs = fetchMock.mock.calls.map(([, init]) => JSON.parse(String((init as RequestInit).body)).q as string);
+    expect(qs).toContainEqual(expect.stringMatching(/^\("MALINSKI" OR "MALINSKI MADEIRAS"\) Brusque -site:cnpja\.com /));
+    expect(qs).toContain('site:linkedin.com/in ("MALINSKI" OR "MALINSKI MADEIRAS")');
   });
 
   it('sem fantasia: razão social sem LTDA; empresa citada só no trecho não entra', async () => {
@@ -100,18 +102,39 @@ describe('buscarNaWeb', () => {
     });
     expect(r.socios.map((p) => p.url)).toEqual(['https://br.linkedin.com/in/michel', 'https://www.cylex.com.br/m']);
     expect(r.contatos).toEqual([expect.objectContaining({ nome: 'MICHEL AKROUCHE', cargo: 'Sócio', telefone: '4733235669' })]);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('sem sócio: 3 buscas (maps, google, linkedin)', async () => {
+    serp(resp({ places: [] }), resp({ organic: [] }));
+    await buscarNaWeb(EMPRESA);
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it('sem sócio: só 2 buscas', async () => {
-    serp(resp({ places: [] }), resp({ organic: [] }));
-    await buscarNaWeb(EMPRESA);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+  it('LinkedIn: 10 resultados (teto do plano grátis) e decisor primeiro', async () => {
+    fetchMock.mockImplementation((url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      if (String(url).endsWith('/maps')) return Promise.resolve(resp({ places: [] }));
+      if (!body.q.startsWith('site:linkedin.com/in ')) return Promise.resolve(resp({ organic: [] }));
+      expect(body.num).toBe(10);
+      return Promise.resolve(resp({ organic: [
+        { title: 'Betina Cardoso - Malinski Madeiras Ltda', link: 'https://br.linkedin.com/in/betina',
+          snippet: 'Auxiliar de produção na Malinski Madeiras Ltda · Experiência: Malinski Madeiras Ltda' },
+        { title: 'Ricardo Stanguerlin - Malinski Madeiras Ltda', link: 'https://br.linkedin.com/in/ricardo',
+          snippet: 'Gerente geral na Malinski Madeiras Ltda · Advogado há 25 anos.' },
+        { title: 'Fulano - Outra Empresa', link: 'https://br.linkedin.com/in/fulano', snippet: 'Vendedor na Outra' },
+      ] }));
+    });
+    const r = await buscarNaWeb(EMPRESA);
+    expect(r.pessoas).toEqual([
+      { nome: 'Ricardo Stanguerlin', cargo: 'Gerente geral', url: 'https://br.linkedin.com/in/ricardo' },
+      { nome: 'Betina Cardoso', cargo: 'Auxiliar de produção', url: 'https://br.linkedin.com/in/betina' },
+    ]);
   });
 
   it('sem resultados é vazio, não falha', async () => {
     serp(resp({ places: [] }), resp({ organic: [] }));
-    expect(await buscarNaWeb(EMPRESA)).toEqual({ local: null, redes: [], contatos: [], links: [], socios: [] });
+    expect(await buscarNaWeb(EMPRESA)).toEqual({ local: null, redes: [], contatos: [], links: [], socios: [], pessoas: [] });
   });
 
   it('as duas buscas falhando -> erro', async () => {
@@ -129,6 +152,29 @@ describe('citaEmpresa', () => {
   it('ignora acento, caixa e pontuação; slug curto não vale', () => {
     expect(citaEmpresa('Açaí Malinski-Madeiras', ['malinski'])).toBe(true);
     expect(citaEmpresa('ABC Tintas', ['abc'])).toBe(false);
+  });
+});
+
+describe('pessoaDoLinkedin', () => {
+  const slugs = ['malinskimadeiras', 'malinski'];
+  const p = (title: string, snippet: string, link = 'https://br.linkedin.com/in/x') =>
+    pessoaDoLinkedin({ title, snippet, link }, slugs);
+
+  it('cargo no título, no trecho ou como headline', () => {
+    expect(p('Vitória Malinski - Tesoureira na Malinski Madeiras Ltda', 'Vitória Malinski. Tesoureira na Malinski Madeiras Ltda.'))
+      .toMatchObject({ nome: 'Vitória Malinski', cargo: 'Tesoureira' });
+    expect(p('Carlos Andriole Ferreira - Operador de UTE na Malinski ...', 'Operador de UTE na Malinski Madeiras Ltda · Experiência'))
+      .toMatchObject({ cargo: 'Operador de UTE' });
+    expect(p('Gabriel Pressato - Coordenador Comercial', 'Malinski Madeiras Ltda ... Profissional de vendas'))
+      .toMatchObject({ nome: 'Gabriel Pressato', cargo: 'Coordenador Comercial' });
+    expect(p('Priscila Hauco - Auxiliar de logística da empresa Malinski ...', 'Auxiliar de logística da empresa Malinski Madeiras Ltda'))
+      .toMatchObject({ cargo: 'Auxiliar de logística' });
+  });
+
+  it('sem cargo identificável -> cargo null; fora do /in/ ou sem a empresa -> null', () => {
+    expect(p('Vanderlei Fernandes - Malinski Madeiras Ltda', 'Experiência: Malinski Madeiras Ltda')).toMatchObject({ cargo: null });
+    expect(p('Malinski Madeiras', 'x', 'https://br.linkedin.com/company/malinski')).toBeNull();
+    expect(p('Fulano - Gerente', 'Gerente na Outra Ltda')).toBeNull();
   });
 });
 

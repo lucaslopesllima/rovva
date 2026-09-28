@@ -40,11 +40,15 @@ const socio = (over: Partial<Socio> = {}): Socio => ({
   nome_representante: null, representante_legal: null, ...over,
 });
 
+// GET do acompanhamento com o mapeamento já terminado.
+const pronto = (c: unknown) => ({ contatos_site: { url: 'https://www.alvo.com.br/', status: 'pronto', ...(c as object) } });
+
 const VAZIO = { local: null, redes: [], contatos: [], links: [], socios: [], buscado_em: '2026-09-20T12:00:00Z' };
 
 beforeEach(() => {
   m.get.mockReset();
   m.post.mockReset();
+  m.post.mockResolvedValue({ status: 'lendo' }); // início do mapeamento do site
   vi.mocked(toast.error).mockReset();
 });
 
@@ -250,11 +254,12 @@ describe('CompanyModal', () => {
         if (p === '/api/companies/1') return { company: company(), socios: [] };
         if (p === '/api/companies/1/dominio') return { dominio: site };
         if (p.startsWith('/api/companies/1/busca-web')) return VAZIO;
-        if (p.startsWith('/api/companies/1/contatos-site?')) {
-          if (contatos instanceof Error) throw contatos;
-          return contatos;
-        }
+        if (p === '/api/companies/1/contatos-site') return pronto(contatos);
         return {};
+      });
+      m.post.mockImplementation(async () => {
+        if (contatos instanceof Error) throw contatos;
+        return { status: 'lendo' };
       });
       render(<CompanyModal companyId={1} onClose={vi.fn()} />);
       await screen.findByText('Alvo Comercio LTDA');
@@ -262,17 +267,54 @@ describe('CompanyModal', () => {
       await screen.findByText((site as { dominio: string }).dominio);
     };
 
-    it('o botão só existe depois de achar o site', async () => {
+    it('antes de investigar, a seção não aparece', async () => {
       m.get.mockImplementation(async (p: string) =>
         (p === '/api/companies/1' ? { company: company(), socios: [] } : {}));
       render(<CompanyModal companyId={1} onClose={vi.fn()} />);
       await screen.findByText('Alvo Comercio LTDA');
-      expect(screen.queryByText('buscar contatos no site')).not.toBeInTheDocument();
+      expect(screen.queryByText('Contatos no site')).not.toBeInTheDocument();
+    });
+
+    it('investigar lê o site confirmado sozinho e diz qual leu', async () => {
+      await abrirComSite();
+      expect(await screen.findByText('Silvio Zanon')).toBeInTheDocument();
+      expect(screen.getByText('lido de alvo.com.br')).toBeInTheDocument();
+      expect(m.post).toHaveBeenCalledWith('/api/companies/1/contatos-site', { site_url: (SITE as { site_url: string }).site_url });
+    });
+
+    it('sem site no registro.br, lê o site do Google Maps', async () => {
+      m.get.mockImplementation(async (p: string) => {
+        if (p === '/api/companies/1') return { company: company(), socios: [] };
+        if (p === '/api/companies/1/dominio') return { dominio: { ...SITE, dominio: null, site_url: null, status: 'nao_encontrado' } };
+        if (p.startsWith('/api/companies/1/busca-web')) {
+          return { ...VAZIO, local: { nome: 'Alvo', telefone: null, site: 'https://maps-alvo.com.br/', endereco: null, nota: null, avaliacoes: null, maps_url: null } };
+        }
+        if (p === '/api/companies/1/contatos-site') return pronto(CONTATOS);
+        return {};
+      });
+      render(<CompanyModal companyId={1} onClose={vi.fn()} />);
+      await screen.findByText('Alvo Comercio LTDA');
+      await userEvent.click(screen.getByText('Investigar empresa'));
+      expect(await screen.findByText('Silvio Zanon')).toBeInTheDocument();
+      expect(screen.getByText('lido de maps-alvo.com.br')).toBeInTheDocument();
+    });
+
+    it('sem site nenhum, não tenta ler', async () => {
+      m.get.mockImplementation(async (p: string) => {
+        if (p === '/api/companies/1') return { company: company(), socios: [] };
+        if (p === '/api/companies/1/dominio') return { dominio: { ...SITE, dominio: null, site_url: null, status: 'nao_encontrado' } };
+        if (p.startsWith('/api/companies/1/busca-web')) return VAZIO;
+        return {};
+      });
+      render(<CompanyModal companyId={1} onClose={vi.fn()} />);
+      await screen.findByText('Alvo Comercio LTDA');
+      await userEvent.click(screen.getByText('Investigar empresa'));
+      await screen.findByText('nenhum site encontrado');
+      expect(m.post).not.toHaveBeenCalled();
     });
 
     it('lista os contatos raspados, com pessoa e setor', async () => {
       await abrirComSite();
-      await userEvent.click(screen.getByText('buscar contatos no site'));
       expect(await screen.findByText('Silvio Zanon')).toBeInTheDocument();
       expect(screen.getByText(/Gerente · silvio@alvo\.com\.br/)).toBeInTheDocument();
       // telefone e WhatsApp saem mascarados, e o WhatsApp identificado
@@ -284,7 +326,6 @@ describe('CompanyModal', () => {
 
     it('adicionar abre o cadastro já com a empresa e os canais preenchidos', async () => {
       await abrirComSite();
-      await userEvent.click(screen.getByText('buscar contatos no site'));
       await screen.findByText('Silvio Zanon');
       await userEvent.click(screen.getAllByText('adicionar')[0]!);
 
@@ -303,7 +344,6 @@ describe('CompanyModal', () => {
 
     it('contato sem nome próprio entra com o setor no nome', async () => {
       await abrirComSite();
-      await userEvent.click(screen.getByText('buscar contatos no site'));
       await screen.findByText('Departamento Vendas');
       await userEvent.click(screen.getAllByText('adicionar')[1]!);
       expect(await screen.findByText('Novo contato')).toBeInTheDocument();
@@ -313,16 +353,15 @@ describe('CompanyModal', () => {
 
     it('site sem contato publicado diz quantas páginas leu e oferece repetir', async () => {
       await abrirComSite({ contatos: [], paginas: ['https://www.alvo.com.br/'], bloqueado: false });
-      await userEvent.click(screen.getByText('buscar contatos no site'));
       expect(await screen.findByText(/nada publicado nas 1 página\(s\) lidas/)).toBeInTheDocument();
-      expect(screen.getByText('buscar de novo')).toBeInTheDocument();
+      await userEvent.click(screen.getByText('buscar de novo'));
+      await waitFor(() => expect(m.post).toHaveBeenCalledTimes(2));
     });
 
     // colcci.com.br: 403 com página de WAF. Dizer "nada publicado" mandaria o
     // representante embora de um site que tem os contatos todos lá.
     it('site que barra robô não é anunciado como "sem contato"', async () => {
       await abrirComSite({ contatos: [], paginas: [], bloqueado: true });
-      await userEvent.click(screen.getByText('buscar contatos no site'));
       expect(await screen.findByText(/bloqueia leitura automática/)).toBeInTheDocument();
       expect(screen.queryByText(/nada publicado/)).not.toBeInTheDocument();
     });
@@ -336,16 +375,45 @@ describe('CompanyModal', () => {
         fonte: 'marca', confianca: 40, titular: 'AMC TEXTIL LTDA',
       });
       expect(screen.getByText(/site da marca · AMC TEXTIL LTDA/)).toBeInTheDocument();
-      expect(screen.queryByText('não confirmado')).not.toBeInTheDocument();
+      expect(screen.queryByText('pelo e-mail da empresa')).not.toBeInTheDocument();
       // e o aviso acompanha a lista de contatos
-      expect(screen.getByText(/contatos de AMC TEXTIL LTDA, dona da marca/i)).toBeInTheDocument();
+      expect(await screen.findByText(/contatos de AMC TEXTIL LTDA, dona da marca/i)).toBeInTheDocument();
+    });
+
+    it('acompanha o progresso até terminar', async () => {
+      let n = 0;
+      m.get.mockImplementation(async (p: string) => {
+        if (p === '/api/companies/1') return { company: company(), socios: [] };
+        if (p === '/api/companies/1/dominio') return { dominio: SITE };
+        if (p.startsWith('/api/companies/1/busca-web')) return VAZIO;
+        if (p === '/api/companies/1/contatos-site') {
+          return ++n === 1 ? { contatos_site: { url: 'x', status: 'lendo', paginas_lidas: 7 } } : pronto(CONTATOS);
+        }
+        return {};
+      });
+      render(<CompanyModal companyId={1} onClose={vi.fn()} />);
+      await screen.findByText('Alvo Comercio LTDA');
+      await userEvent.click(screen.getByText('Investigar empresa'));
+      expect(await screen.findByText(/7 página\(s\) lida\(s\)/)).toBeInTheDocument();
+      expect(await screen.findByText('Silvio Zanon', {}, { timeout: 5000 })).toBeInTheDocument();
+    });
+
+    it('reabrir no meio retoma; mapeamento interrompido avisa', async () => {
+      m.get.mockImplementation(async (p: string) => {
+        if (p === '/api/companies/1') {
+          return { company: company(), socios: [], contatos_site: { url: 'https://www.alvo.com.br/', status: 'lendo' } };
+        }
+        if (p === '/api/companies/1/contatos-site') return { contatos_site: { url: 'x', status: 'interrompido' } };
+        return {};
+      });
+      render(<CompanyModal companyId={1} onClose={vi.fn()} />);
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('A leitura do site foi interrompida — investigue de novo'));
     });
 
     it('falha na raspagem vira toast, sem quebrar o modal', async () => {
       await abrirComSite(new Error('site fora do ar'));
-      await userEvent.click(screen.getByText('buscar contatos no site'));
-      await waitFor(() => expect(toast.error).toHaveBeenCalled());
-      expect(screen.getByText('buscar contatos no site')).toBeInTheDocument();
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Falha ao ler o site'));
+      expect(screen.queryByText('Contatos no site')).not.toBeInTheDocument();
     });
   });
 
@@ -376,6 +444,7 @@ describe('CompanyModal — busca na internet', () => {
         if (web instanceof Error) throw web;
         return web;
       }
+      if (p === '/api/companies/1/contatos-site') return pronto({ contatos: [], paginas: [], bloqueado: false });
       return {};
     });
     render(<CompanyModal companyId={1} onClose={vi.fn()} />);
@@ -397,6 +466,10 @@ describe('CompanyModal — busca na internet', () => {
         { nome: 'JOÃO ALVO', titulo: 'João Alvo', url: 'https://br.linkedin.com/in/joao' },
         { nome: 'JOÃO ALVO', titulo: 'João Alvo - Itoupava Norte - Cylex', url: 'https://www.cylex.com.br/joao' },
       ],
+      pessoas: [
+        { nome: 'Ricardo Gerente', cargo: 'Gerente geral', url: 'https://br.linkedin.com/in/ricardo' },
+        { nome: 'Sem Cargo', cargo: null, url: 'https://br.linkedin.com/in/semcargo' },
+      ],
       buscado_em: '2026-09-20T12:00:00Z',
     });
     expect(await screen.findByText('Loja Alvo Centro')).toHaveAttribute('href', 'https://maps/x');
@@ -408,13 +481,36 @@ describe('CompanyModal — busca na internet', () => {
     expect(screen.getByText('alvo.com.br ·')).toBeInTheDocument();
     // sócio aparece uma vez; cada link rotulado pelo site, título na dica
     expect(screen.getAllByText('JOÃO ALVO')).toHaveLength(1);
-    expect(screen.getByText('LinkedIn')).toHaveAttribute('href', 'https://br.linkedin.com/in/joao');
+    expect(screen.getAllByText('LinkedIn').map((e) => e.getAttribute('href'))).toEqual([
+      'https://br.linkedin.com/in/joao', 'https://br.linkedin.com/in/ricardo', 'https://br.linkedin.com/in/semcargo',
+    ]);
     expect(screen.getByText('cylex.com.br')).toHaveAttribute('title', 'João Alvo - Itoupava Norte - Cylex');
+    expect(screen.getByText('Pessoas no LinkedIn')).toBeInTheDocument();
+    expect(screen.getByText('Gerente geral')).toBeInTheDocument();
+    expect(screen.getByText('Sem Cargo')).toBeInTheDocument();
     // contato do Maps usa a mesma lista com "adicionar" dos contatos do site
     expect(screen.getByText('Google Maps')).toBeInTheDocument();
     expect(screen.getByTitle('Adicionar aos contatos')).toBeInTheDocument();
     expect(screen.getByText('Investigar de novo')).toBeInTheDocument();
     expect(screen.getByText('investigado em 20/09/2026')).toBeInTheDocument();
+  });
+
+  it('investigação completa salva: site, contatos do site e internet voltam ao abrir', async () => {
+    m.get.mockImplementation(async (p: string) => (p === '/api/companies/1'
+      ? { company: company(), socios: [],
+        busca_web: VAZIO,
+        site: { dominio: 'alvo.com.br', status: 'achou', site_url: 'https://alvo.com.br/', site_status: 'vivo',
+          confianca: 100, fonte: 'registrobr', titular: null },
+        contatos_site: { url: 'https://alvo.com.br/', paginas: ['https://alvo.com.br/'], bloqueado: false,
+          contatos: [{ nome: 'Silvio Salvo', cargo: null, rotulo: null, email: 's@alvo.com.br', telefone: null, whatsapp: null, origem: 'https://alvo.com.br/' }] } }
+      : {}));
+    render(<CompanyModal companyId={1} onClose={vi.fn()} />);
+    expect(await screen.findByText('alvo.com.br')).toHaveAttribute('href', 'https://alvo.com.br/');
+    expect(screen.getByText('Silvio Salvo')).toBeInTheDocument();
+    expect(screen.getByText('lido de alvo.com.br')).toBeInTheDocument();
+    expect(screen.getByText('Investigar de novo')).toBeInTheDocument();
+    // nada de busca: tudo veio do detalhe
+    expect(m.get.mock.calls.map(([p]) => String(p)).filter((p) => /dominio|busca-web|contatos-site/.test(p))).toEqual([]);
   });
 
   it('busca salva aparece ao abrir, com a data, sem gastar crédito', async () => {
@@ -460,6 +556,7 @@ describe('CompanyModal — investigar empresa', () => {
       if (p === '/api/companies/1') return { company: company(), socios: [], busca_web: investigar ? null : web };
       if (p === '/api/companies/1/dominio') return { dominio };
       if (p === '/api/companies/1/busca-web?atualizar=true') return web;
+      if (p === '/api/companies/1/contatos-site') return pronto({ contatos: [], paginas: [], bloqueado: false });
       return {};
     });
     render(<CompanyModal companyId={1} onClose={vi.fn()} />);

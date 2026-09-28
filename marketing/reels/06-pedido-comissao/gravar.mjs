@@ -2,10 +2,7 @@
 // Lança um pedido, envia, fatura (gera a comissão) e mostra o extrato de comissões.
 // Pedido faturado não se exclui pela API: a limpeza apaga direto no Postgres de
 // dev (itens e comissão caem junto, ON DELETE CASCADE).
-import { execFileSync } from 'node:child_process';
-import { gravar, BASE } from '../lib.mjs';
-
-const REPO = new URL('../../../', import.meta.url).pathname;
+import { gravar, sql, BASE } from '../lib.mjs';
 
 await gravar(new URL('.', import.meta.url).pathname, async ({ p, marca, pausa, digitar }) => {
   let pedidoId;
@@ -25,10 +22,16 @@ await gravar(new URL('.', import.meta.url).pathname, async ({ p, marca, pausa, d
     await p.locator('select', { has: p.locator('option', { hasText: 'Escolha a representada' }) }).selectOption({ index: 1 });
     await pausa(700);
     const mostruario = p.locator('select[aria-label="Adicionar item do mostruário"]');
-    await mostruario.selectOption({ index: 1 });
-    await pausa(600);
-    await mostruario.selectOption({ index: 2 });
-    await pausa(900);
+    // quantidade de pedido de verdade: com qtd 1 o valor (e a comissão) fica irrisório
+    for (const [i, qtd] of [[1, '30'], [2, '20']]) {
+      await mostruario.selectOption({ index: i });
+      await pausa(500);
+      const q = p.locator(`input[aria-label="Qtd * item ${i}"]`);
+      await q.fill('');
+      await digitar(q, qtd);
+      await pausa(400);
+    }
+    await pausa(500);
     const salvo = p.waitForResponse((r) => r.url().endsWith('/api/orders') && r.request().method() === 'POST');
     await p.getByRole('button', { name: 'Salvar pedido' }).click();
     pedidoId = (await (await salvo).json()).order?.id;
@@ -45,12 +48,13 @@ await gravar(new URL('.', import.meta.url).pathname, async ({ p, marca, pausa, d
     await pausa(1800);
 
     await marca('comissao');
-    await p.goto(`${BASE}/comissoes`);
+    await p.getByRole('button', { name: 'Abrir menu' }).click();
+    await pausa(700);
+    await p.getByRole('link', { name: 'Comissões' }).last().click();
     await p.getByText('A receber').first().waitFor();
     await pausa(3200);
     await marca('fim');
   } finally {
-    if (pedidoId) execFileSync('docker', ['compose', 'exec', '-T', 'db', 'sh', '-c',
-      `psql -U $POSTGRES_USER -d $POSTGRES_DB -qc "delete from orders where id = ${Number(pedidoId)} and org_id = 47"`], { cwd: REPO });
+    if (pedidoId) sql(`delete from orders where id = ${Number(pedidoId)} and org_id = 47`);
   }
 });

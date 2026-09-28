@@ -144,6 +144,10 @@ describe('dominioDeEmail', () => {
 });
 
 describe('candidatosDominio', () => {
+  it('"S A" com espaço é tipo societário, não parte do nome', () => {
+    expect(candidatosDominio('TBM S A INDUSTRIA TEXTIL')).toContain('tbmtextil');
+  });
+
   it('fantasia vem antes da razão social', async () => {
     // ITALAC é a marca; GOIASMINAS é a razão. O domínio real é italac.com.br.
     const c = candidatosDominio('GOIASMINAS INDUSTRIA DE LATICINIOS LTDA', 'ITALAC');

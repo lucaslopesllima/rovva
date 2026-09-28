@@ -10,10 +10,17 @@ import { resolve } from 'node:path';
 const DIR = resolve(process.argv[2] ?? '.') + '/';
 const m = { inicio: 0, ...JSON.parse(readFileSync(`${DIR}marcas.json`, 'utf8')) };
 const leg = JSON.parse(readFileSync(`${DIR}legendas.json`, 'utf8'));
-const total = m.total ?? m.fim + 3;
-const FIM = total - m.fim; // segundos do card final
 const FOLGA = 0.3; // mesmo respiro do lib.mjs
-const falas = existsSync(`${DIR}tmp/falas.json`) ? Object.keys(JSON.parse(readFileSync(`${DIR}tmp/falas.json`, 'utf8'))) : [];
+// card final: 3 s ou o bastante pra fala do card (lida aqui: trocar a fala não exige regravar)
+const duracoes = existsSync(`${DIR}tmp/falas.json`) ? JSON.parse(readFileSync(`${DIR}tmp/falas.json`, 'utf8')) : {};
+const total = m.fim + Math.max(3, (duracoes.fim ?? 0) + FOLGA * 3);
+const FIM = total - m.fim; // segundos do card final
+const falas = Object.keys(duracoes);
+// fala trocada depois da gravação pode não caber na cena: avisa (aí é regravar)
+for (const [i, c] of leg.cenas.entries()) {
+  const fim = i + 1 < leg.cenas.length ? m[leg.cenas[i + 1].de] : m.fim;
+  if (duracoes[c.de] && duracoes[c.de] + FOLGA > fim - m[c.de]) console.warn(`⚠ fala "${c.de}" (${duracoes[c.de]}s) passa da cena (${(fim - m[c.de]).toFixed(1)}s): rode o gravar.mjs de novo`);
+}
 const cenas = leg.cenas.map((c, i) => ({ txt: c.txt, de: m[c.de], ate: i + 1 < leg.cenas.length ? m[leg.cenas[i + 1].de] : total }));
 if (cenas.some((c) => c.de == null)) throw new Error(`marca ausente em legendas.json; marcas: ${Object.keys(m)}`);
 

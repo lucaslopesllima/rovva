@@ -1,0 +1,27 @@
+{
+  "drop": "responder",
+  "cenas": [
+    {
+      "de": "inicio",
+      "txt": "A conversa com o cliente é <em>da empresa</em>",
+      "fala": "O histórico do cliente não pode ficar só no seu celular."
+    },
+    {
+      "de": "conversa",
+      "txt": "O <em>WhatsApp</em> dentro do sistema",
+      "fala": "Aqui, o WhatsApp da empresa fica dentro do sistema, junto com o cliente."
+    },
+    {
+      "de": "responder",
+      "txt": "Responda <em>direto daqui</em>",
+      "fala": "Você responde direto daqui."
+    },
+    {
+      "de": "nota",
+      "txt": "<em>Nota interna</em>: só a equipe vê",
+      "fala": "E ainda deixa um recado para a equipe, que o cliente não vê."
+    }
+  ],
+  "card": "Conversa do cliente<br>no <em>lugar certo</em>.",
+  "card_fala": "Conversa do cliente, no lugar certo."
+}

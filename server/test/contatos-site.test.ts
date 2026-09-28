@@ -187,8 +187,19 @@ describe('linksCandidatos', () => {
   it('fica no próprio domínio e só nas páginas que rendem contato', () => {
     expect(linksCandidatos(html, 'https://www.acme.com.br/')).toEqual([
       'https://www.acme.com.br/contato',
-      'https://www.acme.com.br/sobre',
       'https://www.acme.com.br/unidades',
+      'https://www.acme.com.br/sobre',
+    ]);
+  });
+
+  // tbmtextil.com.br/comercial: rede de representantes com e-mail e WhatsApp.
+  it('comercial/representantes entram, logo depois do contato', () => {
+    expect(linksCandidatos(
+      '<a href="/sobre">s</a><a href="/comercial/">c</a><a href="/contato">f</a><a href="/nossos-representantes">r</a>',
+      'https://tbm.com.br/',
+    )).toEqual([
+      'https://tbm.com.br/contato', 'https://tbm.com.br/comercial/',
+      'https://tbm.com.br/nossos-representantes', 'https://tbm.com.br/sobre',
     ]);
   });
 
@@ -273,10 +284,88 @@ describe('buscarContatosNoSite', () => {
     expect(r.contatos).toHaveLength(1);
   });
 
-  it('respeita o teto de páginas', async () => {
-    buscarPagina.mockImplementation(async (u: string) => pagina(u, '<p>nada</p>'));
+  it('respeita o teto de páginas (trava contra loja gigante)', async () => {
+    const links = Array.from({ length: 200 }, (_, i) => `<a href="/contato-${i}">Contato ${i}</a>`).join('');
+    buscarPagina.mockImplementation(async (u: string) =>
+      pagina(u, u === 'https://acme.com.br/' ? links : '<p>nada</p>'));
     const r = await buscarContatosNoSite('https://acme.com.br/');
-    expect(r.paginas.length).toBeLessThanOrEqual(6);
+    expect(r.paginas).toHaveLength(80);
+  });
+
+  it('sitemap acha a página que o menu não linka (índice, página antes de produto)', async () => {
+    buscarPagina.mockImplementation(async (u: string) => {
+      if (u === 'https://acme.com.br/') return pagina(u, '<p>home sem menu</p>');
+      if (u === 'https://acme.com.br/robots.txt') return pagina(u, 'User-agent: *\nSitemap: https://acme.com.br/sitemap_index.xml');
+      if (u === 'https://acme.com.br/sitemap_index.xml') {
+        return pagina(u, `<sitemapindex><sitemap><loc>https://acme.com.br/product-sitemap.xml</loc></sitemap>
+          <sitemap><loc>https://acme.com.br/page-sitemap.xml</loc></sitemap></sitemapindex>`);
+      }
+      if (u === 'https://acme.com.br/page-sitemap.xml') {
+        return pagina(u, `<urlset><url><loc>https://acme.com.br/rede-de-representantes/</loc></url>
+          <url><loc>https://outro.com.br/contato</loc></url></urlset>`);
+      }
+      if (u === 'https://acme.com.br/rede-de-representantes/') {
+        return pagina(u, '<p>Representante Sul</p><p><a href="mailto:sul@acme.com.br">s</a></p>');
+      }
+      return null;
+    });
+    const r = await buscarContatosNoSite('https://acme.com.br/');
+    expect(r.contatos).toEqual([expect.objectContaining({ email: 'sul@acme.com.br' })]);
+    const pedidas = buscarPagina.mock.calls.map((c) => c[0] as string);
+    expect(pedidas.indexOf('https://acme.com.br/page-sitemap.xml'))
+      .toBeLessThan(pedidas.indexOf('https://acme.com.br/product-sitemap.xml'));
+    expect(pedidas).not.toContain('https://outro.com.br/contato'); // outro domínio
+  });
+
+  it('texto do link conta: "Nossos representantes" em caminho mudo', async () => {
+    buscarPagina.mockImplementation(async (u: string) => {
+      if (u === 'https://acme.com.br/') return pagina(u, '<a href="/rede">Nossos representantes</a><a href="/historia">História</a>');
+      if (u === 'https://acme.com.br/rede') return pagina(u, '<p>Vendas SC</p><p><a href="mailto:sc@acme.com.br">x</a></p>');
+      return null;
+    });
+    const r = await buscarContatosNoSite('https://acme.com.br/');
+    expect(r.paginas).toContain('https://acme.com.br/rede');
+    expect(r.paginas).not.toContain('https://acme.com.br/historia');
+  });
+
+  it('página rica puxa as subpáginas dela; blog não entra', async () => {
+    buscarPagina.mockImplementation(async (u: string) => {
+      if (u === 'https://acme.com.br/') return pagina(u, '<a href="/comercial">Comercial</a><a href="/blog/post-1">Post</a>');
+      if (u === 'https://acme.com.br/comercial') {
+        return pagina(u, `<p>Sul <a href="mailto:sul@acme.com.br">s</a></p><p>Norte <a href="mailto:norte@acme.com.br">n</a></p>
+          <a href="/comercial/pr">Paraná</a><a href="/institucional/historia">História</a>`);
+      }
+      if (u === 'https://acme.com.br/comercial/pr') return pagina(u, '<p>Curitiba <a href="mailto:pr@acme.com.br">p</a></p>');
+      return null;
+    });
+    const r = await buscarContatosNoSite('https://acme.com.br/');
+    expect(r.contatos.map((c) => c.email)).toEqual(expect.arrayContaining(['sul@acme.com.br', 'norte@acme.com.br', 'pr@acme.com.br']));
+    expect(buscarPagina).not.toHaveBeenCalledWith('https://acme.com.br/blog/post-1');
+  });
+
+  it('pula versão em outro idioma e e-mail de modelo do Wix', async () => {
+    buscarPagina.mockImplementation(async (u: string) => {
+      if (u === 'https://acme.com.br/') {
+        return pagina(u, '<a href="/contato">Contato</a><a href="/en/contact">Contact</a><a href="/es/contacto">Contacto</a>');
+      }
+      if (u === 'https://acme.com.br/contato') {
+        return pagina(u, '<p>Vendas <a href="mailto:vendas@acme.com.br">v</a></p><p>Contato <a href="mailto:info@mysite.com">i</a></p>');
+      }
+      return null;
+    });
+    const r = await buscarContatosNoSite('https://acme.com.br/');
+    expect(r.contatos.map((c) => c.email)).toEqual(['vendas@acme.com.br']);
+    expect(buscarPagina).not.toHaveBeenCalledWith('https://acme.com.br/en/contact');
+    expect(buscarPagina).not.toHaveBeenCalledWith('https://acme.com.br/es/contacto');
+  });
+
+  it('avisa o progresso a cada página lida', async () => {
+    buscarPagina.mockImplementation(async (u: string) =>
+      u === 'https://acme.com.br/' ? pagina(u, '<a href="/contato">c</a>')
+        : u === 'https://acme.com.br/contato' ? pagina(u, '<p>x</p>') : null);
+    const aoLer = vi.fn();
+    await buscarContatosNoSite('https://acme.com.br/', aoLer);
+    expect(aoLer).toHaveBeenCalledWith(2);
   });
 
   it('home fora do ar -> resultado vazio, sem tentar as outras páginas', async () => {

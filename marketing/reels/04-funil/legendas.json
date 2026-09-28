@@ -24,9 +24,9 @@
     {
       "de": "negociacao",
       "txt": "Funil <em>atualizado</em>, sem planilha",
-      "fala": "Pronto, tudo atualizado, sem precisar de planilha."
+      "fala": "Pronto, tudo atualizado na hora."
     }
   ],
   "card": "Cada venda<br>no seu <em>lugar</em>.",
-  "card_fala": "Com o Rovva, você sabe onde está cada venda."
+  "card_fala": "Cada venda no seu lugar."
 }

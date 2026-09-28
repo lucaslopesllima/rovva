@@ -6,7 +6,8 @@
 //
 // Estratégia, em ordem de custo crescente (para na primeira que resolve):
 //   1. domínio do e-mail da Receita — dado declarado pela empresa; se publica
-//      site, retorna sem depender do Registro.br.
+//      site, retorna sem depender do Registro.br (exceto e-mail de contador,
+//      marcado como compartilhado entre empresas).
 //   2. contarDominios() — 1 consulta: CNPJ tem 0 domínios? encerra sem varrer.
 //   3. varredura — palpites derivados do nome, confirmados pelo CNPJ do titular.
 import { one, query } from './db.ts';
@@ -118,26 +119,20 @@ export async function descobrirDominio(e: EmpresaParaEnriquecer): Promise<Domini
   const raiz = e.cnpj.slice(0, 8);
   const emailDom = dominioDeEmail(e.email);
 
-  // Domínio declarado no e-mail é melhor pista de site que um nome derivado.
-  // Consulta primeiro, inclusive .br: Registro.br confirma titularidade, mas
-  // não pode bloquear descoberta de site quando a titularidade divergir ou a
-  // resposta estiver censurada. Só aceita site de pé, com confiança menor.
-  let emailAlheio = false; // já sabido que o domínio do e-mail é de outro CNPJ
+  // Domínio do e-mail corporativo é a 1ª tentativa, sem Registro.br: é dado
+  // declarado pela própria empresa e costuma ser o site (tbmtextil.com.br da
+  // TBM, registrado por outra raiz do grupo — conferir o CNPJ derrubava).
+  // A exceção é o e-mail do CONTADOR (fiscal@contabilizei.com.br): ele aparece
+  // em milhares de empresas e está marcado em contato_compartilhado (075).
+  // Só aceita site de pé; senão segue para o Registro.br.
   const porEmail = async (): Promise<DominioEmpresa | null> => {
     if (!emailDom) return null;
+    const compartilhado = await one(
+      `SELECT 1 FROM contato_compartilhado WHERE tipo = 'email' AND valor = $1`, [e.email!.trim().toLowerCase()],
+    );
+    if (compartilhado) return null;
     const site = await siteDoDominio(emailDom);
     if (site.status !== 'vivo' && site.status !== 'bloqueado') return null;
-    // .br: confere a posse antes de aceitar. Domínio de contador (contabilizei,
-    // maismei) tem site no ar e CNPJ de outra raiz — não é o site da empresa.
-    // Censura/falha não bloqueia: entra com confiança de e-mail.
-    if (emailDom.endsWith('.br')) {
-      const titular = await titularNoRegistro(emailDom);
-      if (typeof titular === 'string' && titular !== 'censurado') {
-        if (titular.slice(0, 8) === raiz) return achou(emailDom, site);
-        emailAlheio = true;
-        return null;
-      }
-    }
     return achou(emailDom, site, 'email_rfb', CONFIANCA_EMAIL);
   };
 
@@ -171,7 +166,7 @@ export async function descobrirDominio(e: EmpresaParaEnriquecer): Promise<Domini
   // qualquer palpite derivado do nome.
   const emailEncontrado = await porEmail();
   if (emailEncontrado) return emailEncontrado;
-  const alvos = dominiosAlvo(candidatosDominio(e.razao_social, e.nome_fantasia), emailAlheio ? null : emailDom);
+  const alvos = dominiosAlvo(candidatosDominio(e.razao_social, e.nome_fantasia), emailDom);
 
   // 1. Portão: CNPJ sem domínio nenhum -> não há o que varrer. null (RDAP
   //    instável) cai na varredura, para não gravar falso negativo.

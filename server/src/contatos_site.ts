@@ -36,21 +36,51 @@ export interface BuscaContatos {
   bloqueado: boolean;
 }
 
-// Teto de páginas e prazo total: a rota é síncrona e o usuário está olhando um
-// spinner. 6 páginas cobrem home + contato + unidades + sobra; o prazo corta
-// site lento antes que a request vire timeout do navegador.
-const MAX_PAGINAS = 6;
-const PRAZO_MS = 20_000;
-const MAX_CONTATOS = 60;
+// Sem prazo total: a leitura roda em segundo plano (rota contatos-site) e o
+// objetivo é achar TODO contato publicado, mesmo que leve minutos. Cada página
+// ainda tem o timeout próprio do fetch/navegador.
+//
+// ponytail: teto de páginas só como trava contra loja virtual de 50 mil
+// produtos; como a fila é por pontuação, o que fica de fora é o menos provável
+// de ter contato. Subir se site institucional grande estourar.
+const MAX_PAGINAS = 80;
+const MAX_CONTATOS = 300;
+// Sitemap de loja grande tem dezenas de milhares de URLs; só as que pontuam entram.
+const MAX_SITEMAPS = 10;
 
-// Páginas que valem visitar. Casa contra o CAMINHO da URL, não contra o texto do
-// link: '/fale-conosco' é estável, "Fale conosco" muda com o idioma e o capricho.
-const RE_PAGINA_CONTATO =
-  /(contato|contact|fale[-_]?conosco|faleconosco|atendimento|quem[-_]?somos|sobre|empresa|institucional|unidades|lojas|filiais|equipe|time|onde[-_]?estamos)/i;
+// Pontuação de uma página pelo caminho E pelo texto do link: '/fale-conosco' é
+// estável, mas "Nossos representantes" no menu aponta muitas vezes para um
+// caminho que não diz nada ('/rede'). Vale o maior peso que casar.
+const PESOS: [RegExp, number][] = [
+  [/(contato|contact|fale[-_ ]?conosco|faleconosco|atendimento|fale com)/i, 10],
+  // Comercial/representantes: indústria (tbmtextil.com.br/comercial) lista ali a
+  // rede de representantes com e-mail e WhatsApp — 23 contatos onde a home tem 2.
+  [/(comercial|representantes?|representa[çc][ãa]o|vendas|vendedor|revend|distribuidor|onde[-_ ]?comprar|seja[-_ ]?um)/i, 9],
+  [/(equipe|time|nosso[-_ ]?time|unidades|lojas|filiais|onde[-_ ]?estamos|localiza|endere[çc]o|trabalhe)/i, 6],
+  [/(\bsul\b|sudeste|nordeste|\bnorte\b|centro[-_ ]?oeste|regi[ãa]o|regional|estados?)/i, 5],
+  [/(quem[-_ ]?somos|sobre|empresa|institucional|a[-_ ]?empresa|nossa[-_ ]?hist)/i, 3],
+];
+// Volume de página que não traz contato: blog, loja, conta. Só entra se o
+// caminho/texto também tiver palavra de contato forte (>= 9).
+// Versão em outro idioma (/en/contact, /es/contacto) repete o contato da
+// versão em português: só gastaria visita. Vale mesmo com palavra de contato.
+const IDIOMA = /^https?:\/\/[^/]+\/(en|es|fr|de|it|zh|ja)(\/|$)/i;
+const RUIDO = /(\/blog|\/noticias?|\/news|\/post|\/tag|\/categor|\/produto|\/product|\/shop|\/loja\/|\/carrinho|\/cart|\/checkout|\/login|\/minha-conta|\/account|\/wp-|\/feed|\/page\/\d|\/\d{4}\/\d{2}\/|[?&](p|page|s|add-to-cart)=)/i;
+
+export function pontuar(url: string, texto = ''): number {
+  let caminho: string;
+  try { caminho = decodeURIComponent(new URL(url).pathname); } catch { return 0; }
+  const alvo = `${caminho} ${texto}`;
+  let p = 0;
+  for (const [re, w] of PESOS) if (re.test(alvo) && w > p) p = w;
+  if (IDIOMA.test(url) || (RUIDO.test(url) && p < 9)) return 0;
+  return p;
+}
+
 // Tentados quando o site não linka a página de contato no menu (frame, JS, ou
 // menu só em imagem). Ordem = probabilidade no mercado brasileiro.
 const CAMINHOS_COMUNS = [
-  '/contato', '/fale-conosco', '/contatos', '/atendimento',
+  '/contato', '/fale-conosco', '/contatos', '/atendimento', '/comercial', '/representantes',
   '/quem-somos', '/sobre', '/unidades', '/contact',
 ];
 const ARQUIVO = /\.(pdf|jpe?g|png|gif|svg|webp|zip|rar|docx?|xlsx?|pptx?|mp4)$/i;
@@ -115,7 +145,7 @@ export function linearizar(html: string): string[] {
 // domínio de serviço embutido pelo tema e placeholder de template.
 const EMAIL_ARQUIVO = /\.(png|jpe?g|gif|svg|webp|ico|css|js|json|woff2?)$/i;
 const EMAIL_DOMINIO_LIXO =
-  /(^|\.)(sentry\.io|sentry-cdn\.com|wixpress\.com|example\.(com|org|net)|dominio\.com(\.br)?|seudominio\.com(\.br)?|teste\.com(\.br)?|localhost)$/i;
+  /(^|\.)(sentry\.io|sentry-cdn\.com|wixpress\.com|example\.(com|org|net)|dominio\.com(\.br)?|seudominio\.com(\.br)?|teste\.com(\.br)?|localhost|mysite\.com|misitio\.com|meusite\.com(\.br)?|seusite\.com(\.br)?|yoursite\.com|site\.com(\.br)?|empresa\.com(\.br)?)$/i;
 const EMAIL_LOCAL_LIXO =
   /^(seu-?e?-?mail|e-?mail|exemplo|teste|test|nome|user|username|no-?reply|nao-?responda|postmaster|abuse|webmaster|hostmaster|sentry)$/i;
 
@@ -394,28 +424,77 @@ export function extrairContatos(html: string, origem: string): ContatoSite[] {
   return agrupar(linearizar(html)).flatMap((g) => emGrupo(g, origem));
 }
 
-// Páginas do PRÓPRIO site que valem visitar. Só o mesmo domínio (ignorando www):
-// link para o Instagram ou para o site do fornecedor não entra na fila.
-export function linksCandidatos(html: string, base: string): string[] {
+// Links do PRÓPRIO site, com o texto do link. Só o mesmo domínio (ignorando
+// www): link para o Instagram ou para o site do fornecedor não entra.
+export function linksDaPagina(html: string, base: string): { url: string; texto: string }[] {
   let origem: URL;
   try { origem = new URL(base); } catch { return []; }
   const vistos = new Set<string>();
-  const achados: string[] = [];
-  for (const m of html.matchAll(/<a\b[^>]*\bhref=["']([^"'>]+)["']/gi)) {
+  const achados: { url: string; texto: string }[] = [];
+  for (const m of html.matchAll(/<a\b[^>]*\bhref=["']([^"'>]+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
     let u: URL;
     try { u = new URL(entidades(m[1]!.trim()), origem); } catch { continue; }
     if (u.protocol !== 'https:' && u.protocol !== 'http:') continue;
     if (hostBase(u.hostname) !== hostBase(origem.hostname)) continue;
-    if (ARQUIVO.test(u.pathname) || !RE_PAGINA_CONTATO.test(u.pathname)) continue;
+    if (ARQUIVO.test(u.pathname)) continue;
     u.hash = '';
     const url = u.toString();
     if (vistos.has(url)) continue;
     vistos.add(url);
-    achados.push(url);
+    const texto = entidades(m[2]!.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim().slice(0, 80);
+    achados.push({ url, texto });
   }
-  // Página de contato antes de "sobre": rende muito mais e o orçamento é curto.
-  const rank = (u: string): number => (/(contato|contact|fale|atendimento)/i.test(u) ? 0 : 1);
-  return achados.sort((a, b) => rank(a) - rank(b));
+  return achados;
+}
+
+// Os que valem visitar, do mais para o menos provável de ter contato.
+export function linksCandidatos(html: string, base: string): string[] {
+  return linksDaPagina(html, base)
+    .map((l) => ({ url: l.url, p: pontuar(l.url, l.texto) }))
+    .filter((l) => l.p > 0)
+    .sort((a, b) => b.p - a.p)
+    .map((l) => l.url);
+}
+
+// Todas as páginas que o site declara ter: robots.txt aponta o sitemap; sem ele,
+// os caminhos que WordPress/Wix/Yoast usam. Índice de sitemaps é seguido, com
+// sitemap de páginas antes do de produtos/posts. Sempre por fetch simples
+// (buscarPagina): XML não precisa de navegador.
+export async function urlsDoSitemap(home: string): Promise<string[]> {
+  let origem: URL;
+  try { origem = new URL(home); } catch { return []; }
+  const locs = (xml: string): string[] =>
+    [...xml.matchAll(/<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]\s]+)/gi)].map((m) => entidades(m[1]!));
+
+  const fila: string[] = [];
+  const robots = await buscarPagina(new URL('/robots.txt', origem).toString());
+  if (robots?.status === 200) {
+    for (const m of robots.html.matchAll(/^\s*sitemap:\s*(\S+)/gim)) fila.push(m[1]!);
+  }
+  if (!fila.length) {
+    for (const c of ['/sitemap.xml', '/sitemap_index.xml', '/wp-sitemap.xml']) fila.push(new URL(c, origem).toString());
+  }
+
+  const paginas = new Set<string>();
+  const lidos = new Set<string>();
+  while (fila.length && lidos.size < MAX_SITEMAPS) {
+    const alvo = fila.shift()!;
+    if (lidos.has(alvo)) continue;
+    lidos.add(alvo);
+    const r = await buscarPagina(alvo);
+    if (r?.status !== 200 || !/<(urlset|sitemapindex)\b/i.test(r.html)) continue;
+    const achados = locs(r.html);
+    if (/<sitemapindex\b/i.test(r.html)) {
+      // page-sitemap.xml / wp-sitemap-posts-page-1.xml antes de product-sitemap.xml
+      const rank = (u: string): number => (/page|pagina/i.test(u) ? 0 : /product|produto|post|blog|categor|tag/i.test(u) ? 2 : 1);
+      fila.push(...achados.sort((a, b) => rank(a) - rank(b)));
+      continue;
+    }
+    for (const u of achados) {
+      try { if (hostBase(new URL(u).hostname) === hostBase(origem.hostname)) paginas.add(u); } catch { /* loc inválido */ }
+    }
+  }
+  return [...paginas];
 }
 
 // 401/403/429: o servidor está de pé e recusou o robô, não é ausência de site.
@@ -432,32 +511,55 @@ export function pareceSPA(html: string): boolean {
 }
 
 type Pagina = { url: string; html: string; status: number; bloqueado?: boolean };
+// Progresso para a tela: páginas lidas até agora.
+export type AoLer = (paginasLidas: number) => void;
 
-async function rasparRenderizado(siteUrl: string, motor: MotorRenderizacao): Promise<BuscaContatos | null> {
-  const inicio = Date.now();
-  const home = await buscarPaginaRenderizada(siteUrl, undefined, motor);
-  if (!home) return null;
-  if (home.bloqueado) return { contatos: [], paginas: [], bloqueado: true };
-  if (home.status >= 500) return { contatos: [], paginas: [], bloqueado: false };
-  if (home.html === '') return null;
+// Página que rendeu contatos (2+) puxa as subpáginas dela: /comercial rende, e
+// /comercial/sul, /comercial/sc são onde está o resto da rede.
+const BONUS_SUBPAGINA = 8;
 
+// O mapeamento em si, igual para fetch simples e navegador — muda só `obter`.
+// Fila por pontuação: a cada página lida, a próxima é a mais provável de ter
+// contato entre tudo que já se conhece (menu, sitemap, links de páginas ricas).
+async function mapear(home: Pagina, obter: (u: string) => Promise<Pagina | null>, aoLer?: AoLer): Promise<BuscaContatos> {
   const paginas: Pagina[] = [home];
-  const fila: string[] = [];
-  const enfileirar = (u: string): void => {
-    if (u !== home.url && !fila.includes(u)) fila.push(u);
+  const pontos = new Map<string, number>(); // url -> pontuação; lidas saem do mapa
+  const visitadas = new Set<string>([home.url]);
+  const propor = (u: string, p: number): void => {
+    if (p <= 0 || visitadas.has(u)) return;
+    if (p > (pontos.get(u) ?? 0)) pontos.set(u, p);
   };
-  for (const l of linksCandidatos(home.html, home.url)) enfileirar(l);
-  for (const c of CAMINHOS_COMUNS) {
-    try { enfileirar(new URL(c, home.url).toString()); } catch { /* base estranha */ }
-  }
+  const colher = (pag: Pagina): number => {
+    const achados = extrairContatos(pag.html, pag.url).length;
+    let base: string;
+    try { base = new URL(pag.url).pathname.replace(/\/$/, ''); } catch { base = ''; }
+    for (const l of linksDaPagina(pag.html, pag.url)) {
+      let bonus = 0;
+      try { bonus = achados >= 2 && base && new URL(l.url).pathname.startsWith(`${base}/`) ? BONUS_SUBPAGINA : 0; } catch { /* url estranha */ }
+      propor(l.url, Math.max(pontuar(l.url, l.texto), bonus));
+    }
+    return achados;
+  };
 
-  for (const alvo of fila) {
-    if (paginas.length >= MAX_PAGINAS || Date.now() - inicio > PRAZO_MS) break;
-    const p = await buscarPaginaRenderizada(alvo, home.url, motor);
-    if (!p || p.bloqueado || p.html === '' || paginas.some((x) => x.url === p.url)) continue;
-    // SPAs em S3/CloudFront frequentemente devolvem 404 junto do index.html;
-    // Chromium ainda executa o app e produz página válida, então status não veta.
+  colher(home);
+  // Caminhos comuns com peso baixo: só vão se nada melhor aparecer antes.
+  for (const c of CAMINHOS_COMUNS) {
+    try { propor(new URL(c, home.url).toString(), 1); } catch { /* base estranha */ }
+  }
+  for (const u of await urlsDoSitemap(home.url)) propor(u, pontuar(u));
+
+  while (pontos.size && paginas.length < MAX_PAGINAS) {
+    const [alvo] = [...pontos].sort((a, b) => b[1] - a[1])[0]!;
+    pontos.delete(alvo);
+    visitadas.add(alvo);
+    const p = await obter(alvo);
+    // Redirect faz '/contato' e '/contatos' caírem na mesma URL final: ler duas
+    // vezes só gastaria o orçamento de páginas.
+    if (!p || (p.url !== alvo && visitadas.has(p.url))) continue;
+    visitadas.add(p.url);
     paginas.push(p);
+    colher(p);
+    aoLer?.(paginas.length);
   }
 
   const contatos = mesclar(paginas.flatMap((p) => extrairContatos(p.html, p.url)))
@@ -468,54 +570,42 @@ async function rasparRenderizado(siteUrl: string, motor: MotorRenderizacao): Pro
   return { contatos, paginas: paginas.map((p) => p.url), bloqueado: false };
 }
 
-async function rasparComFallback(siteUrl: string): Promise<BuscaContatos | null> {
-  const leve = await rasparRenderizado(siteUrl, 'lightpanda');
-  if (leve?.contatos.length) return leve;
-  return (await rasparRenderizado(siteUrl, 'chromium')) ?? leve;
+async function rasparRenderizado(siteUrl: string, motor: MotorRenderizacao, aoLer?: AoLer): Promise<BuscaContatos | null> {
+  const home = await buscarPaginaRenderizada(siteUrl, undefined, motor);
+  if (!home) return null;
+  if (home.bloqueado) return { contatos: [], paginas: [], bloqueado: true };
+  if (home.status >= 500) return { contatos: [], paginas: [], bloqueado: false };
+  if (home.html === '') return null;
+  return mapear(home, async (u) => {
+    const p = await buscarPaginaRenderizada(u, home.url, motor);
+    // SPAs em S3/CloudFront frequentemente devolvem 404 junto do index.html;
+    // Chromium ainda executa o app e produz página válida, então status não veta.
+    return p && !p.bloqueado && p.html !== '' ? p : null;
+  }, aoLer);
 }
 
-export async function buscarContatosNoSite(siteUrl: string): Promise<BuscaContatos> {
-  const inicio = Date.now();
+async function rasparComFallback(siteUrl: string, aoLer?: AoLer): Promise<BuscaContatos | null> {
+  const leve = await rasparRenderizado(siteUrl, 'lightpanda', aoLer);
+  if (leve?.contatos.length) return leve;
+  return (await rasparRenderizado(siteUrl, 'chromium', aoLer)) ?? leve;
+}
+
+export async function buscarContatosNoSite(siteUrl: string, aoLer?: AoLer): Promise<BuscaContatos> {
   const home = await buscarPagina(siteUrl);
   if (home === null || !legivel(home)) {
     const bloqueado = home !== null && BLOQUEIO.has(home.status);
     if (bloqueado) {
-      const renderizado = await rasparComFallback(siteUrl);
+      const renderizado = await rasparComFallback(siteUrl, aoLer);
       if (renderizado) return renderizado;
     }
     return { contatos: [], paginas: [], bloqueado };
   }
   if (pareceSPA(home.html)) {
-    const renderizado = await rasparComFallback(siteUrl);
+    const renderizado = await rasparComFallback(siteUrl, aoLer);
     if (renderizado) return renderizado;
   }
-
-  const paginas = [home];
-  const fila: string[] = [];
-  const enfileirar = (u: string): void => {
-    if (u !== home.url && !fila.includes(u)) fila.push(u);
-  };
-  for (const l of linksCandidatos(home.html, home.url)) enfileirar(l);
-  // Caminhos comuns entram DEPOIS dos links reais e servem para o site que não
-  // linka contato no menu (menu em imagem, em JS ou dentro de frame).
-  for (const c of CAMINHOS_COMUNS) {
-    try { enfileirar(new URL(c, home.url).toString()); } catch { /* base estranha */ }
-  }
-
-  for (const alvo of fila) {
-    if (paginas.length >= MAX_PAGINAS || Date.now() - inicio > PRAZO_MS) break;
-    const p = await buscarPagina(alvo);
-    // Redirect faz '/contato' e '/contatos' caírem na mesma URL final: ler duas
-    // vezes só gastaria o orçamento de páginas.
-    if (p && legivel(p) && !paginas.some((x) => x.url === p.url)) paginas.push(p);
-  }
-
-  const contatos = mesclar(paginas.flatMap((p) => extrairContatos(p.html, p.url)))
-    .map((c, i) => ({ c, i }))
-    .sort((a, b) => peso(a.c) - peso(b.c) || a.i - b.i)
-    .slice(0, MAX_CONTATOS)
-    .map(({ c }) => c);
-
-  const estatico = { contatos, paginas: paginas.map((p) => p.url), bloqueado: false };
-  return estatico;
+  return mapear(home, async (u) => {
+    const p = await buscarPagina(u);
+    return p && legivel(p) ? p : null;
+  }, aoLer);
 }

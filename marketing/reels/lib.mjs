@@ -9,12 +9,19 @@ import { writeFileSync, mkdirSync, rmSync, readFileSync, existsSync } from 'node
 import { execFileSync } from 'node:child_process';
 
 export const BASE = process.env.BASE ?? 'http://localhost:5173';
+const REPO = new URL('../../', import.meta.url).pathname;
+
+// SQL direto no Postgres de dev (docker compose) — pra limpar o que a API não desfaz.
+// Devolve as linhas em texto (psql -At). Só para dados da org demo.
+export const sql = (q) => execFileSync('docker', ['compose', 'exec', '-T', 'db', 'sh', '-c',
+  `psql -U $POSTGRES_USER -d $POSTGRES_DB -Atqc "$1"`, 'sh', q], { cwd: REPO, encoding: 'utf8' }).trim();
 const VP = { width: 414, height: 690 }; // proporção da janela 810x1350 do quadro final
 export const FOLGA = 0.3; // s de respiro antes e depois de cada fala
 
 export async function gravar(dir, roteiro, { contexto = {} } = {}) {
   // screencast sai no tamanho da janela; forçar o fator de escala dá quadros nítidos
-  const b = await chromium.launch({ args: ['--force-device-scale-factor=2.625'] });
+  // lang/LANGUAGE: campos nativos do navegador (mês, data) em português
+  const b = await chromium.launch({ args: ['--force-device-scale-factor=2.625', '--lang=pt-BR'], env: { ...process.env, LANGUAGE: 'pt_BR', LANG: 'pt_BR.UTF-8' } });
   const auth = await b.newContext({ ...devices['Pixel 7'], viewport: VP });
   const lp = await auth.newPage();
   await lp.goto(`${BASE}/login`);
@@ -63,7 +70,7 @@ export async function gravar(dir, roteiro, { contexto = {} } = {}) {
     marcas[k] = Date.now() / 1000 - t0; atual = k;
   };
   const pausa = (ms) => p.waitForTimeout(ms);
-  const digitar = (loc, txt) => loc.pressSequentially(txt, { delay: 110 });
+  const digitar = (loc, txt, ms = 110) => loc.pressSequentially(txt, { delay: ms }); // ms por tecla
   // rolagem suave até o elemento, em qualquer container que role
   const rolarAte = async (loc, block = 'start', ms = 900) => {
     await loc.evaluate((el, block) => el.scrollIntoView({ behavior: 'smooth', block, inline: 'nearest' }), block);
@@ -99,7 +106,6 @@ export async function gravar(dir, roteiro, { contexto = {} } = {}) {
   writeFileSync(`${FR}lista.txt`, lista);
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', `${FR}lista.txt`,
     '-vf', 'fps=30,scale=trunc(iw/2)*2:trunc(ih/2)*2', '-c:v', 'libx264', '-crf', '14', '-pix_fmt', 'yuv420p', `${dir}/raw.mp4`]);
-  marcas.total = marcas.fim + Math.max(3, (falas.fim ?? 0) + FOLGA * 3); // + card final
   writeFileSync(`${dir}/marcas.json`, JSON.stringify(marcas, null, 2));
   console.log(marcas);
 }

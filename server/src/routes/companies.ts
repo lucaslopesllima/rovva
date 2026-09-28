@@ -7,6 +7,11 @@ import { descobrirDominio } from '../enriquecimento.ts';
 import { buscarContatosNoSite } from '../contatos_site.ts';
 import { buscarNaWeb, BuscaWebDesligadaError } from '../busca_web.ts';
 
+// Empresas com mapeamento de site rodando neste processo.
+// ponytail: em memória — reinício do app perde o job (GET devolve 'interrompido'
+// e o usuário investiga de novo); fila persistente se isso virar rotina.
+const mapeando = new Set<number>();
+
 // Read-only lookup into the global companies pool (mesma fonte do recommend/funil).
 // Retorna TODOS os campos da empresa (com códigos RFB decodificados) + quadro societário.
 export function companyRoutes(app: FastifyInstance): void {
@@ -146,13 +151,16 @@ export function companyRoutes(app: FastifyInstance): void {
       email: ct.email ? shared.find((s) => s.tipo === 'email')?.empresas ?? null : null,
     };
 
-    // Última busca na internet salva (migração 080): a ficha mostra sem gastar crédito.
-    const bw = await one<{ r: unknown }>(
-      `SELECT resultado || jsonb_build_object('buscado_em', buscado_em) AS r
+    // Última investigação salva (080/081): a ficha mostra sem gastar crédito.
+    const bw = await one<{ r: unknown; site: unknown; contatos_site: unknown }>(
+      `SELECT resultado || jsonb_build_object('buscado_em', buscado_em) AS r, site, contatos_site
          FROM company_busca_web WHERE company_id = $1`, [id],
     );
 
-    return { company, socios, compartilhado, busca_web: bw?.r ?? null };
+    return {
+      company, socios, compartilhado,
+      busca_web: bw?.r ?? null, site: bw?.site ?? null, contatos_site: bw?.contatos_site ?? null,
+    };
   });
 
   // Confere na Evolution se os telefones da empresa existem no WhatsApp.
@@ -237,32 +245,77 @@ export function companyRoutes(app: FastifyInstance): void {
       'SELECT id, cnpj, razao_social, nome_fantasia, email FROM companies WHERE id = $1', [id],
     );
     if (!c) return reply.code(404).send({ error: 'empresa não encontrada' });
-    return { dominio: await descobrirDominio(c) };
+    const dominio = await descobrirDominio(c);
+    // Salva o último resultado para a ficha mostrar ao reabrir (migração 081).
+    // Zera os contatos lidos: são do site anterior, e a leitura nova (se houver
+    // site) vem logo depois pela rota contatos-site.
+    await query(
+      `INSERT INTO company_busca_web (company_id, site) VALUES ($1, $2)
+       ON CONFLICT (company_id) DO UPDATE SET site = EXCLUDED.site, contatos_site = NULL`, [id, JSON.stringify(dominio)],
+    );
+    return { dominio };
   });
 
-  // Raspa os contatos publicados no site recém-descoberto pelo modal. A URL
-  // segue na própria requisição porque descoberta nenhuma é persistida.
-  //
-  // O resultado NÃO é gravado: vai para a tela e o representante escolhe o que
-  // vira contato, pelo POST /api/contacts de sempre. Contato de site é dado de
-  // pessoa em boa parte dos casos (nome + celular do gerente), e guardar só o
-  // que foi escolhido mantém a coleta na medida do uso, como já vale para o
-  // contato administrativo do RDAP (ver migração 076).
-  app.get('/api/companies/:id/contatos-site', {
+  // Mapeamento do site em SEGUNDO PLANO: sem prazo, pode levar minutos (sitemap,
+  // dezenas de páginas, navegador quando precisa). POST inicia e responde na
+  // hora; GET devolve o estado salvo em company_busca_web.contatos_site:
+  //   { url, status: 'lendo', paginas_lidas }  -> ainda mapeando
+  //   { url, status: 'pronto', contatos, paginas, bloqueado }
+  //   { url, status: 'erro' | 'interrompido' }
+  // Nada vira contato sozinho: o representante escolhe pelo POST /api/contacts.
+  app.post('/api/companies/:id/contatos-site', {
     preHandler: [requireAuth, requirePermission('prospeccao.view')],
     schema: {
       params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
-      querystring: {
+      body: {
         type: 'object', required: ['site_url'],
         properties: { site_url: { type: 'string', minLength: 1, maxLength: 2048 } },
       },
     },
   }, async (req, reply) => {
     const { id } = req.params as { id: number };
-    const { site_url } = req.query as { site_url: string };
-    const c = await one<{ id: number }>('SELECT id FROM companies WHERE id = $1', [id]);
-    if (!c) return reply.code(404).send({ error: 'empresa não encontrada' });
-    return buscarContatosNoSite(site_url);
+    const { site_url } = req.body as { site_url: string };
+    // Só site que o servidor achou para esta empresa (registro.br ou Google Maps
+    // salvos): a linha é vista por todas as organizações e a URL vem do
+    // navegador — sem isso qualquer um plantaria contatos na ficha alheia.
+    const ok = await one<{ company_id: number }>(
+      `SELECT company_id FROM company_busca_web
+        WHERE company_id = $1 AND $2 IN (site->>'site_url', resultado->'local'->>'site')`, [id, site_url],
+    );
+    if (!ok) return reply.code(400).send({ error: 'site não encontrado pela investigação desta empresa' });
+
+    const lendo = { url: site_url, status: 'lendo', paginas_lidas: 0 };
+    if (mapeando.has(id)) return reply.code(202).send(lendo);
+    mapeando.add(id);
+    await query('UPDATE company_busca_web SET contatos_site = $2 WHERE company_id = $1', [id, JSON.stringify(lendo)]);
+
+    // Grava só se esta leitura ainda é a vigente: "investigar de novo" zera
+    // contatos_site (rota dominio) e pode ter trocado o site no meio do caminho.
+    const gravar = (v: object): Promise<unknown> => query(
+      `UPDATE company_busca_web SET contatos_site = $2
+        WHERE company_id = $1 AND contatos_site->>'url' = $3 AND contatos_site->>'status' = 'lendo'`,
+      [id, JSON.stringify({ url: site_url, ...v }), site_url],
+    );
+    void buscarContatosNoSite(site_url, (n) => { void gravar({ status: 'lendo', paginas_lidas: n }).catch(() => undefined); })
+      .then((r) => gravar({ status: 'pronto', ...r }))
+      .catch((e) => { req.log.error(e, 'mapeamento do site falhou'); return gravar({ status: 'erro' }); })
+      .catch(() => undefined)
+      .finally(() => mapeando.delete(id));
+    return reply.code(202).send(lendo);
+  });
+
+  app.get('/api/companies/:id/contatos-site', {
+    preHandler: [requireAuth, requirePermission('prospeccao.view')],
+    schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
+  }, async (req) => {
+    const { id } = req.params as { id: number };
+    const r = await one<{ c: { status?: string } | null }>(
+      'SELECT contatos_site AS c FROM company_busca_web WHERE company_id = $1', [id],
+    );
+    const c = r?.c ?? null;
+    // 'lendo' salvo sem job vivo = o app reiniciou no meio. Não fica girando para sempre.
+    if (c?.status === 'lendo' && !mapeando.has(id)) return { contatos_site: { ...c, status: 'interrompido' } };
+    return { contatos_site: c };
   });
 
   // Busca na internet (Serper.dev) sob demanda: telefone do Google Maps, redes
@@ -282,7 +335,7 @@ export function companyRoutes(app: FastifyInstance): void {
     if (!atualizar) {
       const salvo = await one<{ r: unknown }>(
         `SELECT resultado || jsonb_build_object('buscado_em', buscado_em) AS r
-           FROM company_busca_web WHERE company_id = $1`, [id],
+           FROM company_busca_web WHERE company_id = $1 AND resultado IS NOT NULL`, [id],
       );
       if (salvo) return salvo.r;
     }

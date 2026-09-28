@@ -38,7 +38,12 @@ export interface BuscaWeb {
   // Rastro dos sócios na internet (LinkedIn pessoal, guias locais). Em empresa
   // pequena o dono É a empresa, e é com ele que o representante fala.
   socios: { nome: string; titulo: string; url: string }[];
+  // Funcionários com perfil público no LinkedIn que cita a empresa. Só nome,
+  // cargo e link: o LinkedIn não expõe contato no Google.
+  pessoas: Pessoa[];
 }
+
+export interface Pessoa { nome: string; cargo: string | null; url: string }
 
 export interface EmpresaBusca {
   razao_social: string;
@@ -128,14 +133,17 @@ function lerMaps(json: Record<string, unknown> | null, slugs: string[]): LocalMa
   };
 }
 
-// Sites de consulta de CNPJ: espelham a Receita, que já está na ficha. Saem da
-// busca (-site:, para os 10 resultados virem de fonte útil) e do que escapar.
+// Sites de consulta de CNPJ (espelham a Receita, que já está na ficha) e de
+// processos. Saem da busca (-site:, para os 10 resultados virem de fonte útil)
+// e do que escapar.
 const AGREGADORES = [
   'cnpja.com', 'serasaexperian.com.br', 'econodata.com.br', 'cnpgolden.com.br',
   'casadosdados.com.br', 'cnpj.biz', 'cnpj.info', 'consultacnpj.com', 'empresaqui.com.br',
   'advdinamico.com.br', 'guiadotrc.com.br', 'informecadastral.com.br', 'cnpj.services',
   'consultasocio.com', 'empresascnpj.com', 'listamais.com.br', 'buscasim.com.br',
-  'monitorcnpj.com.br', 'empresassantacatarina.com.br', 'escavador.com',
+  'monitorcnpj.com.br', 'empresassantacatarina.com.br',
+  // Processo judicial: não ajuda a prospectar e é dado sensível do sócio.
+  'escavador.com', 'jusbrasil.com.br',
 ];
 const EXCLUI = AGREGADORES.map((d) => `-site:${d}`).join(' ');
 
@@ -149,6 +157,32 @@ export function deAgregador(url: string): boolean {
 }
 
 interface Organico { title?: string; link?: string; snippet?: string }
+
+// Quem decide compra vem primeiro: é com essa pessoa que o representante fala.
+const DECISOR = /(diretor|gerente|compr|suprimentos|comercial|coordenador|supervisor|s[oó]ci|propriet|fundador|ceo|head|administrador)/i;
+
+// Perfil do LinkedIn como o Google mostra:
+//   título  "Ricardo Stanguerlin - Malinski Madeiras Ltda" | "Nome - Cargo | LinkedIn"
+//   trecho  "Gerente geral na Malinski Madeiras Ltda · Advogado há 25 anos..."
+// Cargo vem de "<cargo> na <empresa>" (título ou trecho); sem isso, o título
+// depois do nome, se não for o próprio nome da empresa.
+export function pessoaDoLinkedin(o: Organico, slugs: string[]): Pessoa | null {
+  if (!o.link || !/^https:\/\/([a-z]+\.)?linkedin\.com\/in\//i.test(o.link)) return null;
+  const titulo = (o.title ?? '').replace(/\s*[|–-]\s*LinkedIn\s*$/i, '');
+  const [nome, ...resto] = titulo.split(/\s+[-–]\s+/);
+  const texto = `${titulo} ${o.snippet ?? ''}`;
+  if (!nome?.trim() || !citaEmpresa(texto, slugs)) return null;
+
+  const trechos = [resto.join(' - '), ...(o.snippet ?? '').split(/\s*[·|]\s*/)];
+  let cargo: string | null = null;
+  for (const t of trechos) {
+    const m = /^(?:.*\.\s+)?(.+?)\s+(?:na|no|da|do|em)\s+(?:empresa\s+)?(.+)$/i.exec(t.trim());
+    if (m && citaEmpresa(m[2]!, slugs)) { cargo = m[1]!; break; }
+  }
+  const alt = resto.join(' - ').trim();
+  if (!cargo && alt && !citaEmpresa(alt, slugs) && !alt.endsWith('...')) cargo = alt;
+  return { nome: nome.trim(), cargo: cargo?.trim() || null, url: o.link };
+}
 
 export async function buscarNaWeb(e: EmpresaBusca): Promise<BuscaWeb> {
   if (!config.serperApiKey) throw new BuscaWebDesligadaError();
@@ -166,15 +200,18 @@ export async function buscarNaWeb(e: EmpresaBusca): Promise<BuscaWeb> {
 
   // UF só no Maps: na busca web o Google lê "SC" como South Carolina.
   // Sócios numa 3ª busca (+1 crédito), só quando há sócio pessoa física.
-  const [maps, google, pessoas] = await Promise.all([
+  // LinkedIn: num 10 é o teto do plano gratuito do Serper (20 dá "Query
+  // pattern not allowed for free accounts").
+  const [maps, google, pessoas, linkedin] = await Promise.all([
     serper('maps', [nome, e.cidade, e.uf].filter(Boolean).join(' ')),
     serper('search', [termo, e.cidade, EXCLUI].filter(Boolean).join(' ')),
     socios.length
       ? serper('search', [`(${socios.map((n) => `"${n}"`).join(' OR ')})`, e.cidade, EXCLUI].filter(Boolean).join(' '))
       : Promise.resolve(null),
+    serper('search', `site:linkedin.com/in ${termo}`),
   ]);
   // Sem sócio a 3ª busca nem sai: falha é só quando o que foi pedido falhou todo.
-  if (!maps && !google && (!socios.length || !pessoas)) throw new Error('falha na busca na internet');
+  if (!maps && !google && !linkedin && (!socios.length || !pessoas)) throw new Error('falha na busca na internet');
 
   const doSocio = ((pessoas?.organic ?? []) as Organico[]).flatMap((o) => {
     const n = o.link && WEB.test(o.link) && !deAgregador(o.link) && socios.find((s) => citaPessoa(o.title ?? '', s));
@@ -217,5 +254,9 @@ export async function buscarNaWeb(e: EmpresaBusca): Promise<BuscaWeb> {
     links: organicos.filter((o) => !/(instagram|facebook|linkedin|youtube|tiktok)\.com\//i.test(o.link!))
       .slice(0, 5).map((o) => ({ titulo: o.title ?? o.link!, url: o.link! })),
     socios: doSocio.slice(0, 5).map(({ nome: n, o }) => ({ nome: n, titulo: o.title!, url: o.link! })),
+    pessoas: ((linkedin?.organic ?? []) as Organico[])
+      .map((o) => pessoaDoLinkedin(o, slugs))
+      .filter((p): p is Pessoa => !!p)
+      .sort((a, b) => Number(DECISOR.test(b.cargo ?? '')) - Number(DECISOR.test(a.cargo ?? ''))),
   };
 }

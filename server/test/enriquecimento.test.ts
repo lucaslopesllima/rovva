@@ -96,31 +96,39 @@ describe('descobrirDominio', () => {
   // O domínio do e-mail declarado na Receita é o único candidato que não é
   // palpite, então vai à frente de todos os derivados do nome.
   describe('domínio do e-mail da Receita', () => {
-    // Registro.br censurado/fora: o e-mail com site no ar entra mesmo assim.
-    it('e-mail .br com site é usado antes da varredura', async () => {
+    // Primeira tentativa, sem Registro.br: o e-mail é dado da própria empresa.
+    it('e-mail corporativo com site no ar vira o site, sem consultar o Registro.br', async () => {
       const e = await empresa('NOME QUE NAO VIRA DOMINIO LTDA', nome('NQNVD'), `vendas@${dom('mailbr')}`);
-      consultarDominio.mockResolvedValue({ estado: 'sem_titular' });
-
       expect(await descobrirDominio(e)).toMatchObject({
-        dominio: dom('mailbr'), fonte: 'email_rfb', confianca: 70,
+        dominio: dom('mailbr'), status: 'achou', fonte: 'email_rfb', confianca: 70,
       });
       expect(contarDominios).not.toHaveBeenCalled();
-      expect(consultarDominio.mock.calls.map((c) => c[0])).toEqual([dom('mailbr')]);
+      expect(consultarDominio).not.toHaveBeenCalled();
     });
 
-    it('e-mail .br do próprio CNPJ vira confiança 100', async () => {
-      const e = await empresa('NOME QUE NAO VIRA DOMINIO LTDA', null, `vendas@${dom('mailsf')}`);
-      consultarDominio.mockResolvedValueOnce({ estado: 'confirmado', titularCnpj: e.cnpj });
-      expect(await descobrirDominio(e)).toMatchObject({
-        dominio: dom('mailsf'), fonte: 'registrobr', confianca: 100,
-      });
-      expect(consultarDominio).toHaveBeenCalledTimes(1);
+    // TBM S A INDUSTRIA TEXTIL: tbmtextil.com.br é registrado por outra raiz do
+    // grupo. Conferir o CNPJ antes descartava o site certo.
+    it('domínio do e-mail registrado por outro CNPJ do grupo ainda vale', async () => {
+      const e = await empresa(`${nome('TBM')} S A INDUSTRIA TEXTIL`, null, `tbm@${dom('tbmtextil')}`);
+      consultarDominio.mockResolvedValue({ estado: 'confirmado', titularCnpj: '07671092000180' });
+      expect((await descobrirDominio(e)).dominio).toBe(dom('tbmtextil'));
+      expect(consultarDominio).not.toHaveBeenCalled();
     });
 
     it('e-mail corporativo ganha da marca', async () => {
       const e = await empresa('AMC TEXTIL LTDA', nome('COLCCI'), `joao@${dom('amctextil')}`);
       expect((await descobrirDominio(e)).dominio).toBe(dom('amctextil'));
-      expect(consultarDominio.mock.calls.map((c) => c[0])).toEqual([dom('amctextil')]);
+      expect(consultarDominio).not.toHaveBeenCalled();
+    });
+
+    it('e-mail corporativo sem site no ar cai no Registro.br', async () => {
+      const e = await empresa('ORION LTDA', nome('ORION'), `contato@${dom('orionmail')}`);
+      resolverSite.mockImplementation((d: string) => Promise.resolve(
+        d === dom('orionmail') ? { url: null, status: 'sem_dns' } : { url: `https://${d}/`, status: 'vivo' }));
+      consultarDominio.mockResolvedValue({ estado: 'confirmado', titularCnpj: e.cnpj });
+      // o próprio domínio do e-mail é o 1º confirmado: registrado só para e-mail
+      expect(await descobrirDominio(e)).toMatchObject({ dominio: dom('orionmail'), fonte: 'registrobr', site_status: 'sem_dns' });
+      expect(consultarDominio).toHaveBeenCalled();
     });
 
     it('provedor gratuito é ignorado, cai nos candidatos do nome', async () => {
@@ -130,18 +138,17 @@ describe('descobrirDominio', () => {
       expect(consultarDominio.mock.calls[0]![0]).toBe(dom('kronos'));
     });
 
-    // contabilizei.com.br e maismei.com.br estão entre os domínios de e-mail
-    // mais comuns da base. São do contador, têm site no ar (mock padrão 'vivo'),
-    // e o CNPJ do titular denuncia isso.
-    it('domínio do contador não passa na confirmação por CNPJ', async () => {
-      const e = await empresa('HELIOS LTDA', nome('HELIOS'), `fiscal@${dom('contabil')}`);
+    // meucnpj@contabilizei.com.br está em 125 mil empresas: é do contador, e o
+    // site dele (no ar) não é o da empresa. contato_compartilhado (075) marca.
+    it('e-mail de contador (compartilhado) não vira site; vai ao Registro.br', async () => {
+      const email = `fiscal@${dom('contabil')}`;
+      const e = await empresa('HELIOS LTDA', nome('HELIOS'), email);
+      await query(`INSERT INTO contato_compartilhado (tipo, valor, empresas) VALUES ('email', $1, 500)
+                   ON CONFLICT DO NOTHING`, [email]);
       consultarDominio
         .mockResolvedValueOnce({ estado: 'confirmado', titularCnpj: '99888777000166' }) // contador
         .mockResolvedValue({ estado: 'livre' });
-      const r = await descobrirDominio(e);
-      expect(r).toMatchObject({ dominio: null, status: 'nao_encontrado' });
-      // já descartado: a varredura não gasta cota consultando de novo
-      expect(consultarDominio.mock.calls.filter((c) => c[0] === dom('contabil'))).toHaveLength(1);
+      expect(await descobrirDominio(e)).toMatchObject({ dominio: null, status: 'nao_encontrado' });
     });
 
     // Fora do .br o registro.br não responde, então não dá para confirmar posse.

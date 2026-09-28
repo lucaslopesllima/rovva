@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from './api.ts';
 import type { CompanyDetail, Socio } from './types.ts';
 import { Modal, SafeButton, Spinner } from './ui.tsx';
@@ -143,6 +143,17 @@ type ContatoSite = {
 // "empresa sem contato publicado" — é "não deu para ler", e a tela tem que
 // dizer a diferença. colcci.com.br devolve 403 com página de desafio.
 type BuscaContatosSite = { contatos: ContatoSite[]; paginas: string[]; bloqueado: boolean };
+// Estado salvo do mapeamento do site, que roda em segundo plano no servidor.
+// Sem status = salvo antes do mapeamento em segundo plano: equivale a 'pronto'.
+type ContatosSiteSalvo = Partial<BuscaContatosSite> & {
+  url: string;
+  status?: 'lendo' | 'pronto' | 'erro' | 'interrompido';
+  paginas_lidas?: number;
+};
+const completo = (c: ContatosSiteSalvo): BuscaContatosSite =>
+  ({ contatos: c.contatos ?? [], paginas: c.paginas ?? [], bloqueado: c.bloqueado ?? false });
+// Intervalo do acompanhamento: mapear um site leva de segundos a minutos.
+const POLL_MS = 3000;
 
 // Resposta de /api/companies/:id/busca-web (Serper.dev). Achado por NOME, não por
 // CNPJ: a ficha rotula como "encontrado na internet" para o representante conferir.
@@ -155,6 +166,9 @@ type BuscaWeb = {
   contatos: ContatoSite[];
   links: { titulo: string; url: string }[];
   socios: { nome: string; titulo: string; url: string }[];
+  // Funcionários no LinkedIn, decisores primeiro. Opcional: investigação salva
+  // antes deste campo existir não o tem.
+  pessoas?: { nome: string; cargo: string | null; url: string }[];
   buscado_em: string; // resultado salvo; "atualizar" refaz a busca paga
 };
 
@@ -187,6 +201,10 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
   // servidor da empresa. Nada disso é gravado — quem grava é o "adicionar".
   const [contatos, setContatos] = useState<BuscaContatosSite | null>(null);
   const [contatosPend, setContatosPend] = useState(false);
+  const [contatosUrl, setContatosUrl] = useState<string | null>(null); // site lido, para "buscar de novo"
+  const [contatosLidas, setContatosLidas] = useState(0); // progresso do mapeamento
+  // Troca de empresa/fechamento invalida o acompanhamento em curso.
+  const acompanhamento = useRef(0);
   const [novoContato, setNovoContato] = useState<ContactForm | null>(null);
   // Busca na internet (Serper.dev): paga por clique, então também só com clique.
   const [web, setWeb] = useState<BuscaWeb | null>(null);
@@ -195,8 +213,9 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
   useEffect(() => {
     setData(null); setSocios([]); setGeo(null); setShared(null); setErr(false);
     setSite(null); setSitePend(false);
-    setContatos(null); setContatosPend(false); setNovoContato(null);
+    setContatos(null); setContatosPend(false); setContatosUrl(null); setContatosLidas(0); setNovoContato(null);
     setWeb(null); setWebPend(false);
+    const vez = ++acompanhamento.current;
     // Conferência dispara junto com o carregamento (não depende dos dados na
     // tela: o servidor lê os telefones da empresa). Falha vira indeterminado.
     setWa(null); setWaPend(true);
@@ -204,10 +223,22 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
       .then((r) => setWa(r.whatsapp))
       .catch(() => undefined)
       .finally(() => setWaPend(false));
-    void api.get<{ company: CompanyDetail; socios: Socio[]; compartilhado?: Compartilhado; busca_web?: BuscaWeb | null }>(`/api/companies/${companyId}`)
+    void api.get<{
+      company: CompanyDetail; socios: Socio[]; compartilhado?: Compartilhado;
+      // Última investigação salva: a ficha abre com ela, sem buscar de novo.
+      busca_web?: BuscaWeb | null; site?: SiteBusca | null;
+      contatos_site?: ContatosSiteSalvo | null;
+    }>(`/api/companies/${companyId}`)
       .then((r) => {
         setData(r.company); setSocios(r.socios ?? []); setShared(r.compartilhado ?? null);
         setWeb(r.busca_web ?? null);
+        setSite(r.site ?? null);
+        if (r.contatos_site) {
+          setContatosUrl(r.contatos_site.url);
+          // Mapeamento ainda rodando (alguém investigou há pouco): retoma o acompanhamento.
+          if (r.contatos_site.status === 'lendo') { setContatosPend(true); acompanhar(vez); }
+          else if (!r.contatos_site.status || r.contatos_site.status === 'pronto') setContatos(completo(r.contatos_site));
+        }
         seedCnae(r.company.cnae_principal, r.company.cnae_descricao); // já temos a descrição
         if (r.company.geo_lat != null && r.company.geo_lon != null) {
           setGeo({ lat: r.company.geo_lat, lon: r.company.geo_lon, precisao: r.company.geo_precisao ?? 'rua' });
@@ -217,6 +248,7 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
             .then((gr) => setGeo(gr.geocode)).catch(() => undefined);
         }
       }).catch(() => setErr(true));
+    return () => { acompanhamento.current++; };
   }, [companyId]);
 
   const raw = data?.raw_data && Object.keys(data.raw_data).length > 0 ? data.raw_data : null;
@@ -260,37 +292,64 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
     );
   };
 
-  const buscarSite = (): void => {
+  // Devolvem o resultado (null na falha) para o investigar encadear a leitura do site.
+  const buscarSite = (): Promise<SiteBusca | null> => {
     setSitePend(true);
-    void api.get<{ dominio: SiteBusca }>(`/api/companies/${companyId}/dominio`)
-      .then((r) => setSite(r.dominio))
-      .catch((e) => toast.error(e instanceof ApiError ? e.message : 'Falha ao buscar o site'))
+    return api.get<{ dominio: SiteBusca }>(`/api/companies/${companyId}/dominio`)
+      .then((r) => { setSite(r.dominio); return r.dominio; })
+      .catch((e) => { toast.error(e instanceof ApiError ? e.message : 'Falha ao buscar o site'); return null; })
       .finally(() => setSitePend(false));
   };
 
-  const buscarContatos = (): void => {
-    if (!site?.site_url) return;
-    setContatosPend(true);
-    void api.get<BuscaContatosSite>(
-      `/api/companies/${companyId}/contatos-site?site_url=${encodeURIComponent(site.site_url)}`,
-    )
-      .then(setContatos)
-      .catch((e) => toast.error(e instanceof ApiError ? e.message : 'Falha ao ler o site'))
-      .finally(() => setContatosPend(false));
+  // O servidor mapeia o site em segundo plano (sem prazo). A ficha só inicia e
+  // acompanha; fechar a ficha não interrompe, e ao reabrir o acompanhamento volta.
+  const acompanhar = (vez = acompanhamento.current): void => {
+    void api.get<{ contatos_site: ContatosSiteSalvo | null }>(`/api/companies/${companyId}/contatos-site`)
+      .then(({ contatos_site: c }) => {
+        if (vez !== acompanhamento.current) return;
+        if (c?.status === 'lendo') {
+          setContatosLidas(c.paginas_lidas ?? 0);
+          setTimeout(() => acompanhar(vez), POLL_MS);
+          return;
+        }
+        setContatosPend(false);
+        if (c?.status === 'pronto') setContatos(completo(c));
+        else toast.error(c?.status === 'interrompido' ? 'A leitura do site foi interrompida — investigue de novo' : 'Falha ao ler o site');
+      })
+      .catch(() => { if (vez === acompanhamento.current) setContatosPend(false); });
   };
 
-  const buscarWeb = (): void => {
+  const buscarContatos = (url: string): void => {
+    setContatosUrl(url);
+    setContatosLidas(0);
+    setContatosPend(true);
+    void api.post(`/api/companies/${companyId}/contatos-site`, { site_url: url })
+      .then(() => acompanhar())
+      .catch((e) => {
+        setContatosPend(false);
+        toast.error(e instanceof ApiError ? e.message : 'Falha ao ler o site');
+      });
+  };
+
+  const buscarWeb = (): Promise<BuscaWeb | null> => {
     setWebPend(true);
-    void api.get<BuscaWeb>(`/api/companies/${companyId}/busca-web?atualizar=true`)
-      .then(setWeb)
-      .catch((e) => toast.error(e instanceof ApiError ? e.message : 'Falha na busca na internet'))
+    return api.get<BuscaWeb>(`/api/companies/${companyId}/busca-web?atualizar=true`)
+      .then((r) => { setWeb(r); return r; })
+      .catch((e) => { toast.error(e instanceof ApiError ? e.message : 'Falha na busca na internet'); return null; })
       .finally(() => setWebPend(false));
   };
 
   // Uma ação só para tudo que é buscado fora da base: site próprio no
-  // registro.br (grátis, não fica salvo) e internet via Serper (pago, fica salvo).
-  const investigando = sitePend || webPend;
-  const investigar = (): void => { buscarSite(); buscarWeb(); };
+  // registro.br (grátis), internet via Serper (pago) e, achado um site, os
+  // contatos publicados nele. Tudo fica salvo e volta ao reabrir a ficha. O site confirmado
+  // pelo CNPJ tem prioridade; sem ele, vale o do Google Maps.
+  const investigando = sitePend || webPend || contatosPend;
+  const investigar = async (): Promise<void> => {
+    setContatos(null);
+    const [s, w] = await Promise.all([buscarSite(), buscarWeb()]);
+    const url = s?.site_url ?? w?.local?.site;
+    if (url) buscarContatos(url);
+  };
 
   // Pré-preenche o cadastro de contato padrão, com a empresa já selecionada.
   // Contato institucional (sem nome próprio) entra com o rótulo do setor no
@@ -340,8 +399,8 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
               site da marca{site.titular ? ` · ${site.titular}` : ''}
             </span>
           ) : site.confianca < 100 && (
-            <span className="text-xs text-ink-400" title="Domínio do e-mail declarado na Receita; o registro.br não confirma titularidade fora do .br">
-              não confirmado
+            <span className="text-xs text-ink-400" title="Domínio do e-mail que a empresa declarou na Receita, com site no ar">
+              pelo e-mail da empresa
             </span>
           )}
         </span>
@@ -398,18 +457,13 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
       return (
         <span className="inline-flex items-center gap-1.5 text-ink-400">
           <span className="h-3 w-3 animate-spin rounded-full border-2 border-ink-200 border-t-brand-500" />
-          <span className="text-xs">lendo as páginas de contato do site…</span>
+          <span className="text-xs">
+            mapeando o site{contatosLidas > 0 ? ` — ${contatosLidas} página(s) lida(s)` : ''}… pode levar alguns minutos
+          </span>
         </span>
       );
     }
-    if (!contatos) {
-      return (
-        <SafeButton type="button" onClick={buscarContatos}
-          className="inline-flex items-center gap-1 text-xs text-brand-600 hover:underline">
-          <Icon name="search" size={12} />buscar contatos no site
-        </SafeButton>
-      );
-    }
+    if (!contatos) return null;
     if (contatos.contatos.length === 0) {
       return (
         <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -424,7 +478,7 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
               nada publicado nas {contatos.paginas.length} página(s) lidas
             </span>
           )}
-          <SafeButton type="button" onClick={buscarContatos}
+          <SafeButton type="button" onClick={() => buscarContatos(contatosUrl!)}
             className="inline-flex items-center gap-1 text-xs text-brand-600 hover:underline">
             <Icon name="search" size={12} />buscar de novo
           </SafeButton>
@@ -473,7 +527,7 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
       );
     }
     if (!web) return null;
-    const vazio = !web.local && !web.redes.length && !web.contatos.length && !web.links.length && !web.socios.length;
+    const vazio = !web.local && !web.redes.length && !web.contatos.length && !web.links.length && !web.socios.length && !web.pessoas?.length;
     const link = 'text-brand-600 hover:underline';
     return (
       <div className="flex flex-col gap-2">
@@ -513,6 +567,21 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
                     <a key={p.url} href={p.url} title={p.titulo} target="_blank" rel="noopener noreferrer"
                       className={`rounded-full border border-ink-200 px-2 py-0.5 ${link}`}>{fonteDoLink(p.url)}</a>
                   ))}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {!!web.pessoas?.length && (
+          <div className="text-xs">
+            <p className="mb-0.5 text-ink-400">Pessoas no LinkedIn</p>
+            <ul className="flex flex-col gap-0.5">
+              {web.pessoas.map((p) => (
+                <li key={p.url} className="flex flex-wrap items-center gap-x-2">
+                  <span className="text-ink-600">{p.nome}</span>
+                  {p.cargo && <span className="text-ink-400">{p.cargo}</span>}
+                  <a href={p.url} target="_blank" rel="noopener noreferrer"
+                    className={`rounded-full border border-ink-200 px-2 py-0.5 ${link}`}>LinkedIn</a>
                 </li>
               ))}
             </ul>
@@ -594,13 +663,14 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
                 <InfoRow label="Site" value={linhaSite()} />
               </Section>
 
-              {/* Só faz sentido com site no ar: a raspagem lê páginas dele. */}
-              {site?.site_url && (
+              {/* Aparece quando o investigar achou um site e leu as páginas dele. */}
+              {(contatos || contatosPend) && (
                 <Section title="Contatos no site">
+                  {contatosUrl && <p className="mb-1 text-xs text-ink-400">lido de {fonteDoLink(contatosUrl)}</p>}
                   {/* Site da marca: quem atende ali é o dono da marca, não esta
                       empresa. Sem este aviso o representante ligaria para a
                       fábrica achando que fala com a loja. */}
-                  {site.fonte === 'marca' && (
+                  {site?.fonte === 'marca' && contatosUrl === site.site_url && (
                     <p className="mb-1.5 text-xs text-amber-600">
                       São contatos de {site.titular ?? 'quem registrou o domínio'}, dona da marca — não da empresa aberta.
                     </p>

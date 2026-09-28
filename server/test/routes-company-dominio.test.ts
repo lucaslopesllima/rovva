@@ -39,6 +39,20 @@ describe('GET /api/companies/:id/dominio', () => {
     );
   });
 
+  it('salva o site e zera contatos lidos do site anterior; detalhe devolve', async () => {
+    const id = await makeCompany({ razao: 'SALVA LTDA' });
+    const { query } = await import('../src/db.ts');
+    await query(`INSERT INTO company_busca_web (company_id, contatos_site) VALUES ($1, '{"url":"https://velho.com.br/"}')`, [id]);
+    const achado = { dominio: 'salva.com.br', site_url: 'https://salva.com.br/', status: 'achou' };
+    descobrirDominio.mockResolvedValueOnce(achado);
+    await buscar(id);
+
+    const det = (await app.inject({ method: 'GET', url: `/api/companies/${id}`, headers: bearer(s.token) })).json();
+    expect(det.site).toEqual(achado);
+    expect(det.contatos_site).toBeNull();
+    expect(det.busca_web).toBeNull(); // Serper ainda não rodou
+  });
+
   it('não encontrado devolve dominio null, não 404', async () => {
     const id = await makeCompany();
     descobrirDominio.mockResolvedValueOnce({
@@ -81,7 +95,7 @@ describe('GET /api/companies/:id/busca-web', () => {
 
   it('salva o resultado: 2ª chamada e o detalhe vêm do banco; atualizar refaz', async () => {
     const id = await makeCompany({ razao: 'CACHE LTDA' });
-    const res = (n: number) => ({ local: null, redes: [], contatos: [], links: [{ titulo: `v${n}`, url: 'https://x.com' }], socios: [] });
+    const res = (n: number) => ({ local: null, redes: [], contatos: [], links: [{ titulo: `v${n}`, url: 'https://x.com' }], socios: [], pessoas: [] });
     buscarNaWeb.mockResolvedValueOnce(res(1)).mockResolvedValueOnce(res(2));
 
     const a = (await web(id)).json();

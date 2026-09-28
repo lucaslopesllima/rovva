@@ -1,5 +1,7 @@
 # Reel 02 — Rota do dia pronta
 
+**Postagem:** Seg 28/09 · 12h
+
 ## Legenda
 
 ```
@@ -9,11 +11,11 @@ No Rovva você marca os clientes que quer visitar, escolhe o carro e toca em "Ot
 
 E já sai com a conta feita: km rodados, tempo, litros de combustível e custo estimado da viagem.
 
-Salve a rota e reuse quando voltar à região. Se quiser, abra direto no Google Maps e pé na estrada.
+Salve a rota e use de novo quando voltar à região. Se quiser, abra direto no Google Maps e pé na estrada.
 
 Menos estrada, mais visita.
 
-👉 Solicite seu teste grátis: link na bio
+👉 Manda sua cidade e seu segmento no direct que eu te mostro o Rovva no seu território.
 
 #representantecomercial #representacaocomercial #vendasexternas #rotadevisitas #vendasb2b #representante #roteirizacao #produtividade #rovva
 ```

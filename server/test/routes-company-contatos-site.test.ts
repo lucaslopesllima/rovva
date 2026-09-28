@@ -1,6 +1,7 @@
-// GET /api/companies/:id/contatos-site — raspagem dos contatos publicados no
-// site. A extração é testada em contatos-site.test.ts; aqui só o contrato da
-// rota: auth, URL recebida do modal e não-persistência.
+// POST/GET /api/companies/:id/contatos-site — mapeamento do site em segundo
+// plano. O mapeamento em si é testado em contatos-site.test.ts; aqui só o
+// contrato da rota: auth, trava da URL (só site achado pelo servidor), estados
+// salvos (lendo -> pronto/erro/interrompido) e que nada vira contato sozinho.
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 
@@ -16,14 +17,21 @@ beforeAll(async () => { app = await makeApp(); s = await register(app, 'co-cts')
 beforeEach(() => buscarContatosNoSite.mockReset());
 afterAll(() => closeAll(app));
 
-const comSite = (): Promise<number> => makeCompany({ razao: 'ACME LTDA' });
+const SITE = 'https://www.acme.com.br/';
 
-const buscar = (id: number, token = s.token, siteUrl = 'https://www.acme.com.br/') =>
-  app.inject({
-    method: 'GET',
-    url: `/api/companies/${id}/contatos-site?site_url=${encodeURIComponent(siteUrl)}`,
-    headers: bearer(token),
-  });
+// Empresa com o site já achado pela investigação (rota dominio).
+const comSite = async (campo: 'site' | 'resultado' = 'site', url = SITE): Promise<number> => {
+  const id = await makeCompany({ razao: 'ACME LTDA' });
+  const v = campo === 'site' ? { site_url: url } : { local: { site: url } };
+  await query(`INSERT INTO company_busca_web (company_id, ${campo}) VALUES ($1, $2)`, [id, JSON.stringify(v)]);
+  return id;
+};
+
+const iniciar = (id: number, siteUrl = SITE, token = s.token) =>
+  app.inject({ method: 'POST', url: `/api/companies/${id}/contatos-site`, headers: bearer(token), payload: { site_url: siteUrl } });
+const estado = async (id: number) =>
+  (await app.inject({ method: 'GET', url: `/api/companies/${id}/contatos-site`, headers: bearer(s.token) })).json().contatos_site;
+const terminar = (id: number) => vi.waitFor(async () => expect((await estado(id)).status).not.toBe('lendo'));
 
 const contato = {
   nome: 'Silvio Zanon', cargo: 'Gerente', rotulo: 'Departamento Técnico',
@@ -31,61 +39,82 @@ const contato = {
   origem: 'https://www.acme.com.br/contato',
 };
 
-describe('GET /api/companies/:id/contatos-site', () => {
-  it('devolve os contatos achados e as páginas lidas', async () => {
+describe('contatos-site (mapeamento em segundo plano)', () => {
+  it('POST responde na hora com "lendo"; o GET acompanha até "pronto"', async () => {
     const id = await comSite();
-    buscarContatosNoSite.mockResolvedValueOnce({
-      contatos: [contato], paginas: ['https://www.acme.com.br/', 'https://www.acme.com.br/contato'],
+    let fim!: (v: unknown) => void;
+    buscarContatosNoSite.mockImplementationOnce((_u: string, aoLer: (n: number) => void) => {
+      aoLer(3);
+      return new Promise((r) => { fim = r; });
     });
-    const r = await buscar(id);
-    expect(r.statusCode).toBe(200);
-    expect(r.json().contatos).toEqual([contato]);
-    expect(r.json().paginas).toHaveLength(2);
-    // Raspa URL enviada pelo modal, sem consultar cache.
-    expect(buscarContatosNoSite).toHaveBeenCalledWith('https://www.acme.com.br/');
+
+    const r = await iniciar(id);
+    expect(r.statusCode).toBe(202);
+    expect(r.json()).toEqual({ url: SITE, status: 'lendo', paginas_lidas: 0 });
+    await vi.waitFor(async () => expect(await estado(id)).toMatchObject({ status: 'lendo', paginas_lidas: 3 }));
+
+    fim({ contatos: [contato], paginas: [SITE], bloqueado: false });
+    await terminar(id);
+    expect(await estado(id)).toEqual({ url: SITE, status: 'pronto', contatos: [contato], paginas: [SITE], bloqueado: false });
+    expect(buscarContatosNoSite).toHaveBeenCalledWith(SITE, expect.any(Function));
   });
 
-  // O ponto do desenho: só o site fica no banco. O que a raspagem achou vive na
-  // tela, e vira registro apenas pelo POST /api/contacts do que foi escolhido.
-  it('não persiste nada do que raspou', async () => {
+  it('site do Google Maps salvo também vale', async () => {
+    const id = await comSite('resultado', 'https://maps.acme.com.br/');
+    buscarContatosNoSite.mockResolvedValueOnce({ contatos: [], paginas: [], bloqueado: false });
+    expect((await iniciar(id, 'https://maps.acme.com.br/')).statusCode).toBe(202);
+    await terminar(id);
+    expect((await estado(id)).status).toBe('pronto');
+  });
+
+  // A linha é vista por todas as organizações: URL arbitrária do navegador não roda.
+  it('URL que o servidor não achou -> 400, sem mapear', async () => {
     const id = await comSite();
-    buscarContatosNoSite.mockResolvedValueOnce({ contatos: [contato], paginas: ['https://www.acme.com.br/'] });
-    await buscar(id);
-    const linhas = await query<{ n: string }>(
-      'SELECT count(*) AS n FROM contacts WHERE email = $1', [contato.email],
-    );
-    expect(Number(linhas[0]!.n)).toBe(0);
-  });
-
-  it('site nenhum encontrado -> lista vazia, não erro', async () => {
-    const id = await comSite();
-    buscarContatosNoSite.mockResolvedValueOnce({ contatos: [], paginas: ['https://www.acme.com.br/'] });
-    const r = await buscar(id);
-    expect(r.statusCode).toBe(200);
-    expect(r.json().contatos).toEqual([]);
-  });
-
-  it('URL ausente -> 400, sem chamar a raspagem', async () => {
-    const id = await makeCompany();
-    const r = await app.inject({
-      method: 'GET', url: `/api/companies/${id}/contatos-site`, headers: bearer(s.token),
-    });
+    const r = await iniciar(id, 'https://golpe.example.com/');
     expect(r.statusCode).toBe(400);
     expect(buscarContatosNoSite).not.toHaveBeenCalled();
   });
 
-  it('empresa inexistente -> 404', async () => {
-    expect((await buscar(999_999_999)).statusCode).toBe(404);
-    expect(buscarContatosNoSite).not.toHaveBeenCalled();
+  it('falha no mapeamento vira "erro", não fica lendo', async () => {
+    const id = await comSite();
+    buscarContatosNoSite.mockRejectedValueOnce(new Error('navegador caiu'));
+    await iniciar(id);
+    await terminar(id);
+    expect((await estado(id)).status).toBe('erro');
   });
 
-  it('sem token -> 401', async () => {
+  it('"lendo" salvo sem job vivo (app reiniciou) -> interrompido', async () => {
     const id = await comSite();
-    const r = await app.inject({
-      method: 'GET',
-      url: `/api/companies/${id}/contatos-site?site_url=${encodeURIComponent('https://www.acme.com.br/')}`,
-    });
-    expect(r.statusCode).toBe(401);
+    await query(`UPDATE company_busca_web SET contatos_site = '{"url":"x","status":"lendo"}' WHERE company_id = $1`, [id]);
+    expect((await estado(id)).status).toBe('interrompido');
+  });
+
+  it('investigar de novo no meio: resultado velho não sobrescreve', async () => {
+    const id = await comSite();
+    let fim!: (v: unknown) => void;
+    buscarContatosNoSite.mockImplementationOnce(() => new Promise((r) => { fim = r; }));
+    await iniciar(id);
+    await query('UPDATE company_busca_web SET contatos_site = NULL WHERE company_id = $1', [id]); // rota dominio
+    fim({ contatos: [contato], paginas: [SITE], bloqueado: false });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(await estado(id)).toBeNull();
+  });
+
+  it('nada vira contato sozinho', async () => {
+    const id = await comSite();
+    buscarContatosNoSite.mockResolvedValueOnce({ contatos: [contato], paginas: [SITE], bloqueado: false });
+    await iniciar(id);
+    await terminar(id);
+    const linhas = await query<{ n: string }>('SELECT count(*) AS n FROM contacts WHERE email = $1', [contato.email]);
+    expect(Number(linhas[0]!.n)).toBe(0);
+  });
+
+  it('URL ausente -> 400; sem token -> 401', async () => {
+    const id = await comSite();
+    const semUrl = await app.inject({ method: 'POST', url: `/api/companies/${id}/contatos-site`, headers: bearer(s.token), payload: {} });
+    expect(semUrl.statusCode).toBe(400);
+    const semToken = await app.inject({ method: 'POST', url: `/api/companies/${id}/contatos-site`, payload: { site_url: SITE } });
+    expect(semToken.statusCode).toBe(401);
     expect(buscarContatosNoSite).not.toHaveBeenCalled();
   });
 });

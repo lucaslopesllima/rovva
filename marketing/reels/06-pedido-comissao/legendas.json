@@ -1,1 +1,27 @@
-{"drop":"faturar","cenas":[{"de":"inicio","txt":"x"},{"de":"pedido","txt":"x"},{"de":"faturar","txt":"x"},{"de":"comissao","txt":"x"}],"card":"x"}
+{
+  "drop": "faturar",
+  "cenas": [
+    {
+      "de": "inicio",
+      "txt": "Quanto vai <em>receber</em> de comissão?",
+      "fala": "Você sabe quanto vai receber de comissão no fim do mês?"
+    },
+    {
+      "de": "pedido",
+      "txt": "Lance o <em>pedido</em> em poucos toques",
+      "fala": "Lance o pedido: cliente, representada, e os itens do mostruário. O total sai na hora."
+    },
+    {
+      "de": "faturar",
+      "txt": "Faturou? A <em>comissão</em> já é calculada",
+      "fala": "Enviou, faturou com a nota, e a comissão já é calculada."
+    },
+    {
+      "de": "comissao",
+      "txt": "No <em>extrato</em>, prevista até a baixa",
+      "fala": "Ela aparece aqui, no extrato, como prevista, até você dar baixa."
+    }
+  ],
+  "card": "Sua comissão<br><em>sem conta de cabeça</em>.",
+  "card_fala": "Sua comissão, sem conta de cabeça."
+}
