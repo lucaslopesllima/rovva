@@ -1,0 +1,19 @@
+{
+  "drop": "otimizar",
+  "cenas": [
+    { "de": "inicio", "txt": "Ainda monta a <em>rota</em> no papel?",
+      "fala": "Ainda monta a rota do dia no papel?" },
+    { "de": "selecionar", "txt": "Marque os <em>clientes</em> do dia",
+      "fala": "Aqui, você marca os clientes que vai visitar hoje, e escolhe o carro." },
+    { "de": "otimizar", "txt": "Um toque: a <em>melhor ordem</em> de visitas",
+      "fala": "Um toque, e ele monta a sequência ideal de visitas." },
+    { "de": "custos", "txt": "<em>Km, tempo e combustível</em> já calculados",
+      "fala": "Já com a distância, o tempo e o custo do combustível." },
+    { "de": "mapa", "txt": "O trajeto no <em>mapa</em>, parada por parada",
+      "fala": "O trajeto aparece no mapa, parada por parada." },
+    { "de": "salvar", "txt": "Salvou, é só <em>pegar a estrada</em>",
+      "fala": "Salve a rota, use de novo quando voltar à região. Agora é só pegar a estrada." }
+  ],
+  "card": "Menos estrada,<br>mais <em>visita</em>.",
+  "card_fala": "Com o Rovva, menos estrada, mais visita."
+}

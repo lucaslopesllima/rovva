@@ -285,7 +285,8 @@ function Planner({ vehicles }: { vehicles: Vehicle[] }): React.JSX.Element {
   if (loading) return <Spinner label="Carregando funil…" />;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
+    // minmax(0,1fr): sem isso nome longo de empresa estica a coluna além da tela no celular
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
       {/* coluna esquerda: seleção */}
       <div className="flex flex-col gap-3">
         <Card className="p-3">

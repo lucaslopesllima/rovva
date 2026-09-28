@@ -131,6 +131,7 @@ services:
       # segue de pé e só os endpoints de WhatsApp respondem erro.
       EVOLUTION_API_URL: http://evolution:8080
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:?defina EVOLUTION_API_KEY no .env}
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
       WHATSAPP_WEBHOOK_URL: http://app:8080/api/webhooks/whatsapp?token=${WHATSAPP_WEBHOOK_TOKEN:?defina WHATSAPP_WEBHOOK_TOKEN no .env}
       WHATSAPP_WEBHOOK_TOKEN: ${WHATSAPP_WEBHOOK_TOKEN:?defina WHATSAPP_WEBHOOK_TOKEN no .env}
     volumes:

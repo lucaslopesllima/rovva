@@ -110,6 +110,18 @@ type SiteBusca = {
   titular: string | null;
 };
 
+// Rótulo do link pelo site de origem: o título da página muitas vezes é só o
+// nome da pessoa ("Michel Akrouche") e não diz se é LinkedIn ou guia local.
+const REDES_NOME: Record<string, string> = {
+  'linkedin.com': 'LinkedIn', 'instagram.com': 'Instagram', 'facebook.com': 'Facebook',
+  'youtube.com': 'YouTube', 'tiktok.com': 'TikTok',
+};
+function fonteDoLink(url: string): string {
+  const host = new URL(url).hostname.replace(/^www\./, '');
+  const rede = Object.keys(REDES_NOME).find((d) => host === d || host.endsWith(`.${d}`));
+  return rede ? REDES_NOME[rede]! : host;
+}
+
 const SEM_SITE: Record<string, string> = {
   sem_dns: 'domínio registrado, sem site publicado',
   sem_pagina: 'domínio registrado, site fora do ar',
@@ -131,6 +143,20 @@ type ContatoSite = {
 // "empresa sem contato publicado" — é "não deu para ler", e a tela tem que
 // dizer a diferença. colcci.com.br devolve 403 com página de desafio.
 type BuscaContatosSite = { contatos: ContatoSite[]; paginas: string[]; bloqueado: boolean };
+
+// Resposta de /api/companies/:id/busca-web (Serper.dev). Achado por NOME, não por
+// CNPJ: a ficha rotula como "encontrado na internet" para o representante conferir.
+type BuscaWeb = {
+  local: {
+    nome: string; telefone: string | null; site: string | null; endereco: string | null;
+    nota: number | null; avaliacoes: number | null; maps_url: string | null;
+  } | null;
+  redes: { rede: string; url: string }[];
+  contatos: ContatoSite[];
+  links: { titulo: string; url: string }[];
+  socios: { nome: string; titulo: string; url: string }[];
+  buscado_em: string; // resultado salvo; "atualizar" refaz a busca paga
+};
 
 // "i" ao lado do contato que se repete em várias empresas: quase sempre é o
 // telefone/e-mail do escritório de contabilidade, não de quem decide a compra.
@@ -162,11 +188,15 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
   const [contatos, setContatos] = useState<BuscaContatosSite | null>(null);
   const [contatosPend, setContatosPend] = useState(false);
   const [novoContato, setNovoContato] = useState<ContactForm | null>(null);
+  // Busca na internet (Serper.dev): paga por clique, então também só com clique.
+  const [web, setWeb] = useState<BuscaWeb | null>(null);
+  const [webPend, setWebPend] = useState(false);
 
   useEffect(() => {
     setData(null); setSocios([]); setGeo(null); setShared(null); setErr(false);
     setSite(null); setSitePend(false);
     setContatos(null); setContatosPend(false); setNovoContato(null);
+    setWeb(null); setWebPend(false);
     // Conferência dispara junto com o carregamento (não depende dos dados na
     // tela: o servidor lê os telefones da empresa). Falha vira indeterminado.
     setWa(null); setWaPend(true);
@@ -174,9 +204,10 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
       .then((r) => setWa(r.whatsapp))
       .catch(() => undefined)
       .finally(() => setWaPend(false));
-    void api.get<{ company: CompanyDetail; socios: Socio[]; compartilhado?: Compartilhado }>(`/api/companies/${companyId}`)
+    void api.get<{ company: CompanyDetail; socios: Socio[]; compartilhado?: Compartilhado; busca_web?: BuscaWeb | null }>(`/api/companies/${companyId}`)
       .then((r) => {
         setData(r.company); setSocios(r.socios ?? []); setShared(r.compartilhado ?? null);
+        setWeb(r.busca_web ?? null);
         seedCnae(r.company.cnae_principal, r.company.cnae_descricao); // já temos a descrição
         if (r.company.geo_lat != null && r.company.geo_lon != null) {
           setGeo({ lat: r.company.geo_lat, lon: r.company.geo_lon, precisao: r.company.geo_precisao ?? 'rua' });
@@ -248,6 +279,19 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
       .finally(() => setContatosPend(false));
   };
 
+  const buscarWeb = (): void => {
+    setWebPend(true);
+    void api.get<BuscaWeb>(`/api/companies/${companyId}/busca-web?atualizar=true`)
+      .then(setWeb)
+      .catch((e) => toast.error(e instanceof ApiError ? e.message : 'Falha na busca na internet'))
+      .finally(() => setWebPend(false));
+  };
+
+  // Uma ação só para tudo que é buscado fora da base: site próprio no
+  // registro.br (grátis, não fica salvo) e internet via Serper (pago, fica salvo).
+  const investigando = sitePend || webPend;
+  const investigar = (): void => { buscarSite(); buscarWeb(); };
+
   // Pré-preenche o cadastro de contato padrão, com a empresa já selecionada.
   // Contato institucional (sem nome próprio) entra com o rótulo do setor no
   // nome — "Departamento Vendas" é o que o representante reconhece na lista
@@ -315,20 +359,24 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
         </span>
       );
     }
-    const rotulo = site === null ? 'buscar site'
-      : site.status === 'indeterminado' ? 'tentar de novo' : 'buscar de novo';
-    return (
-      <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
-        {site?.status === 'nao_encontrado' && <span className="text-xs text-ink-300">nenhum site encontrado</span>}
-        {site?.status === 'indeterminado' && (
-          <span className="text-xs text-amber-600">o registro.br não confirmou agora</span>
-        )}
-        <SafeButton type="button" onClick={buscarSite}
-          className="inline-flex items-center gap-1 text-xs text-brand-600 hover:underline">
-          <Icon name="search" size={12} />{rotulo}
-        </SafeButton>
-      </span>
-    );
+    // Registro.br não achou (ou não é consultado ao reabrir: o site não fica
+    // salvo), mas o Google Maps salvo tem site: mostra esse, rotulado.
+    const doMaps = web?.local?.site;
+    if (doMaps) {
+      return (
+        <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          <a href={doMaps} target="_blank" rel="noopener noreferrer" className="text-brand-600 hover:underline">
+            {doMaps.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}
+          </a>
+          <span className="text-xs text-ink-400">pelo Google Maps</span>
+        </span>
+      );
+    }
+    if (site?.status === 'nao_encontrado') return <span className="text-xs text-ink-300">nenhum site encontrado</span>;
+    if (site?.status === 'indeterminado') {
+      return <span className="text-xs text-amber-600">o registro.br não confirmou agora — investigue de novo</span>;
+    }
+    return null;
   };
 
   // Contato + o aviso de contabilidade, quando o valor se repete em outras
@@ -383,9 +431,15 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
         </span>
       );
     }
+    return listaContatos(contatos.contatos);
+  };
+
+  // Linhas de contato achado fora do banco (site ou internet). Cada uma vira
+  // contato só se o usuário mandar; o botão abre o cadastro de sempre.
+  const listaContatos = (lista: ContatoSite[]): React.ReactNode => {
     return (
       <div className="divide-y divide-ink-100">
-        {contatos.contatos.map((c, i) => (
+        {lista.map((c, i) => (
           <div key={`${c.email ?? ''}|${c.telefone ?? ''}|${c.whatsapp ?? ''}|${i}`}
             className="flex items-start gap-3 py-2">
             <div className="min-w-0 flex-1">
@@ -405,6 +459,76 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
             </SafeButton>
           </div>
         ))}
+      </div>
+    );
+  };
+
+  const blocoWeb = (): React.ReactNode => {
+    if (webPend) {
+      return (
+        <span className="inline-flex items-center gap-1.5 text-ink-400">
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-ink-200 border-t-brand-500" />
+          <span className="text-xs">buscando no Google…</span>
+        </span>
+      );
+    }
+    if (!web) return null;
+    const vazio = !web.local && !web.redes.length && !web.contatos.length && !web.links.length && !web.socios.length;
+    const link = 'text-brand-600 hover:underline';
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-xs text-amber-600">Encontrado por nome no Google — confira se é a mesma empresa.</p>
+        {vazio && <span className="text-xs text-ink-300">nada encontrado com o nome desta empresa nem dos sócios</span>}
+        {web.local && (
+          <div className="text-sm text-ink-700">
+            {web.local.maps_url
+              ? <a href={web.local.maps_url} target="_blank" rel="noopener noreferrer" className={link}>{web.local.nome}</a>
+              : web.local.nome}
+            {web.local.nota != null && (
+              <span className="ml-2 text-xs text-ink-400">★ {web.local.nota}{web.local.avaliacoes != null && ` (${web.local.avaliacoes})`}</span>
+            )}
+            <p className="text-xs text-ink-400">
+              {[web.local.endereco, web.local.telefone ? maskPhone(web.local.telefone) : null].filter(Boolean).join(' · ')}
+            </p>
+            {web.local.site && (
+              <a href={web.local.site} target="_blank" rel="noopener noreferrer" className={`text-xs ${link}`}>{web.local.site}</a>
+            )}
+          </div>
+        )}
+        {web.redes.length > 0 && (
+          <p className="flex flex-wrap gap-x-3 text-xs">
+            {web.redes.map((r) => (
+              <a key={r.rede} href={r.url} target="_blank" rel="noopener noreferrer" className={`capitalize ${link}`}>{r.rede}</a>
+            ))}
+          </p>
+        )}
+        {web.socios.length > 0 && (
+          <div className="text-xs">
+            <p className="mb-0.5 text-ink-400">Sócios</p>
+            <ul className="flex flex-col gap-0.5">
+              {[...new Set(web.socios.map((p) => p.nome))].map((nome) => (
+                <li key={nome} className="flex flex-wrap items-center gap-x-2">
+                  <span className="text-ink-600">{nome}</span>
+                  {web.socios.filter((p) => p.nome === nome).map((p) => (
+                    <a key={p.url} href={p.url} title={p.titulo} target="_blank" rel="noopener noreferrer"
+                      className={`rounded-full border border-ink-200 px-2 py-0.5 ${link}`}>{fonteDoLink(p.url)}</a>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {web.contatos.length > 0 && listaContatos(web.contatos)}
+        {web.links.length > 0 && (
+          <ul className="flex flex-col gap-0.5 text-xs">
+            {web.links.map((l) => (
+              <li key={l.url} className="truncate">
+                <span className="text-ink-400">{fonteDoLink(l.url)} · </span>
+                <a href={l.url} target="_blank" rel="noopener noreferrer" className={link}>{l.titulo}</a>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     );
   };
@@ -449,6 +573,19 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
                   : <span className="text-ink-300">localizando…</span>} />
               </Section>
 
+              <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-ink-100 bg-ink-50 px-3 py-2">
+                <SafeButton type="button" onClick={investigar} disabled={investigando}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-60 max-sm:min-h-11">
+                  <Icon name="search" size={13} />
+                  {investigando ? 'Investigando…' : web || site ? 'Investigar de novo' : 'Investigar empresa'}
+                </SafeButton>
+                <span className="text-xs text-ink-400">
+                  {web
+                    ? `investigado em ${new Date(web.buscado_em).toLocaleDateString('pt-BR')}`
+                    : 'site, redes sociais, sócios e contatos na internet'}
+                </span>
+              </div>
+
               <Section title="Contato">
                 <InfoRow label="Telefone 1" value={comAviso(telWa(data.telefone1, 'telefone1'), shared?.telefone1)} />
                 <InfoRow label="Telefone 2" value={comAviso(telWa(data.telefone2, 'telefone2'), shared?.telefone2)} />
@@ -471,6 +608,8 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
                   {blocoContatosSite()}
                 </Section>
               )}
+
+              {(web || webPend) && <Section title="Na internet">{blocoWeb()}</Section>}
 
               {/* EntityLabels se auto-oculta se a API negar (sem permissão) —
                   por isso este bloco não consulta o contexto de auth: o modal é

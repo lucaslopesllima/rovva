@@ -5,6 +5,7 @@ import { geocodeAddr } from '../geocode.ts';
 import { checkWhatsappNumbers } from '../whatsapp.ts';
 import { descobrirDominio } from '../enriquecimento.ts';
 import { buscarContatosNoSite } from '../contatos_site.ts';
+import { buscarNaWeb, BuscaWebDesligadaError } from '../busca_web.ts';
 
 // Read-only lookup into the global companies pool (mesma fonte do recommend/funil).
 // Retorna TODOS os campos da empresa (com códigos RFB decodificados) + quadro societário.
@@ -145,7 +146,13 @@ export function companyRoutes(app: FastifyInstance): void {
       email: ct.email ? shared.find((s) => s.tipo === 'email')?.empresas ?? null : null,
     };
 
-    return { company, socios, compartilhado };
+    // Última busca na internet salva (migração 080): a ficha mostra sem gastar crédito.
+    const bw = await one<{ r: unknown }>(
+      `SELECT resultado || jsonb_build_object('buscado_em', buscado_em) AS r
+         FROM company_busca_web WHERE company_id = $1`, [id],
+    );
+
+    return { company, socios, compartilhado, busca_web: bw?.r ?? null };
   });
 
   // Confere na Evolution se os telefones da empresa existem no WhatsApp.
@@ -256,5 +263,50 @@ export function companyRoutes(app: FastifyInstance): void {
     const c = await one<{ id: number }>('SELECT id FROM companies WHERE id = $1', [id]);
     if (!c) return reply.code(404).send({ error: 'empresa não encontrada' });
     return buscarContatosNoSite(site_url);
+  });
+
+  // Busca na internet (Serper.dev) sob demanda: telefone do Google Maps, redes
+  // sociais, sócios e contatos nos resultados. O resultado fica salvo em
+  // company_busca_web e volta daqui sem custo; ?atualizar=true refaz a busca
+  // (2–3 créditos pagos) — daí o rate limit por IP, além do clique explícito.
+  app.get('/api/companies/:id/busca-web', {
+    preHandler: [requireAuth, requirePermission('prospeccao.view')],
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    schema: {
+      params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
+      querystring: { type: 'object', properties: { atualizar: { type: 'boolean' } } },
+    },
+  }, async (req, reply) => {
+    const { id } = req.params as { id: number };
+    const { atualizar } = req.query as { atualizar?: boolean };
+    if (!atualizar) {
+      const salvo = await one<{ r: unknown }>(
+        `SELECT resultado || jsonb_build_object('buscado_em', buscado_em) AS r
+           FROM company_busca_web WHERE company_id = $1`, [id],
+      );
+      if (salvo) return salvo.r;
+    }
+    const c = await one<{ cnpj: string; razao_social: string; nome_fantasia: string | null; cidade: string | null; uf: string | null }>(
+      `SELECT c.cnpj, c.razao_social, c.nome_fantasia, m.nome AS cidade, c.uf
+         FROM companies c LEFT JOIN municipios m ON m.id = c.municipio_id WHERE c.id = $1`, [id],
+    );
+    if (!c) return reply.code(404).send({ error: 'empresa não encontrada' });
+    // Sócios pessoa física (identificador 2), administrador primeiro (qualif. 49).
+    const socios = await query<{ nome: string }>(
+      `SELECT nome FROM socios WHERE cnpj_base = left($1, 8)::char(8)
+         AND identificador = 2 AND nome IS NOT NULL ORDER BY (qualificacao = 49) DESC, data_entrada LIMIT 2`, [c.cnpj],
+    );
+    try {
+      const r = await buscarNaWeb({ ...c, socios: socios.map((s) => s.nome) });
+      const salvo = await one<{ buscado_em: string }>(
+        `INSERT INTO company_busca_web (company_id, resultado) VALUES ($1, $2)
+         ON CONFLICT (company_id) DO UPDATE SET resultado = EXCLUDED.resultado, buscado_em = now()
+         RETURNING buscado_em`, [id, JSON.stringify(r)],
+      );
+      return { ...r, buscado_em: salvo!.buscado_em };
+    } catch (e) {
+      if (e instanceof BuscaWebDesligadaError) return reply.code(503).send({ error: e.message });
+      return reply.code(502).send({ error: 'falha na busca na internet' });
+    }
   });
 }

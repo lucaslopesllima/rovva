@@ -1,0 +1,27 @@
+{
+  "drop": "checkin",
+  "cenas": [
+    {
+      "de": "inicio",
+      "txt": "Visitou? <em>Registra na hora</em>",
+      "fala": "Visitou o cliente? Registra na hora, pelo celular."
+    },
+    {
+      "de": "checkin",
+      "txt": "<em>Check-in</em> com local e horário",
+      "fala": "Na agenda do dia, abra a visita e faça o check-in. Fica salvo onde e quando você esteve."
+    },
+    {
+      "de": "relatorio",
+      "txt": "Resultado e <em>próximo passo</em>",
+      "fala": "Depois, anote como foi. O resultado, e o próximo passo."
+    },
+    {
+      "de": "salvar",
+      "txt": "Visita <em>feita</em> e registrada",
+      "fala": "Pronto. A visita já aparece como feita."
+    }
+  ],
+  "card": "Nenhuma visita<br><em>se perde</em>.",
+  "card_fala": "Com o Rovva, você não esquece nenhuma visita."
+}

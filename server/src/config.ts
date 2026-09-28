@@ -79,6 +79,10 @@ export const config = {
   osrmUrl: process.env.OSRM_URL ?? 'https://router.project-osrm.org',
   // RDAP do registro.br — descoberta do site próprio da empresa (enriquecimento).
   rdapUrl: process.env.RDAP_URL ?? 'https://rdap.registro.br',
+  // Serper.dev — busca na internet sobre a empresa (Maps + Google). Vazio = rota
+  // responde 503. Cada clique gasta 2 créditos.
+  serperApiKey: process.env.SERPER_API_KEY ?? '',
+  serperUrl: process.env.SERPER_URL ?? 'https://google.serper.dev',
   // Cadastro público (POST /api/auth/register). Desligado responde 403 e o client
   // esconde a aba "Criar conta". Produção sobe com SIGNUP_ENABLED=false (fixado no
   // docker-compose.prod.yml); dev/test/e2e ficam ligados — toda a suíte cria seu

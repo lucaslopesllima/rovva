@@ -1,0 +1,32 @@
+{
+  "drop": "resultados",
+  "cenas": [
+    {
+      "de": "inicio",
+      "txt": "Quantas <em>padarias</em> você ainda não visitou?",
+      "fala": "Quantas padarias você ainda não visitou em Florianópolis?"
+    },
+    {
+      "de": "cnae",
+      "txt": "Escolha a <em>cidade</em> e o <em>ramo</em> do seu cliente",
+      "fala": "É só escolher a cidade e o ramo do seu cliente."
+    },
+    {
+      "de": "resultados",
+      "txt": "<em>100+ empresas</em>, ranqueadas por afinidade",
+      "fala": "Em segundos, mais de cem empresas, já ranqueadas pelo que você vende."
+    },
+    {
+      "de": "mapa",
+      "txt": "Veja no <em>mapa</em> onde cada uma está",
+      "fala": "No mapa, você vê onde cada uma está."
+    },
+    {
+      "de": "funil",
+      "txt": "Um toque e já está no seu <em>funil</em>",
+      "fala": "Achou uma boa? Um toque, e ela já está no seu funil."
+    }
+  ],
+  "card": "Encontre clientes<br>no seu <em>território</em>.",
+  "card_fala": "Com o Rovva, você acha cliente no seu território."
+}

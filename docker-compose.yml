@@ -99,6 +99,7 @@ services:
       # aponta de volta pro próprio app; o token valida o POST de entrada.
       EVOLUTION_API_URL: http://evolution:8080
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-dev-evolution-key}
+      SERPER_API_KEY: ${SERPER_API_KEY:-}
       WHATSAPP_WEBHOOK_URL: http://app:8080/api/webhooks/whatsapp?token=${WHATSAPP_WEBHOOK_TOKEN:-dev-webhook-token}
       WHATSAPP_WEBHOOK_TOKEN: ${WHATSAPP_WEBHOOK_TOKEN:-dev-webhook-token}
       # Mídia do WhatsApp gravada em disco (volume) em vez de base64 no Postgres.

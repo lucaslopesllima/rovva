@@ -101,7 +101,7 @@ export async function contarDominios(cnpj: string): Promise<number | null> {
 // A base da Receita vem em CAIXA ALTA e sem acento, com o tipo societário colado
 // no fim ("MALINSKI MADEIRAS LTDA") e frequentemente com a sigla depois de um
 // hífen ("FEDERACAO RONDONIENSE DE TIRO ESPORTIVO E CACA - FROTEC").
-const SOCIETARIO = /\b(LTDA|EIRELI|EPP|ME|MEI|S\/?A|CIA|SOCIEDADE ANONIMA|EM RECUPERACAO JUDICIAL|FILIAL|MATRIZ)\b/g;
+export const SOCIETARIO = /\b(LTDA|EIRELI|EPP|ME|MEI|S\/?A|CIA|SOCIEDADE ANONIMA|EM RECUPERACAO JUDICIAL|FILIAL|MATRIZ)\b/g;
 // Palavras que quase nunca entram no domínio ("INDUSTRIA E COMERCIO DE ALIMENTOS"
 // -> "alimentos"). Removidas só na 2ª rodada de candidatos, nunca na 1ª.
 const GENERICAS = /\b(INDUSTRIA|INDUSTRIAL|COMERCIO|COMERCIAL|IMPORTACAO|EXPORTACAO|DISTRIBUIDORA|REPRESENTACOES|PARTICIPACOES|EMPREENDIMENTOS|SERVICOS|TRANSPORTES|DE|DA|DO|DAS|DOS|E)\b/g;

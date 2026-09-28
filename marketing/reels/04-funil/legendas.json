@@ -1,0 +1,32 @@
+{
+  "drop": "mover",
+  "cenas": [
+    {
+      "de": "inicio",
+      "txt": "Em que pé está cada <em>negociação</em>?",
+      "fala": "Você sabe em que pé está cada negociação?"
+    },
+    {
+      "de": "indicadores",
+      "txt": "Quantos negócios e <em>quanto dinheiro</em> em jogo",
+      "fala": "No funil, você vê quantos negócios tem, e quanto dinheiro está em jogo."
+    },
+    {
+      "de": "etapas",
+      "txt": "Cada <em>etapa</em> com seus clientes",
+      "fala": "Cada etapa mostra os clientes e o valor dela."
+    },
+    {
+      "de": "mover",
+      "txt": "A conversa avançou? <em>Um toque</em>",
+      "fala": "A conversa avançou? Um toque, e você muda a etapa."
+    },
+    {
+      "de": "negociacao",
+      "txt": "Funil <em>atualizado</em>, sem planilha",
+      "fala": "Pronto, tudo atualizado, sem precisar de planilha."
+    }
+  ],
+  "card": "Cada venda<br>no seu <em>lugar</em>.",
+  "card_fala": "Com o Rovva, você sabe onde está cada venda."
+}
