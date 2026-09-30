@@ -18,13 +18,13 @@ import { toast } from '../lib/toast.tsx';
 import { ThemedTileLayer } from '../lib/mapTiles.tsx';
 
 const MATCH_COLOR: Record<string, string> = {
-  classe: '#039855', divisao: '#0284c7', secao: '#12b76a', nenhum: '#94a3b8',
+  classe: '#039855', secundario: '#0284c7', nenhum: '#94a3b8',
 };
 const MATCH_LABEL: Record<string, string> = {
-  classe: 'CNAE exato', divisao: 'Mesma divisão', secao: 'Mesma seção', nenhum: 'Sem match',
+  classe: 'CNAE principal', secundario: 'CNAE secundário', nenhum: 'Sem match',
 };
 const MATCH_TONE: Record<string, Tone> = {
-  classe: 'success', divisao: 'info', secao: 'brand', nenhum: 'neutral',
+  classe: 'success', secundario: 'info', nenhum: 'neutral',
 };
 function FitBounds({ pts, focus }: { pts: [number, number][]; focus: MapFocus | null }): null {
   const map = useMap();
@@ -537,7 +537,7 @@ export function Recommend(): React.JSX.Element {
         <StatRow items={[
           { label: filter.filtroAtivo ? 'Resultados (filtrados)' : 'Recomendações', value: kpi.n, icon: 'building', tone: 'brand' },
           { label: 'Score médio', value: (kpi.avg * 100).toFixed(0), sub: `de 100 · nos ${kpi.n} carregados`, icon: 'trendingUp', tone: 'success' },
-          { label: 'CNAE exato', value: kpi.exact, sub: 'match de classe', icon: 'target', tone: 'info' },
+          { label: 'CNAE principal', value: kpi.exact, sub: 'match no principal', icon: 'target', tone: 'info' },
         ]} />
       </Collapse>
     </div>

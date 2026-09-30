@@ -2,14 +2,17 @@
 // (28,9M empresas). Decisões que derrubam o tempo de ~29s para <1s no pior caso
 // (São Paulo capital, ~2,7M ativas, sem CNAE-alvo):
 //
-//  1) ÍNDICE DE COBERTURA (companies_reco_cov_idx, migração 058): partial em
-//     (municipio_id) INCLUDE (id,uf,regiao,cnae_principal,cnae_divisao,porte,
-//     capital_social) WHERE ativa. O scan de candidatos vira Index Only Scan —
-//     zero acesso ao heap de 18GB. Exige visibility map atualizado (VACUUM); o
-//     ETL roda VACUUM ANALYZE ao final da carga.
+//  1) ÍNDICE DE COBERTURA (companies_reco_cov_idx, migração 082): partial em
+//     (municipio_id) INCLUDE (id,uf,regiao,cnae_principal,porte,capital_social,
+//     data_inicio_atividade) WHERE ativa AND source <> 'demo'. O scan de
+//     candidatos vira Index Only Scan — zero acesso ao heap de 18GB. TODO predicado
+//     do WHERE abaixo precisa estar no índice (predicado parcial ou INCLUDE), senão
+//     o planner volta ao heap por linha (foi o que a 073 fez com `source`: 5s).
+//     Exige visibility map atualizado (VACUUM); o ETL roda VACUUM ANALYZE ao
+//     final da carga.
 //  2) ln() em float8, não numeric. O `ln(capital_social)` por linha (2,7M) em
 //     numeric custava ~2,6s; `capital_social::float8` usa o ln nativo em C.
-//  3) enabled_regions como ARRAYS ($9/$10), não subquery EXISTS. O EXISTS virava
+//  3) enabled_regions como ARRAYS ($6/$7), não subquery EXISTS. O EXISTS virava
 //     "hashed SubPlan" e bloqueava o paralelismo; com arrays escalares o planner
 //     paraleliza o scan (4 workers).
 //  4) PROXIMIDADE por MUNICÍPIO, não por empresa. A distância vira uma constante
@@ -54,10 +57,6 @@ export interface RecommendArgs {
   limit: number;
   offset: number;
   filters?: RecommendFilters;
-  // derivados de cnaes_alvo + cnae_divisao_secao (calculados na rota, cacheados):
-  divisoesAlvo: number[];   // divisões dos CNAEs alvo (fit 0.6)
-  secoesAlvo: string[];     // seções dessas divisões (fit 0.3)
-  pruneDivisoes: number[];  // todas as divisões dessas seções (poda de candidatos)
   // regiões habilitadas (gate da recomendação), como arrays escalares:
   regioesUf: string[];      // UFs habilitadas
   regioesRegiao: string[];  // regiões habilitadas (regiao_br)
@@ -69,9 +68,10 @@ export interface RecommendArgs {
 
 // Monta o termo de proximidade: CASE sobre municipio_id com o pc de cada
 // município (paralelo-safe, sem JOIN). Território muito amplo -> constante média.
-// Teto do total de empresas do perfil. Contar exato o território todo (SP capital
-// = 2,4M candidatos) custa ~0,5s por request; parar em CAP+1 custa ~5ms e responde
-// a única pergunta que interessa na tela ("tem muita empresa aqui?").
+// Teto do total de empresas do perfil exibido na tela ("tem muita empresa aqui?").
+// O total sai da própria query principal: count(candidates) capado — o pool já
+// tem os mesmos predicados e é maior que o teto, então é o mesmo número que uma
+// contagem separada daria, sem a segunda varredura.
 export const RECOMMEND_COUNT_CAP = 100;
 
 // Limite de candidatos antes do cálculo e ordenação dinâmica do score.
@@ -80,14 +80,21 @@ export const RECOMMEND_CANDIDATE_CAP = 5_000;
 // Predicados de candidato. Os
 // índices dos parâmetros vêm de fora porque as duas queries têm layouts distintos.
 function candidatePredicates(idx: {
-  munis: number; org: number; cnaes: number; prune: number; uf: number; regiao: number;
+  munis: number; org: number; cnaes: number; uf: number; regiao: number;
 }): string {
   return `c.situacao_cadastral = 'ativa'
       -- empresas da base de demonstração (migração 073) são fictícias e vivem no
       -- mesmo pool global: nunca podem ser sugeridas para nenhum tenant.
       AND c.source <> 'demo'
       AND c.municipio_id = ANY($${idx.munis}::int[])
-      AND (cardinality($${idx.cnaes}::int[]) = 0 OR c.cnae_divisao = ANY($${idx.prune}::smallint[]))
+      -- CNAE é filtro exato (classe) no principal OU em qualquer secundário.
+      -- Sem CNAE o plano custom dobra o cardinality p/ TRUE e o Index Only Scan
+      -- do território continua valendo; com CNAE o planner entra pelos índices
+      -- compostos município+CNAE (companies_muni_cnae_idx / _sec_gin_idx, migração
+      -- 082) e só toca o heap das empresas do território.
+      AND (cardinality($${idx.cnaes}::int[]) = 0
+           OR c.cnae_principal = ANY($${idx.cnaes}::int[])
+           OR c.cnae_secundarios && $${idx.cnaes}::int[])
       AND (c.uf = ANY($${idx.uf}::bpchar[]) OR c.regiao = ANY($${idx.regiao}::regiao_br[]))
       AND NOT EXISTS (
         SELECT 1 FROM company_relationships r WHERE r.org_id = $${idx.org} AND r.company_id = c.id
@@ -125,30 +132,6 @@ function filterPredicates(f: RecommendFilters, params: unknown[]): string {
     }
   }
   return extra.length ? `\n    AND ${extra.join('\n    AND ')}` : '';
-}
-
-// Total de empresas do perfil, capado em RECOMMEND_COUNT_CAP+1 (o +1 distingue
-// "exatamente 100" de "100+"). Sem score, sem sort e sem o join de seção:
-// só o Index Scan do território, que o LIMIT interrompe assim que enche a cota.
-export function buildRecommendCountQuery(args: RecommendArgs): { text: string; params: unknown[] } {
-  const params: unknown[] = [
-    args.profile.territorio_municipios ?? [], // $1 municipios
-    args.orgId,                               // $2 orgId
-    args.profile.cnaes_alvo ?? [],            // $3 cnaes
-    args.pruneDivisoes,                       // $4 pruneDivisoes
-    args.regioesUf,                           // $5 regioesUf
-    args.regioesRegiao,                       // $6 regioesRegiao
-  ];
-  const where = candidatePredicates({ munis: 1, org: 2, cnaes: 3, prune: 4, uf: 5, regiao: 6 });
-  const extraPredicates = filterPredicates(args.filters ?? {}, params);
-  const text = `
-SELECT count(*)::int AS total FROM (
-  SELECT 1
-  FROM companies c
-  WHERE ${where}${extraPredicates}
-  LIMIT ${RECOMMEND_COUNT_CAP + 1}
-) t`;
-  return { text, params };
 }
 
 function proximityExpr(muniProx: { id: number; pc: number }[]): string {
@@ -189,13 +172,12 @@ export function buildRecommendQuery(args: RecommendArgs): { text: string; params
   const wSoma = Math.round((wCnae + wProx + wPorte + wCapital + wIdade) * 1e6) / 1e6;
   const norm = `${(wSoma > 0 ? wSoma : 1).toExponential()}::float8`;
 
-  // $1 municipios, $2 orgId, $3 wCnae, $4 wPorte, $5 cnaes, $6 divisoesAlvo,
-  // $7 secoesAlvo, $8 pruneDivisoes, $9 regioesUf, $10 regioesRegiao,
-  // $11 limit, $12 offset, $13 originLat, $14 originLon,
-  // $15 wCapital, $16 wIdade, $17+ filtros
+  // $1 municipios, $2 orgId, $3 wCnae, $4 wPorte, $5 cnaes,
+  // $6 regioesUf, $7 regioesRegiao, $8 limit, $9 offset, $10 originLat,
+  // $11 originLon, $12 wCapital, $13 wIdade, $14+ filtros
   const params: unknown[] = [
     municipios, orgId, wCnae, wPorte,
-    cnaes, args.divisoesAlvo, args.secoesAlvo, args.pruneDivisoes,
+    cnaes,
     args.regioesUf, args.regioesRegiao, limit, offset,
     args.origin.lat, args.origin.lon,
     wCapital, wIdade,
@@ -203,17 +185,15 @@ export function buildRecommendQuery(args: RecommendArgs): { text: string; params
 
   const prox = proximityExpr(args.muniProx);
 
-  // fit em tiers. Sem CNAE-alvo os arrays vêm vazios: ANY(vazio)=false -> fit=0
-  // (sempre referencia $5/$6/$7, senão o Postgres não infere o tipo do param).
+  // fit: o WHERE já garante que, com CNAE-alvo, todo candidato bate no principal
+  // ou num secundário — então não-principal = secundário, sem ler a coluna
+  // cnae_secundarios (fora do índice de cobertura) no pool.
   const fitExpr =
     `CASE WHEN c.cnae_principal = ANY($5::int[]) THEN 1.0::float8
-          WHEN c.cnae_divisao = ANY($6::smallint[]) THEN 0.6::float8
-          WHEN cds.secao = ANY($7::text[]) THEN 0.3::float8
+          WHEN cardinality($5::int[]) > 0 THEN 0.6::float8
           ELSE 0::float8 END`;
-  const cdsJoin = 'LEFT JOIN cnae_divisao_secao cds ON cds.divisao = c.cnae_divisao';
-  // Poda por divisão (só varre as divisões das seções-alvo). Sem CNAE-alvo
-  // (cardinality 0) o filtro é TRUE e varre o território todo.
-  const where = candidatePredicates({ munis: 1, org: 2, cnaes: 5, prune: 8, uf: 9, regiao: 10 });
+  // Sem CNAE-alvo (cardinality 0) o filtro de CNAE é TRUE e varre o território todo.
+  const where = candidatePredicates({ munis: 1, org: 2, cnaes: 5, uf: 6, regiao: 7 });
 
   // porte, capital social e tempo de vida são componentes independentes (cada um
   // com o seu peso) — antes capital estava embutido no componente porte.
@@ -228,7 +208,7 @@ export function buildRecommendQuery(args: RecommendArgs): { text: string; params
   const text = `
 WITH candidates AS MATERIALIZED (
   -- Predicados indexáveis primeiro; score só roda no pool limitado.
-  SELECT c.id, c.municipio_id, c.cnae_principal, c.cnae_divisao,
+  SELECT c.id, c.municipio_id, c.cnae_principal,
          c.porte, c.capital_social, c.data_inicio_atividade
   FROM companies c
   WHERE ${where}${extraPredicates}
@@ -242,26 +222,27 @@ cand AS (
       ${fitExpr} AS fit,
       (${prox}) AS prox,
       ($4 * ${porteS}) AS porte_comp,
-      ($15::float8 * ${capitalS}) AS capital_comp,
-      ($16::float8 * ${idadeS}) AS idade_comp
+      ($12::float8 * ${capitalS}) AS capital_comp,
+      ($13::float8 * ${idadeS}) AS idade_comp
     FROM candidates c
-    ${cdsJoin}
   ) raw
   ORDER BY score DESC, id ASC
-  LIMIT $11 OFFSET $12
+  LIMIT $8 OFFSET $9
 )
 SELECT
+  -- total do perfil capado (ver RECOMMEND_COUNT_CAP): o +1 distingue "100" de "100+"
+  LEAST((SELECT count(*) FROM candidates), ${RECOMMEND_COUNT_CAP + 1})::int AS total,
   cand.id, c2.cnpj, c2.razao_social, c2.nome_fantasia, cand.cnae_principal,
   cand.municipio_id, c2.uf, c2.porte, c2.capital_social, c2.data_inicio_atividade,
   -- ponto exibido: geocode de rua/cep (exato) -> geom da empresa -> centroide do município
   ST_Y(pt.g::geometry) AS lat, ST_X(pt.g::geometry) AS lon,
   cand.score,
   jsonb_build_object(
-    'cnae_match', CASE WHEN cand.fit >= 1.0 THEN 'classe' WHEN cand.fit >= 0.6 THEN 'divisao'
-                       WHEN cand.fit >= 0.3 THEN 'secao' ELSE 'nenhum' END,
+    'cnae_match', CASE WHEN cand.fit >= 1.0 THEN 'classe' WHEN cand.fit > 0 THEN 'secundario'
+                       ELSE 'nenhum' END,
     'cnae_principal', cand.cnae_principal,
     -- distância geodésica em linha reta (geocode) só p/ as 20 linhas exibidas
-    'distancia_km', round((ST_Distance(pt.g, ST_SetSRID(ST_MakePoint($14::float8, $13::float8), 4326)::geography, false) / 1000.0)::numeric, 1),
+    'distancia_km', round((ST_Distance(pt.g, ST_SetSRID(ST_MakePoint($11::float8, $10::float8), 4326)::geography, false) / 1000.0)::numeric, 1),
     'porte', c2.porte,
     'capital_social', c2.capital_social,
     'idade_anos', CASE WHEN c2.data_inicio_atividade IS NOT NULL

@@ -3,25 +3,13 @@ import { query, withClient } from '../db.ts';
 import { requireAuth, requirePermission } from '../auth.ts';
 import { config } from '../config.ts';
 import {
-  buildRecommendQuery, buildRecommendCountQuery, RECOMMEND_COUNT_CAP,
+  buildRecommendQuery, RECOMMEND_COUNT_CAP,
   type RecommendProfile, type RecommendFilters,
 } from '../sql/recommend.ts';
 import { resolveOrgOrigin } from '../origin.ts';
 
 const PORTES = new Set(['nao_informado', 'micro', 'pequeno', 'demais']);
 const PROX_NORM_M = 150_000; // normalização da proximidade (~150km) — casa com o SQL
-
-// cnae_divisao_secao é estática (~99 linhas, escrita só por seed) — cache em memória.
-let divisaoSecao: Map<number, string> | null = null;
-async function getDivisaoSecao(): Promise<Map<number, string>> {
-  if (!divisaoSecao) {
-    const rows = await query<{ divisao: number; secao: string }>(
-      'SELECT divisao, secao FROM cnae_divisao_secao',
-    );
-    divisaoSecao = new Map(rows.map((r) => [r.divisao, r.secao]));
-  }
-  return divisaoSecao;
-}
 
 // Regiões habilitadas (gate da recomendação). Mutável (o ETL habilita UF a UF),
 // então consulta por request — 27 linhas, custo desprezível perto da query principal.
@@ -63,19 +51,6 @@ async function muniProximity(
   // território sem geometria (não deveria ocorrer): origem no centro do Brasil.
   const origin = first ? { lat: Number(first.olat), lon: Number(first.olon) } : { lat: -15.78, lon: -47.93 };
   return { muniProx, origin };
-}
-
-// Tiers de fit calculados aqui (e não em CTE) p/ virarem = ANY($array) no SQL:
-// arrays indexáveis deixam o planner combinar índices na poda de candidatos.
-async function cnaeTiers(cnaesAlvo: number[]): Promise<{
-  divisoesAlvo: number[]; secoesAlvo: string[]; pruneDivisoes: number[];
-}> {
-  const map = await getDivisaoSecao();
-  const divisoesAlvo = [...new Set(cnaesAlvo.map((c) => Math.floor(c / 100000)))];
-  const secoesAlvo = [...new Set(divisoesAlvo.map((d) => map.get(d)).filter((s): s is string => !!s))];
-  const secSet = new Set(secoesAlvo);
-  const pruneDivisoes = [...map.entries()].filter(([, s]) => secSet.has(s)).map(([d]) => d);
-  return { divisoesAlvo, secoesAlvo, pruneDivisoes };
 }
 
 const parseInts = (s?: string): number[] =>
@@ -126,7 +101,7 @@ export function recommendRoutes(app: FastifyInstance): void {
           limit: { type: 'integer', minimum: 1, maximum: 20, default: 20 },
           offset: { type: 'integer', minimum: 0, default: 0 },
           q: { type: 'string' },
-          cnae: { type: 'string' },   // CNAEs-alvo (fit em tiers) — csv
+          cnae: { type: 'string' },   // CNAEs-alvo (filtro exato: principal ou secundário) — csv
           munis: { type: 'string' },  // território: ids de município — csv
           porte: { type: 'string' },
           w_cnae: { type: 'number', minimum: 0, maximum: 1 },
@@ -176,28 +151,30 @@ export function recommendRoutes(app: FastifyInstance): void {
       partida,
     };
 
-    const [tiers, regions, prox] = await Promise.all([
-      cnaeTiers(profile.cnaes_alvo ?? []),
+    const [regions, prox] = await Promise.all([
       getEnabledRegions(),
       muniProximity(municipios, pesos.proximidade ?? 0.3, effectiveOrigin),
     ]);
 
     const args = {
-      orgId, profile, limit, offset, filters, ...tiers,
+      orgId, profile, limit, offset, filters,
       regioesUf: regions.ufs, regioesRegiao: regions.regioes,
       muniProx: prox.muniProx, origin: prox.origin,
     };
     const { text, params } = buildRecommendQuery(args);
-    // Ranking ocorre só após pool limitado de candidatos; contagem também é capada.
-    const count = buildRecommendCountQuery(args);
+    // Ranking ocorre só após pool limitado de candidatos; o total (capado) vem
+    // na mesma query. Página vazia (offset além do fim) não traz total — o
+    // cliente já tem o da primeira página.
     const { rows, total } = await withClient(async (client) => {
       await client.query('BEGIN');
       try {
         await client.query(`SET LOCAL work_mem = '${config.recommendWorkMem}'`);
-        const r = await client.query(text, params);
-        const t = await client.query<{ total: number }>(count.text, count.params);
+        const r = await client.query<{ total: number } & Record<string, unknown>>(text, params);
         await client.query('COMMIT');
-        return { rows: r.rows, total: Number(t.rows[0]?.total ?? 0) };
+        return {
+          rows: r.rows.map(({ total: _t, ...rest }) => rest),
+          total: Number(r.rows[0]?.total ?? 0),
+        };
       } catch (e) {
         // sem ROLLBACK a conexão volta ao pool em transação abortada e envenena
         // as próximas requisições que a reusarem.

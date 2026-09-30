@@ -12,7 +12,7 @@ export interface Recommendation {
   lon: number;
   score: number;
   reason: {
-    cnae_match: 'classe' | 'divisao' | 'secao' | 'nenhum';
+    cnae_match: 'classe' | 'secundario' | 'nenhum';
     cnae_principal: number;
     distancia_km: number;
     porte: string;

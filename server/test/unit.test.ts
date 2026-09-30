@@ -5,7 +5,7 @@ import { SignJWT } from 'jose';
 import type { FastifyRequest } from 'fastify';
 import { fuelEstimate } from '../src/fuel.ts';
 import {
-  buildRecommendQuery, buildRecommendCountQuery, RECOMMEND_COUNT_CAP, RECOMMEND_CANDIDATE_CAP,
+  buildRecommendQuery, RECOMMEND_COUNT_CAP, RECOMMEND_CANDIDATE_CAP,
   type RecommendArgs,
 } from '../src/sql/recommend.ts';
 import {
@@ -41,20 +41,19 @@ describe('buildRecommendQuery', () => {
     orgId: 1,
     profile: { cnaes_alvo: [4781400], territorio_municipios: [3550308], pesos: {} },
     limit: 20, offset: 0,
-    divisoesAlvo: [47], secoesAlvo: ['G'], pruneDivisoes: [45, 46, 47],
     regioesUf: ['SP'], regioesRegiao: ['SE'],
     muniProx: [{ id: 3550308, pc: 0.12 }],
     origin: { lat: -23.55, lon: -46.63 },
   };
 
-  it('modo município usa = ANY($1) e pesos default (wCnae $3, wPorte $4, wCapital $15, wIdade $16)', () => {
+  it('modo município usa = ANY($1) e pesos default (wCnae $3, wPorte $4, wCapital $12, wIdade $13)', () => {
     const { text, params } = buildRecommendQuery(base);
     expect(text).toContain('c.municipio_id = ANY($1::int[])');
     expect(params[0]).toEqual([3550308]); // municipios
     expect(params[2]).toBe(0.4);          // wCnae default
     expect(params[3]).toBe(0.15);         // wPorte default
-    expect(params[14]).toBe(0.1);         // wCapital default
-    expect(params[15]).toBe(0.1);         // wIdade default
+    expect(params[11]).toBe(0.1);         // wCapital default
+    expect(params[12]).toBe(0.1);         // wIdade default
     // capital social e tempo de vida entram como componentes próprios do score
     expect(text).toContain('capital_comp');
     expect(text).toContain('idade_comp');
@@ -64,24 +63,26 @@ describe('buildRecommendQuery', () => {
     expect(text).toContain('ORDER BY score DESC, id ASC');
   });
 
-  it('regiões habilitadas entram como arrays escalares ($9/$10)', () => {
+  it('regiões habilitadas entram como arrays escalares ($6/$7)', () => {
     const { text, params } = buildRecommendQuery(base);
-    expect(text).toContain('c.uf = ANY($9::bpchar[]) OR c.regiao = ANY($10::regiao_br[])');
-    expect(params[8]).toEqual(['SP']);
-    expect(params[9]).toEqual(['SE']);
+    expect(text).toContain('c.uf = ANY($6::bpchar[]) OR c.regiao = ANY($7::regiao_br[])');
+    expect(params[5]).toEqual(['SP']);
+    expect(params[6]).toEqual(['SE']);
   });
 
-  it('proximidade vira CASE por município (sem JOIN) e origem em $13/$14', () => {
+  it('proximidade vira CASE por município (sem JOIN) e origem em $10/$11', () => {
     const { text, params } = buildRecommendQuery(base);
     expect(text).toContain('CASE c.municipio_id WHEN 3550308 THEN');
-    expect(params[12]).toBe(-23.55); // origin lat
-    expect(params[13]).toBe(-46.63); // origin lon
+    expect(params[9]).toBe(-23.55); // origin lat
+    expect(params[10]).toBe(-46.63); // origin lon
   });
 
-  it('poda por divisões entra como parâmetro (e não deixa $ órfão)', () => {
+  it('CNAE é filtro exato no principal ou secundário (e não deixa $ órfão)', () => {
     const { text, params } = buildRecommendQuery(base);
-    expect(text).toContain('c.cnae_divisao = ANY($8::smallint[])');
-    expect(params[7]).toEqual(base.pruneDivisoes);
+    expect(text).toContain('OR c.cnae_principal = ANY($5::int[])');
+    expect(text).toContain('OR c.cnae_secundarios && $5::int[])');
+    expect(text).toContain("THEN 'secundario'");
+    expect(params[4]).toEqual([4781400]);
     // todo parâmetro precisa estar referenciado no SQL (42P18 se sobrar)
     for (let i = 1; i <= params.length; i++) expect(text).toContain(`$${i}`);
   });
@@ -144,40 +145,21 @@ describe('buildRecommendQuery', () => {
   });
 });
 
-describe('buildRecommendCountQuery', () => {
+describe('total da recomendação', () => {
   const base: RecommendArgs = {
     orgId: 1,
     profile: { cnaes_alvo: [4781400], territorio_municipios: [3550308], pesos: {} },
     limit: 20, offset: 0,
-    divisoesAlvo: [47], secoesAlvo: ['G'], pruneDivisoes: [45, 46, 47],
     regioesUf: ['SP'], regioesRegiao: ['SE'],
     muniProx: [{ id: 3550308, pc: 0.12 }],
     origin: { lat: -23.55, lon: -46.63 },
   };
 
-  it('conta capado no teto+1, sem score nem sort', () => {
-    const { text, params } = buildRecommendCountQuery(base);
-    expect(text).toContain(`LIMIT ${RECOMMEND_COUNT_CAP + 1}`);
-    expect(text).not.toContain('ORDER BY');
-    expect(text).not.toContain('score');
-    expect(text).not.toContain('cnae_divisao_secao'); // fit não é calculado
-    expect(params[0]).toEqual([3550308]); // municipios
-    expect(params[1]).toBe(1);            // orgId
-    for (let i = 1; i <= params.length; i++) expect(text).toContain(`$${i}`);
-  });
-
-  it('aplica os mesmos filtros da recomendação (porte, faixas, q)', () => {
-    const { text, params } = buildRecommendCountQuery({
-      ...base, filters: { porte: 'micro', capMin: 1000, idadeMax: 5, q: 'padaria 12' },
-    });
-    expect(text).toContain('::porte_emp');
-    expect(text).toContain('c.capital_social >= ');
-    expect(text).toContain('c.data_inicio_atividade >= ');
-    expect(text).toContain('c.cnpj LIKE');
-    expect(params).toContain('%padaria 12%');
-    // poda e gate de região continuam valendo na contagem
-    expect(text).toContain('c.cnae_divisao = ANY($4::smallint[])');
-    expect(text).toContain('c.regiao = ANY($6::regiao_br[])');
+  it('vem na própria query: count(candidates) capado no teto+1, sem segunda varredura', () => {
+    const { text } = buildRecommendQuery(base);
+    expect(text).toContain(`LEAST((SELECT count(*) FROM candidates), ${RECOMMEND_COUNT_CAP + 1})::int AS total`);
+    expect(RECOMMEND_COUNT_CAP + 1).toBeLessThanOrEqual(RECOMMEND_CANDIDATE_CAP); // senão o cap mentiria
+    expect(text.match(/FROM companies c\b/g)).toHaveLength(1);
   });
 });
 
