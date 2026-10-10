@@ -1,8 +1,9 @@
 // Comissões: extrato mensal agrupado por representada (KPIs, divergência),
 // baixa individual, conciliação CSV (admin) e aba de regras com precedência.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { Commissions } from '../src/pages/Commissions.tsx';
 import { api } from '../src/lib/api.ts';
 import { useAuth, type User } from '../src/lib/auth.tsx';
@@ -28,6 +29,7 @@ const vendedor: User = { ...admin, id: 2, role: 'rep' };
 const entry = (over: Record<string, unknown>): Record<string, unknown> => ({
   id: 1, order_id: 10, user_id: 2, represented_id: 5, competencia: '2026-06-01',
   valor_previsto: '100', valor_recebido: null, percent_aplicado: '5', vendedor_split_pct: '40',
+  modalidade: 'faturamento', prazo_tipo: 'dias', prazo: 0, valor_liberado: '100', valor_cliente_pago: '0', saldo_liberado: '100', saldo_previsto: '100', vencimento: '2026-06-10',
   status: 'prevista', recebida_em: null, observacao: null, finance_entry_id: null,
   created_at: '2026-06-10T12:00:00Z', order_numero: 12, nf_numero: null, order_total: '2000',
   company_nome: 'Cliente Um LTDA', represented_nome: 'Indústria X',
@@ -65,6 +67,7 @@ beforeEach(() => {
         entry({ id: 2, order_numero: 13, status: 'divergente', valor_recebido: '80', represented_nome: 'Indústria Y' }),
       ] };
     }
+    if (p.endsWith('/history')) return { liberacoes: [], recebimentos: [] };
     if (p === '/api/commission-rules') return { rules: [RULE] };
     if (p === '/api/catalog') return { items: [{ id: 9, nome: 'Produto A', codigo: null, descricao: null, preco: '100', represented_id: 5, ativo: true }] };
     if (p === '/api/kanban') return { cards: [{ id: 7, company_id: 100, nome_fantasia: 'Cliente Um', razao_social: 'Cliente Um LTDA' }] };
@@ -75,10 +78,10 @@ beforeEach(() => {
 
 describe('Commissions · extrato', () => {
   it('agrupa por representada com KPIs e destaca divergência', async () => {
-    render(<Commissions />);
+    render(<MemoryRouter><Commissions /></MemoryRouter>);
     expect(await screen.findByText('Indústria X', { selector: 'h3' })).toBeInTheDocument();
     expect(screen.getByText('Indústria Y', { selector: 'h3' })).toBeInTheDocument();
-    expect(screen.getByText('Recebido no mês')).toBeInTheDocument();
+    expect(screen.getByText('Recebido nesta competência')).toBeInTheDocument();
     // previsto 200 (2×100), recebido 80
     expect(screen.getAllByText(/R\$\s?200,00/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/R\$\s?80,00/).length).toBeGreaterThan(0);
@@ -87,23 +90,25 @@ describe('Commissions · extrato', () => {
     expect(screen.getAllByText(/vendedor R\$\s?40,00 \(40%\)/).length).toBe(2);
   });
 
-  it('dá baixa individual: PATCH settle com valor e data', async () => {
-    m.patch.mockResolvedValueOnce({ entry: entry({ status: 'recebida', valor_recebido: '100' }) });
-    render(<Commissions />);
+  it('registra parcela com valor, data e identificador único', async () => {
+    m.post.mockResolvedValueOnce({ entry: entry({ status: 'recebida', valor_recebido: '100' }) });
+    render(<MemoryRouter><Commissions /></MemoryRouter>);
     await screen.findByText('Indústria X', { selector: 'h3' });
 
-    await userEvent.click(screen.getAllByRole('button', { name: 'Dar baixa' })[0]!);
-    const modal = screen.getByText(/Baixa da comissão · pedido #12/).closest('form') ?? document.body;
-    expect(screen.getByLabelText('Valor recebido *')).toHaveValue('100'); // prefill do previsto
-    await userEvent.click(within(modal as HTMLElement).getByRole('button', { name: /Confirmar baixa/ }));
-    await waitFor(() => expect(m.patch).toHaveBeenCalledWith('/api/commissions/1/settle', expect.objectContaining({
-      valor_recebido: 100, observacao: null,
+    await userEvent.click(screen.getAllByRole('button', { name: 'Parcelas' })[0]!);
+    const valor = await screen.findByLabelText('Valor da parcela *');
+    expect(valor).toHaveValue('');
+    await userEvent.type(valor, '100');
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar parcela' }));
+    await waitFor(() => expect(m.post).toHaveBeenCalledWith('/api/commissions/1/payments', expect.objectContaining({
+      valor: 100, observacao: null, request_id: expect.any(String),
     })));
+
   });
 
   it('concilia CSV em lote (admin) e mostra o resumo', async () => {
     m.post.mockResolvedValueOnce({ processadas: 3, baixadas: 2, divergentes: 1 });
-    render(<Commissions />);
+    render(<MemoryRouter><Commissions /></MemoryRouter>);
     await screen.findByText('Indústria X', { selector: 'h3' });
 
     await userEvent.click(screen.getByRole('button', { name: /Conciliar CSV/ }));
@@ -115,16 +120,18 @@ describe('Commissions · extrato', () => {
 
   it('vendedor não vê baixa nem conciliação', async () => {
     setRole(vendedor);
-    render(<Commissions />);
+    render(<MemoryRouter><Commissions /></MemoryRouter>);
     await screen.findByText('Indústria X', { selector: 'h3' });
-    expect(screen.queryByRole('button', { name: 'Dar baixa' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getAllByRole('button', { name: 'Parcelas' })[0]!);
+    expect(await screen.findByText('Nenhuma parcela registrada.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Registrar parcela' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Conciliar CSV/ })).not.toBeInTheDocument();
   });
 });
 
 describe('Commissions · regras', () => {
   it('lista regra com alvo (precedência) e vigência', async () => {
-    render(<Commissions />);
+    render(<MemoryRouter><Commissions /></MemoryRouter>);
     await screen.findByText('Indústria X', { selector: 'h3' });
     await userEvent.click(screen.getByRole('button', { name: 'Regras' }));
     expect(await screen.findByText(/Produto · Produto A/)).toBeInTheDocument();
@@ -133,7 +140,7 @@ describe('Commissions · regras', () => {
 
   it('cria regra por vendedor: POST com user_id e percent', async () => {
     m.post.mockResolvedValueOnce({ rule: RULE });
-    render(<Commissions />);
+    render(<MemoryRouter><Commissions /></MemoryRouter>);
     await screen.findByText('Indústria X', { selector: 'h3' });
     await userEvent.click(screen.getByRole('button', { name: 'Regras' }));
     await userEvent.click(await screen.findByRole('button', { name: /Nova regra/ }));
@@ -152,7 +159,7 @@ describe('Commissions · regras', () => {
 
   it('exclui regra com confirm', async () => {
     m.del.mockResolvedValueOnce({ deleted: true });
-    render(<Commissions />);
+    render(<MemoryRouter><Commissions /></MemoryRouter>);
     await screen.findByText('Indústria X', { selector: 'h3' });
     await userEvent.click(screen.getByRole('button', { name: 'Regras' }));
     await userEvent.click(await screen.findByLabelText('Excluir regra'));
@@ -175,7 +182,7 @@ describe('Commissions · regras', () => {
       if (p === '/api/users') return { users: [{ id: 2, nome: 'Vend', email: 'v@b.c', role: 'rep', ativo: true }] };
       return {};
     });
-    render(<Commissions />);
+    render(<MemoryRouter><Commissions /></MemoryRouter>);
     await userEvent.click(await screen.findByRole('button', { name: 'Regras' }));
     expect(await screen.findByText(/Cliente · Cliente Um/)).toBeInTheDocument();
     expect(screen.getByText(/Vendedor · Vend/)).toBeInTheDocument();
@@ -199,7 +206,7 @@ describe('Commissions · regras', () => {
 
 describe('Commissions · extrato (extras)', () => {
   it('filtros e exportação do extrato', async () => {
-    render(<Commissions />);
+    render(<MemoryRouter><Commissions /></MemoryRouter>);
     await screen.findByText('Indústria X', { selector: 'h3' });
     await userEvent.selectOptions(screen.getByLabelText('Filtrar por representada'), '5');
     await userEvent.selectOptions(screen.getByLabelText('Filtrar por status'), 'divergente');
@@ -214,29 +221,29 @@ describe('Commissions · extrato (extras)', () => {
       if (p.startsWith('/api/commissions?')) return { entries: [] };
       return {};
     });
-    render(<Commissions />);
+    render(<MemoryRouter><Commissions /></MemoryRouter>);
     expect(await screen.findByText('Nenhuma comissão na competência')).toBeInTheDocument();
   });
 
   it('baixa: edita campos, erro exibe toast e Fechar cancela', async () => {
-    m.patch.mockRejectedValueOnce(new Error('falhou'));
-    render(<Commissions />);
+    m.post.mockRejectedValueOnce(new Error('falhou'));
+    render(<MemoryRouter><Commissions /></MemoryRouter>);
     await screen.findByText('Indústria X', { selector: 'h3' });
-    await userEvent.click(screen.getAllByRole('button', { name: 'Dar baixa' })[0]!);
-    const valor = screen.getByLabelText('Valor recebido *');
+    await userEvent.click(screen.getAllByRole('button', { name: 'Parcelas' })[0]!);
+    const valor = screen.getByLabelText('Valor da parcela *');
     await userEvent.clear(valor);
     await userEvent.type(valor, '90');
-    fireEvent.change(screen.getByLabelText('Recebida em *'), { target: { value: '2026-06-15' } });
+    fireEvent.change(screen.getByLabelText('Data do recebimento *'), { target: { value: '2026-06-15' } });
     await userEvent.type(screen.getByPlaceholderText('Observação'), 'obs');
-    await userEvent.click(screen.getByRole('button', { name: /Confirmar baixa/ }));
-    await waitFor(() => expect(m.patch).toHaveBeenCalled());
+    await userEvent.click(screen.getByRole('button', { name: /Registrar parcela/ }));
+    await waitFor(() => expect(m.post).toHaveBeenCalled());
     await userEvent.click(screen.getByLabelText('Fechar'));
-    await waitFor(() => expect(screen.queryByLabelText('Valor recebido *')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByLabelText('Valor da parcela *')).not.toBeInTheDocument());
   });
 
   it('conciliação: erro exibe toast; cancelar e concluir fecham', async () => {
     m.post.mockRejectedValueOnce(new Error('ruim'));
-    render(<Commissions />);
+    render(<MemoryRouter><Commissions /></MemoryRouter>);
     await screen.findByText('Indústria X', { selector: 'h3' });
     await userEvent.click(screen.getByRole('button', { name: /Conciliar CSV/ }));
     await userEvent.type(screen.getByPlaceholderText(/pedido;valor;data/), '12;100');

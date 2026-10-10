@@ -6,8 +6,8 @@ import { MapContainer, CircleMarker, Popup, Polyline, Tooltip, useMap, useMapEve
 import type { LatLngBoundsExpression } from 'leaflet';
 import { api, ApiError, BUSCA_DEBOUNCE_MS } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.tsx';
-import type { Recommendation, GeocodeResult, CompanyDetail, Municipio } from '../lib/types.ts';
-import { Alert, Badge, Btn, Card, cn, Collapse, EmptyState, FilterPanel, PageHeader, Popover, SafeButton, ScoreBar, Segmented, Spinner, StatRow, useIsMobile, usePanels, type Tone } from '../lib/ui.tsx';
+import type { Recommendation, GeocodeResult, CompanyDetail, Municipio, RepresentedCompany } from '../lib/types.ts';
+import { Alert, Badge, Btn, Card, cn, Collapse, EmptyState, FilterPanel, inputCls, Modal, PageHeader, Popover, SafeButton, ScoreBar, Segmented, Spinner, StatRow, useIsMobile, usePanels, type Tone } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
 import { CompanyFilterBar, useCompanyFilter, faixasParams, faixasInvalidas } from '../lib/companyFilter.tsx';
 import { CompanyModal } from '../lib/companyModal.tsx';
@@ -124,6 +124,7 @@ export function Recommend(): React.JSX.Element {
   const [total, setTotal] = useState<{ n: number; capped: boolean } | null>(null);
   const [done, setDone] = useState(false);
   const [added, setAdded] = useState<Set<string>>(new Set());
+  const [addingToFunnel, setAddingToFunnel] = useState<Recommendation | null>(null);
   const [view, setView] = useState<'lista' | 'mapa'>('lista');
   const [searchParams, setSearchParams] = useSearchParams();
   const filter = useCompanyFilter('prospeccao');
@@ -427,10 +428,11 @@ export function Recommend(): React.JSX.Element {
     }
   };
 
-  const addToFunnel = async (rec: Recommendation): Promise<void> => {
+  const addToFunnel = async (rec: Recommendation, representedId: number): Promise<void> => {
     try {
-      await api.post('/api/relationships', { company_id: Number(rec.id) });
+      await api.post('/api/relationships', { company_id: Number(rec.id), represented_id: representedId });
       setAdded((s) => new Set(s).add(rec.id));
+      setAddingToFunnel(null);
       toast.success(`${rec.nome_fantasia || rec.razao_social} adicionada ao funil.`);
     } catch (e) {
       toast.error((e as Error).message || 'Não foi possível adicionar ao funil.');
@@ -659,7 +661,7 @@ export function Recommend(): React.JSX.Element {
                         <button onClick={() => setViewing(Number(r.id))} className="inline-flex min-h-10 items-center rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-300">Ver dados da empresa</button>
                         {added.has(r.id)
                           ? <span className="whitespace-nowrap text-xs text-emerald-600 dark:text-emerald-300">✓ no funil</span>
-                          : can('relationships.create') && <SafeButton onClick={() => addToFunnel(r)} className="inline-flex min-h-10 items-center rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-300">+ Adicionar ao funil</SafeButton>}
+                          : can('relationships.create') && <SafeButton onClick={() => setAddingToFunnel(r)} className="inline-flex min-h-10 items-center rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-300">+ Adicionar ao funil</SafeButton>}
                         {can('contacts.create') && <SafeButton onClick={() => addToContacts(r)} className="inline-flex min-h-10 items-center rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-300">+ Adicionar aos contatos</SafeButton>}
                         <SafeButton onClick={() => traceRoute(r)} disabled={routingId === r.id}
                           className="inline-flex min-h-10 items-center rounded-lg px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:text-blue-300">
@@ -689,7 +691,7 @@ export function Recommend(): React.JSX.Element {
           {painelLista}
           {visibleRecs.map((r) => (
             <div key={r.id} id={`empresa-${r.id}`} tabIndex={-1} className="scroll-mt-4 rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-300">
-              <RecCard rec={r} selected={focus?.id === r.id} added={added.has(r.id)} onAdd={() => addToFunnel(r)}
+              <RecCard rec={r} selected={focus?.id === r.id} added={added.has(r.id)} onAdd={() => setAddingToFunnel(r)}
                 onAddContact={() => addToContacts(r)}
                 onView={() => setViewing(Number(r.id))} onViewMap={() => verNoMapa(r)}
                 onRoute={() => traceRoute(r)} routing={routingId === r.id} />
@@ -724,7 +726,49 @@ export function Recommend(): React.JSX.Element {
 
       {viewing !== null && <CompanyModal companyId={viewing} onClose={() => setViewing(null)} />}
       {addingContact && <NewContactModal initial={addingContact} onClose={() => setAddingContact(null)} />}
+      {addingToFunnel && <AddToFunnelModal company={addingToFunnel}
+        onClose={() => setAddingToFunnel(null)} onAdd={(id) => addToFunnel(addingToFunnel, id)} />}
     </div>
+  );
+}
+
+function AddToFunnelModal({ company, onClose, onAdd }: {
+  company: Recommendation; onClose: () => void; onAdd: (representedId: number) => Promise<void>;
+}): React.JSX.Element {
+  const [reps, setReps] = useState<RepresentedCompany[]>([]);
+  const [representedId, setRepresentedId] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void api.get<{ empresas: RepresentedCompany[] }>('/api/represented')
+      .then((r) => { if (!cancelled) setReps(r.empresas.filter((rep) => rep.ativo)); })
+      .catch(() => { if (!cancelled) setError('Não foi possível carregar as representadas. Feche e tente novamente.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+  return (
+    <Modal title="Adicionar ao funil" subtitle={company.nome_fantasia || company.razao_social}
+      onClose={() => { if (!saving) onClose(); }} footer={<>
+        <Btn variant="ghost" disabled={saving} onClick={onClose}>Cancelar</Btn>
+        <Btn disabled={loading || saving || !representedId} onClick={async () => {
+          if (!representedId) return;
+          setSaving(true);
+          try { await onAdd(Number(representedId)); } finally { setSaving(false); }
+        }}>Adicionar</Btn>
+      </>}>
+      {loading ? <Spinner /> : error ? <Alert tone="danger">{error}</Alert> : reps.length === 0
+        ? <Alert tone="warn">Cadastre ou ative uma representada em Representadas antes de adicionar ao funil.</Alert>
+        : <label className="grid gap-1 text-sm text-ink-700">
+          Representada *
+          <select required value={representedId} disabled={saving} className={inputCls}
+            onChange={(e) => setRepresentedId(e.target.value)}>
+            <option value="">Selecione a representada</option>
+            {reps.map((rep) => <option key={rep.id} value={rep.id}>{rep.nome}</option>)}
+          </select>
+        </label>}
+    </Modal>
   );
 }
 

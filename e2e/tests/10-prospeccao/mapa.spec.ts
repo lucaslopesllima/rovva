@@ -1,4 +1,4 @@
-import { test, expect } from '../../fixtures/index.ts';
+import { test, expect, ApiClient } from '../../fixtures/index.ts';
 
 async function setTerritorioSaoPaulo(page: import('@playwright/test').Page): Promise<void> {
   await page.addInitScript(() => {
@@ -20,8 +20,10 @@ test.describe('prospecção — mapa', () => {
     await expect(page.locator('.leaflet-interactive').first()).toBeVisible({ timeout: 15_000 });
   });
 
-  test('clicar em marcador abre popup e "Adicionar ao funil" funciona', async ({ page, loginAs }) => {
-    await loginAs('prospeccao-mapa-popup');
+  test('clicar em marcador abre popup e "Adicionar ao funil" funciona', async ({ page, request, loginAs }) => {
+    const session = await loginAs('prospeccao-mapa-popup');
+    const api = new ApiClient(request, session);
+    const rep = await api.createRepresented('Representada do funil');
     await setTerritorioSaoPaulo(page);
     await page.goto('/prospeccao');
     await page.waitForLoadState('networkidle');
@@ -34,6 +36,9 @@ test.describe('prospecção — mapa', () => {
     const addBtn = popup.getByText('+ Adicionar ao funil');
     if (await addBtn.count()) {
       await addBtn.click();
+      await expect(page.getByRole('button', { name: 'Adicionar', exact: true })).toBeDisabled();
+      await page.getByLabel('Representada *').selectOption(String(rep.id));
+      await page.getByRole('button', { name: 'Adicionar', exact: true }).click();
       await expect(popup.getByText('✓ no funil')).toBeVisible();
     }
   });

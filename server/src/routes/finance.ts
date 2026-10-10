@@ -198,6 +198,9 @@ export function financeRoutes(app: FastifyInstance): void {
     );
     if (!current) return reply.code(404).send({ error: 'não encontrado' });
     if (!canWriteOwned(req, current.owner_user_id)) return reply.code(403).send({ error: 'sem permissão' });
+    if (await one('SELECT 1 FROM commission_receipts WHERE finance_entry_id = $1', [id])) {
+      return reply.code(409).send({ error: 'Parcela de comissão: ajuste o total pela conciliação em Comissões.' });
+    }
     if (invalidOwnerAssignment(req, b)) return reply.code(403).send({ error: 'não pode atribuir a outro vendedor' });
     const badRef = await invalidOrgRef(orgId, b, ['represented_id', 'activity_id', 'owner_user_id', 'route_id', 'categoria_id']);
     if (badRef) return reply.code(400).send({ error: `${badRef} inválido` });
@@ -230,6 +233,9 @@ export function financeRoutes(app: FastifyInstance): void {
     );
     if (!current) return reply.code(404).send({ error: 'não encontrado' });
     if (!canWriteOwned(req, current.owner_user_id)) return reply.code(403).send({ error: 'sem permissão' });
+    if (await one('SELECT 1 FROM commission_receipts WHERE finance_entry_id = $1', [id])) {
+      return reply.code(409).send({ error: 'Parcela de comissão: ajuste o total pela conciliação em Comissões.' });
+    }
     const rows = await query('DELETE FROM finance_entries WHERE id = $1 AND org_id = $2 RETURNING id', [id, orgId]);
     if (rows.length === 0) return reply.code(404).send({ error: 'não encontrado' });
     await audit(req, 'finance', id, 'delete');
@@ -257,7 +263,7 @@ export function financeRoutes(app: FastifyInstance): void {
     const horizonte = months ?? 3;
 
     // Agregação e saldo somados no banco em numeric exato (sem float JS).
-    // Comissões previstas: sem data de previsão, projeta no 1º dia da competência.
+    // Comissões liberadas: projeta cada saldo no vencimento contratado.
     // Number() só na borda de saída (display) — valor cru fica no banco.
     // Escopo por carteira: rep só os próprios; admin filtra por ?user_id.
     const params: unknown[] = [orgId, horizonte];
@@ -280,13 +286,16 @@ export function financeRoutes(app: FastifyInstance): void {
            AND vencimento < (date_trunc('month', current_date) + ($2 || ' months')::interval)${finOwner}
          GROUP BY 1
          UNION ALL
-         SELECT to_char(date_trunc('week', competencia), 'YYYY-MM-DD') AS semana,
+         SELECT to_char(date_trunc('week', vencimento), 'YYYY-MM-DD') AS semana,
                 0::numeric, 0::numeric,
-                COALESCE(sum(valor_previsto), 0) AS comissao
-         FROM commission_entries
-         WHERE org_id = $1 AND status = 'prevista'
-           AND competencia >= date_trunc('month', current_date)
-           AND competencia < (date_trunc('month', current_date) + ($2 || ' months')::interval)${comOwner}
+                SUM(GREATEST(LEAST(valor, acumulado - COALESCE(valor_recebido, 0)), 0)) AS comissao
+         FROM (SELECT e.org_id, e.user_id, e.valor_recebido, r.valor, r.vencimento,
+                      SUM(r.valor) OVER (PARTITION BY e.id ORDER BY r.vencimento, r.id) AS acumulado
+               FROM commission_entries e JOIN commission_releases r ON r.commission_id = e.id
+               WHERE e.status <> 'cancelada') released
+         WHERE org_id = $1
+           AND vencimento >= current_date
+           AND vencimento < (date_trunc('month', current_date) + ($2 || ' months')::interval)${comOwner}
          GROUP BY 1
        ) x
        GROUP BY semana
@@ -325,11 +334,11 @@ export function financeRoutes(app: FastifyInstance): void {
       `SELECT mes, SUM(receita) AS receita, SUM(despesa) AS despesa,
               SUM(receita - despesa) AS resultado
        FROM (
-         SELECT extract(month FROM competencia)::int AS mes,
-                COALESCE(sum(valor_recebido), 0) AS receita, 0::numeric AS despesa
-         FROM commission_entries
-         WHERE org_id = $1 AND status IN ('recebida','divergente')
-           AND extract(year FROM competencia) = $2${totComOwner}
+         SELECT extract(month FROM r.data)::int AS mes,
+                COALESCE(sum(r.valor), 0) AS receita, 0::numeric AS despesa
+         FROM commission_entries e JOIN commission_receipts r ON r.commission_id = e.id
+         WHERE e.org_id = $1
+           AND extract(year FROM r.data) = $2${totComOwner}
          GROUP BY 1
          UNION ALL
          SELECT extract(month FROM COALESCE(f.liquidacao_data, f.vencimento))::int AS mes,

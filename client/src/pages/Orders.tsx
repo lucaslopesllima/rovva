@@ -289,13 +289,13 @@ export function Orders(): React.JSX.Element {
               className="w-full rounded-lg border border-ink-200 bg-surface py-1.5 pl-8 pr-2.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400" />
           </div>
           <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label="Filtrar por status"
-            className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
+            className={cn(inputCls, 'sm:w-auto')}>
             <option value="todos">Todos os status</option>
             {Object.entries(STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
           <select value={representedId} onChange={(e) => setRepresentedId(e.target.value === 'todos' ? 'todos' : Number(e.target.value))}
             aria-label="Filtrar por representada"
-            className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
+            className={cn(inputCls, 'sm:w-auto')}>
             <option value="todos">Todas as representadas</option>
             {reps.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
           </select>
@@ -332,7 +332,7 @@ export function Orders(): React.JSX.Element {
         ) : (
         <Card className="min-h-0 flex-1 overflow-auto p-0">
           <table className="w-full border-collapse text-sm">
-            <thead className="sticky top-0 z-10 text-left text-xs font-semibold uppercase tracking-wide text-ink-500 [&>tr>th]:border [&>tr>th]:border-ink-200 [&>tr>th]:bg-ink-100">
+            <thead className="sticky top-0 z-10 text-left text-xs font-semibold text-ink-500 [&>tr>th]:border-b [&>tr>th]:border-hairline [&>tr>th]:bg-ink-50">
               <tr>
                 <th className="w-14 px-3 py-2.5">#</th>
                 <th className="w-full px-3 py-2.5">Cliente</th>
@@ -450,7 +450,7 @@ function Row({ o, showOwner, onEdit, onRemove, onTransition, onPrint }: {
   const owner = o.owner_nome ?? o.owner_email ?? '—';
   const cancellable = o.status !== 'cancelado' && o.status !== 'entregue';
   return (
-    <tr className="transition-colors hover:bg-ink-50 [&>td]:border [&>td]:border-ink-200">
+    <tr className="transition-colors hover:bg-ink-50 border-b border-hairline last:border-0">
       <td className="px-3 py-2.5 align-middle">
         <span className="tabnums text-xs font-bold text-ink-500">#{o.numero}</span>
       </td>

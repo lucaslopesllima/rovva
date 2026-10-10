@@ -3,19 +3,20 @@ import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.tsx';
 import type {
-  CatalogItem, CommissionEntry, CommissionRule, CommissionStatus,
+  CatalogItem, CommissionEntry, CommissionHistory, CommissionRule, CommissionStatus,
   KanbanCard, OrgUser, RepresentedCompany,
 } from '../lib/types.ts';
 import { Badge, Btn, Card, cn, EmptyState, ErrorState, inputCls, Modal, PageHeader, SafeButton, Segmented, Spinner, StatRow, type Tone } from '../lib/ui.tsx';
 import { useSellers, SellerFilter } from '../lib/sellers.tsx';
 import { downloadCsv } from '../lib/export.ts';
 import { Icon } from '../lib/icons.tsx';
-import { brl, csvNum, dec, fmtDate, maskMoney, maskPct, numStr, todayStr } from '../lib/format.ts';
+import { brl, csvNum, dec, fmtDate, maskMoney, maskPct, todayStr } from '../lib/format.ts';
 import { toast } from '../lib/toast.tsx';
 import { confirmDialog } from '../lib/confirm.ts';
 
 
 const STATUS_META: Record<CommissionStatus, { label: string; tone: Tone }> = {
+  parcial: { label: 'Parcial', tone: 'info' },
   prevista: { label: 'Prevista', tone: 'info' },
   recebida: { label: 'Recebida', tone: 'success' },
   divergente: { label: 'Divergente', tone: 'danger' },
@@ -94,14 +95,16 @@ function Extrato({ reps }: { reps: RepresentedCompany[] }): React.JSX.Element {
   useEffect(() => { void load(); }, [competencia, representedId, status, ownerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const kpis = useMemo(() => {
-    let previsto = 0, recebido = 0, divergentes = 0;
+    let previsto = 0, recebido = 0, liberado = 0, saldo = 0, divergentes = 0;
     for (const e of entries) {
+      recebido += Number(e.valor_recebido ?? 0);
       if (e.status === 'cancelada') continue;
       previsto += Number(e.valor_previsto);
-      if (e.valor_recebido != null) recebido += Number(e.valor_recebido);
+      liberado += Number(e.saldo_liberado);
+      saldo += Number(e.saldo_previsto);
       if (e.status === 'divergente') divergentes++;
     }
-    return { previsto, recebido, divergentes };
+    return { previsto, recebido, liberado, saldo, divergentes };
   }, [entries]);
 
   // visão mensal por representada: subtotais previsto/recebido por grupo
@@ -118,32 +121,33 @@ function Extrato({ reps }: { reps: RepresentedCompany[] }): React.JSX.Element {
   return (
     <>
       <StatRow cols={3} items={[
-        { label: 'Recebido no mês', value: brl(kpis.recebido), sub: `previsto ${brl(kpis.previsto)}`, icon: 'check', tone: 'success' },
-        { label: 'A receber', value: brl(Math.max(0, kpis.previsto - kpis.recebido)), sub: 'previsto ainda não pago', icon: 'trendingUp', tone: 'info' },
+        { label: 'Recebido nesta competência', value: brl(kpis.recebido), sub: `previsto ${brl(kpis.previsto)}`, icon: 'check', tone: 'success' },
+        { label: 'A receber', value: brl(kpis.saldo), sub: `${brl(kpis.liberado)} liberado para pagamento`, icon: 'trendingUp', tone: 'info' },
         { label: 'Divergências', value: String(kpis.divergentes), sub: kpis.divergentes > 0 ? 'revisar baixas' : 'tudo certo', icon: 'alertTriangle', tone: kpis.divergentes > 0 ? 'danger' : 'neutral' },
       ]} />
 
       <Card className="flex flex-wrap items-center gap-3 p-3">
         <input type="month" value={competencia} onChange={(e) => setCompetencia(e.target.value)} aria-label="Competência"
-          className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400" />
+          className={cn(inputCls, 'sm:w-auto')} />
         <select value={representedId} onChange={(e) => setRepresentedId(e.target.value === 'todas' ? 'todas' : Number(e.target.value))}
           aria-label="Filtrar por representada"
-          className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
+          className={cn(inputCls, 'sm:w-auto')}>
           <option value="todas">Todas as representadas</option>
           {reps.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
         </select>
         <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label="Filtrar por status"
-          className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400">
+          className={cn(inputCls, 'sm:w-auto')}>
           <option value="todos">Todos os status</option>
           {Object.entries(STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
         <SellerFilter value={ownerId} onChange={setOwnerId} sellers={sellers} />
         <Btn variant="ghost" size="sm" icon="download" className="ml-auto" disabled={entries.length === 0}
           onClick={() => downloadCsv(`comissoes-${competencia}`,
-            ['Pedido', 'NF', 'Cliente', 'Representada', 'Vendedor', 'Previsto', 'Recebido', 'Status'],
+            ['Pedido', 'NF', 'Cliente', 'Representada', 'Vendedor', 'Modalidade', 'Previsto', 'Liberado', 'Recebido', 'Saldo previsto', 'Saldo liberado', 'Vencimento', 'Status'],
             entries.map((e) => [e.order_numero, e.nf_numero ?? '', e.company_nome, e.represented_nome,
-              e.vendedor_nome ?? e.vendedor_email ?? '', csvNum(e.valor_previsto),
-              e.valor_recebido == null ? '' : csvNum(e.valor_recebido), e.status]))}>
+              e.vendedor_nome ?? e.vendedor_email ?? '', e.modalidade, csvNum(e.valor_previsto), csvNum(e.valor_liberado),
+              e.valor_recebido == null ? '' : csvNum(e.valor_recebido), csvNum(e.saldo_previsto), csvNum(e.saldo_liberado),
+              e.status === 'cancelada' ? '' : e.vencimento ?? '', e.status]))}>
           Exportar
         </Btn>
         {can('commissions.reconcile') && (
@@ -198,7 +202,6 @@ function Extrato({ reps }: { reps: RepresentedCompany[] }): React.JSX.Element {
 }
 
 function EntryRow({ e, onSettle }: { e: CommissionEntry; onSettle: () => void }): React.JSX.Element {
-  const { can } = useAuth();
   const meta = STATUS_META[e.status];
   return (
     <Card className={cn('flex items-center gap-3 p-3', e.status === 'cancelada' && 'opacity-60')}>
@@ -210,10 +213,11 @@ function EntryRow({ e, onSettle }: { e: CommissionEntry; onSettle: () => void })
         <p className="truncate text-xs text-ink-400">
           {e.vendedor_nome ?? e.vendedor_email ?? 'sem vendedor'}
           {e.nf_numero ? ` · NF ${e.nf_numero}` : ''}
-          {` · pedido ${brl(Number(e.order_total))} × ${Number(e.percent_aplicado)}%`}
+          {` · pedido ${brl(Number(e.order_total))} · comissão ${Number(e.percent_aplicado)}% sobre itens (sem frete)`}
           {` · vendedor ${brl(Number(e.valor_vendedor))} (${Number(e.vendedor_split_pct)}%)`}
           {e.recebida_em ? ` · baixa em ${fmtDate(e.recebida_em)}` : ''}
         </p>
+        <p className="text-xs text-ink-500">{e.modalidade === 'liquidez' ? 'Por pagamento do cliente' : 'Integral no faturamento'} · saldo liberado {brl(Number(e.saldo_liberado))}{e.status !== 'cancelada' && e.vencimento ? ` · vence ${fmtDate(e.vencimento)}` : ''}</p>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
         <span className="tabnums text-sm font-bold text-ink-800">
@@ -226,9 +230,7 @@ function EntryRow({ e, onSettle }: { e: CommissionEntry; onSettle: () => void })
         </span>
         <Badge tone={meta.tone}>{meta.label}</Badge>
       </div>
-      {can('commissions.settle') && (e.status === 'prevista' || e.status === 'divergente') && (
-        <Btn variant="ghost" size="sm" onClick={onSettle}>Dar baixa</Btn>
-      )}
+      <Btn variant="ghost" size="sm" onClick={onSettle}>Parcelas</Btn>
     </Card>
   );
 }
@@ -236,57 +238,73 @@ function EntryRow({ e, onSettle }: { e: CommissionEntry; onSettle: () => void })
 function SettleModal({ entry, onClose, onSaved }: {
   entry: CommissionEntry; onClose: () => void; onSaved: () => void;
 }): React.JSX.Element {
-  const [valor, setValor] = useState(numStr(entry.valor_recebido ?? entry.valor_previsto));
+  const { can } = useAuth();
+  const [history, setHistory] = useState<CommissionHistory | null>(null);
+  const [error, setError] = useState('');
+  const [kind, setKind] = useState<'payments' | 'customer-payments'>('payments');
+  const [valor, setValor] = useState('');
   const [data, setData] = useState(todayStr());
-  const [observacao, setObservacao] = useState(entry.observacao ?? '');
+  const [observacao, setObservacao] = useState('');
   const [busy, setBusy] = useState(false);
+  const [requestId] = useState(() => crypto.randomUUID());
+  useEffect(() => {
+    void api.get<CommissionHistory>(`/api/commissions/${entry.id}/history`).then(setHistory)
+      .catch((e: Error) => setError(e.message));
+  }, [entry.id]);
 
   const submit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
-    if (valor.trim() === '' || !Number.isFinite(dec(valor)) || !data) return;
+    if (!Number.isFinite(dec(valor)) || dec(valor) <= 0 || !data) return;
     setBusy(true);
     try {
-      await api.patch(`/api/commissions/${entry.id}/settle`, {
-        valor_recebido: dec(valor), recebida_em: data, observacao: observacao.trim() || null,
+      await api.post(`/api/commissions/${entry.id}/${kind}`, {
+        valor: dec(valor), data, observacao: observacao.trim() || null, request_id: requestId,
       });
-      toast.success('Baixa registrada.');
+      toast.success('Parcela registrada no histórico.');
       onSaved();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Não foi possível dar baixa.');
+      toast.error(err instanceof Error ? err.message : 'Não foi possível registrar.');
     } finally { setBusy(false); }
   };
 
   return (
-    <Modal onClose={onClose} width="md">
+    <Modal onClose={onClose} width="lg">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-bold text-ink-900">Baixa da comissão · pedido #{entry.order_numero}</h3>
-        <button onClick={onClose} aria-label="Fechar" className="grid h-11 w-11 place-items-center rounded-xl text-ink-500 hover:bg-ink-100 hover:text-ink-800 sm:h-8 sm:w-8 sm:rounded-lg">
-          <Icon name="x" size={17} />
-        </button>
+        <h3 className="text-sm font-bold text-ink-900">Parcelas da comissão · pedido #{entry.order_numero}</h3>
+        <button onClick={onClose} aria-label="Fechar" className="grid h-11 w-11 place-items-center rounded-xl text-ink-500"><Icon name="x" size={17} /></button>
       </div>
-      <form onSubmit={submit} className="space-y-3">
-        <p className="text-xs text-ink-400">
-          Previsto: <span className="font-semibold text-ink-600">{brl(Number(entry.valor_previsto))}</span>.
-          Valor diferente do previsto marca a comissão como divergente.
-        </p>
+      <p className="mb-3 text-sm text-ink-600">Previsto {brl(Number(entry.valor_previsto))} · recebido {brl(Number(entry.valor_recebido ?? 0))} · saldo liberado {brl(Number(entry.saldo_liberado))}</p>
+      <p className="mb-3 text-xs text-ink-500">Prazo contratado: {entry.prazo_tipo === 'mes_seguinte' ? `dia ${entry.prazo} do mês seguinte (limitado ao último dia do mês)` : `${entry.prazo} dia(s) após ${entry.modalidade === 'liquidez' ? 'pagamento do cliente' : 'faturamento'}`}.</p>
+      {entry.modalidade === 'liquidez' && <p className="mb-3 text-xs text-ink-500">Cliente pagou {brl(Number(entry.valor_cliente_pago))} de {brl(Number(entry.order_total))}. Cada pagamento libera comissão proporcional.</p>}
+      {error ? <p role="alert">{error}</p> : !history ? <Spinner /> : (
+        <div className="mb-4 max-h-56 space-y-2 overflow-auto text-xs text-ink-600">
+          {history.liberacoes.map((r) => <p key={`l${r.id}`}>{fmtDate(r.data)} · {r.valor_cliente != null ? `Cliente pagou ${brl(Number(r.valor_cliente))} → ` : 'Faturamento · '}liberado {brl(Number(r.valor))} · vence {fmtDate(r.vencimento)}{r.observacao ? ` · ${r.observacao}` : ''}</p>)}
+          {history.recebimentos.map((r) => <p key={`r${r.id}`} className="text-emerald-700">{fmtDate(r.data)} · comissão {Number(r.valor) < 0 ? 'ajustada' : 'recebida'} {brl(Number(r.valor))}{r.observacao ? ` · ${r.observacao}` : ''}</p>)}
+          {!history.liberacoes.length && !history.recebimentos.length && <p>Nenhuma parcela registrada.</p>}
+        </div>
+      )}
+      {can('commissions.settle') && entry.status !== 'cancelada' && <form onSubmit={submit} className="space-y-3">
+        {entry.modalidade === 'liquidez' && <label className="block text-xs font-semibold text-ink-600">Tipo de recebimento
+          <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} className={cn(inputCls, 'mt-1')}>
+            <option value="payments">Comissão recebida da representada</option>
+            <option value="customer-payments">Pagamento do cliente à representada</option>
+          </select>
+        </label>}
+        <p className="text-xs text-ink-500">Informe somente o valor desta parcela. O histórico e o total recebido são acumulados.</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          <label className="block">
-            <span className="text-xs font-semibold text-ink-600">Valor recebido *</span>
-            <input type="text" inputMode="decimal" placeholder="0,00" value={valor} autoFocus
-              onChange={(e) => setValor(maskMoney(e.target.value))} className={cn(inputCls, 'mt-1')} />
+          <label className="block text-xs font-semibold text-ink-600">Valor da parcela *
+            <input required type="text" inputMode="decimal" placeholder="0,00" value={valor} onChange={(e) => setValor(maskMoney(e.target.value))} className={cn(inputCls, 'mt-1')} />
           </label>
-          <label className="block">
-            <span className="text-xs font-semibold text-ink-600">Recebida em *</span>
-            <input type="date" value={data} onChange={(e) => setData(e.target.value)} className={cn(inputCls, 'mt-1')} />
+          <label className="block text-xs font-semibold text-ink-600">Data do recebimento *
+            <input required type="date" max={todayStr()} value={data} onChange={(e) => setData(e.target.value)} className={cn(inputCls, 'mt-1')} />
           </label>
         </div>
-        <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} maxLength={2000}
-          placeholder="Observação" rows={2} className={inputCls} />
+        <textarea aria-label="Observação" value={observacao} onChange={(e) => setObservacao(e.target.value)} maxLength={2000} placeholder="Observação" rows={2} className={inputCls} />
         <div className="flex justify-end gap-2">
-          <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
-          <Btn icon="check" type="submit" disabled={busy}>{busy ? '…' : 'Confirmar baixa'}</Btn>
+          <Btn variant="ghost" type="button" onClick={onClose}>Fechar</Btn>
+          <Btn icon="check" type="submit" disabled={busy || !history || !valor.trim() || dec(valor) <= 0}>{busy ? '…' : 'Registrar parcela'}</Btn>
         </div>
-      </form>
+      </form>}
     </Modal>
   );
 }
@@ -294,14 +312,14 @@ function SettleModal({ entry, onClose, onSaved }: {
 function ReconcileModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }): React.JSX.Element {
   const [csv, setCsv] = useState('');
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ processadas: number; baixadas: number; divergentes: number } | null>(null);
+  const [result, setResult] = useState<{ processadas: number; baixadas: number; divergentes: number; results?: { linha: number; motivo?: string }[] } | null>(null);
 
   const submit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (!csv.trim()) return;
     setBusy(true);
     try {
-      const r = await api.post<{ processadas: number; baixadas: number; divergentes: number }>(
+      const r = await api.post<{ processadas: number; baixadas: number; divergentes: number; results?: { linha: number; motivo?: string }[] }>(
         '/api/commissions/reconcile', { csv },
       );
       setResult(r);
@@ -324,13 +342,14 @@ function ReconcileModal({ onClose, onDone }: { onClose: () => void; onDone: () =
             {result.baixadas} de {result.processadas} linha(s) baixada(s)
             {result.divergentes > 0 ? `, ${result.divergentes} divergente(s).` : '.'}
           </p>
+          {result.results?.filter((r) => r.motivo).map((r) => <p key={r.linha} className="text-xs text-rose-600">Linha {r.linha}: {r.motivo}</p>)}
           <div className="flex justify-end"><Btn onClick={onDone}>Concluir</Btn></div>
         </div>
       ) : (
         <form onSubmit={submit} className="space-y-3">
           <p className="text-xs text-ink-400">
             Cabeçalho com colunas <code>pedido</code> (ou <code>nf</code>) e <code>valor</code>, mais
-            <code> data</code> opcional. Cada linha dá baixa na comissão do pedido; valor fora da
+            <code> data</code> opcional. Valor deve ser o total acumulado recebido, não uma nova parcela; valor fora da
             tolerância marca divergência.
           </p>
           <textarea value={csv} onChange={(e) => setCsv(e.target.value)} rows={8} maxLength={1000000}

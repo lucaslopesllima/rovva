@@ -29,7 +29,13 @@ export interface CnaeGrupo { divisao: number; secao: string; itens: CnaeItem[] }
 
 export interface Stage { id: number; nome: string; ordem: number }
 
-export interface RepresentedCompany {
+export interface CommissionTerms {
+  comissao_modalidade: 'faturamento' | 'liquidez';
+  comissao_prazo_tipo: 'dias' | 'mes_seguinte';
+  comissao_prazo: number;
+}
+
+export interface RepresentedCompany extends CommissionTerms {
   id: number; nome: string; cnpj: string | null; segmento: string | null;
   site: string | null; contato: string | null; notas: string | null; ativo: boolean;
 }
@@ -238,8 +244,10 @@ export interface Order {
   items?: OrderItem[];
 }
 
-export type CommissionStatus = 'prevista' | 'recebida' | 'divergente' | 'cancelada';
+export type CommissionStatus = 'prevista' | 'parcial' | 'recebida' | 'divergente' | 'cancelada';
 export interface CommissionEntry {
+  modalidade: 'faturamento' | 'liquidez'; prazo_tipo: 'dias' | 'mes_seguinte'; prazo: number;
+  valor_liberado: string; valor_cliente_pago: string; saldo_liberado: string; saldo_previsto: string; vencimento: string | null;
   id: number; order_id: number; user_id: number | null; represented_id: number;
   competencia: string; valor_previsto: string; valor_recebido: string | null;
   percent_aplicado: string; vendedor_split_pct: string;
@@ -249,6 +257,11 @@ export interface CommissionEntry {
   company_nome: string; represented_nome: string;
   vendedor_nome: string | null; vendedor_email: string | null;
   valor_vendedor: string;
+}
+
+export interface CommissionHistory {
+  liberacoes: { id: number; valor_cliente: string | null; valor: string; data: string; vencimento: string; observacao: string | null }[];
+  recebimentos: { id: number; valor: string; data: string; observacao: string | null }[];
 }
 
 export interface CommissionRule {

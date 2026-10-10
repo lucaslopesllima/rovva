@@ -87,7 +87,7 @@ export function dashboardRoutes(app: FastifyInstance): void {
       one<{ previsto: string; recebido: string; divergentes: number }>(
         `SELECT
            COALESCE(sum(valor_previsto) FILTER (WHERE status <> 'cancelada'), 0) AS previsto,
-           COALESCE(sum(valor_recebido) FILTER (WHERE status IN ('recebida','divergente')), 0) AS recebido,
+           COALESCE(sum(valor_recebido), 0) AS recebido,
            count(*) FILTER (WHERE status = 'divergente')::int AS divergentes
          FROM commission_entries
          WHERE org_id = $1 AND competencia = $2::date${comOwner}`,

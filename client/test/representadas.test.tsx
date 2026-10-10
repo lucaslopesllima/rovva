@@ -97,7 +97,7 @@ describe('Representadas', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
     expect(m.post).not.toHaveBeenCalled();
 
-    await userEvent.type(screen.getByPlaceholderText(/Nome da empresa/), 'Teste');
+    await userEvent.type(screen.getByRole('textbox', { name: /Nome da empresa/ }), 'Teste');
     // mexe no CNPJ (máscara) e nas notas
     await userEvent.type(screen.getByPlaceholderText('CNPJ'), '11222333000181');
     await userEvent.type(screen.getByPlaceholderText(/Notas/), 'obs');

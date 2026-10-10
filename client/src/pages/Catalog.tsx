@@ -149,7 +149,7 @@ export function Catalog(): React.JSX.Element {
               <p className="py-6 text-center text-sm text-ink-400">Nenhum item para “{q.trim()}”.</p>
             )}
             {display.map((i) => editing === i.id ? (
-              <Card key={i.id} className="border-brand-200 bg-brand-50/40 p-3">
+              <Card key={i.id} className="border-brand-300 bg-ink-50 p-4">
                 <ItemForm reps={reps} initial={toForm(i)} onSave={(f) => update(i.id, f)} onCancel={() => setEditing(null)} />
               </Card>
             ) : (
@@ -205,10 +205,15 @@ function ItemForm({ reps, initial, onSave, onCancel }: {
         {tried && !f.nome.trim() && <span className="mt-1 block text-xs text-rose-600">Informe o nome.</span>}
       </label>
       <div className="grid gap-2.5 sm:grid-cols-2">
-        <input value={f.codigo} onChange={set('codigo')} maxLength={120} placeholder="Código / SKU" className={inputCls} />
-        <input type="text" inputMode="decimal" value={f.preco}
+        <label className="grid gap-1 text-xs font-semibold text-ink-600">Código / SKU
+          <input value={f.codigo} onChange={set('codigo')} maxLength={120} placeholder="Código / SKU" className={inputCls} />
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-ink-600">Preço (R$)
+          <input type="text" inputMode="decimal" value={f.preco}
           onChange={(e) => setF((p) => ({ ...p, preco: maskMoney(e.target.value) }))} placeholder="Preço (R$)" className={inputCls} />
-        <select value={f.unidade_medida} onChange={set('unidade_medida')} className={inputCls}>
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-ink-600">Unidade de medida
+          <select value={f.unidade_medida} onChange={set('unidade_medida')} className={inputCls}>
           <option value="">Unidade de medida (opcional)</option>
           {UNIDADES_MEDIDA_GRUPOS.map((g) => (
             <optgroup key={g.grupo} label={g.grupo}>
@@ -216,12 +221,17 @@ function ItemForm({ reps, initial, onSave, onCancel }: {
             </optgroup>
           ))}
         </select>
-        <select value={f.represented_id} onChange={set('represented_id')} className={inputCls}>
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-ink-600">Representada
+          <select value={f.represented_id} onChange={set('represented_id')} className={inputCls}>
           <option value="">Representada (opcional)</option>
           {reps.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
         </select>
+        </label>
       </div>
-      <textarea value={f.descricao} onChange={set('descricao')} maxLength={2000} placeholder="Descrição" rows={2} className={cn(inputCls, 'resize-y')} />
+      <label className="grid gap-1 text-xs font-semibold text-ink-600">Descrição
+          <textarea value={f.descricao} onChange={set('descricao')} maxLength={2000} placeholder="Descrição" rows={2} className={cn(inputCls, 'resize-y')} />
+        </label>
       <div className="flex justify-end gap-2">
         <Btn variant="ghost" type="button" onClick={onCancel}>Cancelar</Btn>
         <Btn icon="check" type="submit" disabled={busy}>{busy ? '…' : 'Salvar'}</Btn>

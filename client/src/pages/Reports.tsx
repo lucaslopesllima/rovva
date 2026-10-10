@@ -155,8 +155,8 @@ function Abc({ ownerId }: { ownerId: 'todos' | number }): React.JSX.Element {
       {/* min-w: sem ele a tabela obedece ao container estreito e espreme as
           colunas até quebrar letra a letra — o overflow-x do Card nunca rola. */}
       <table className="w-full min-w-[560px] text-sm">
-        <thead className="sticky top-0 z-10 [&>tr>th]:bg-surface">
-          <tr className="border-b border-ink-200 text-left text-xs font-semibold uppercase tracking-wide text-ink-400">
+        <thead className="sticky top-0 z-10 [&>tr>th]:bg-ink-50">
+          <tr className="border-b border-hairline text-left text-xs font-semibold text-ink-500">
             <th className="px-4 py-2">Cliente</th>
             <th className="px-4 py-2 text-right">Faturamento</th>
             <th className="px-4 py-2 text-right">Share</th>

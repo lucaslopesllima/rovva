@@ -1,0 +1,10 @@
+{
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "duration": 31.0,
+  "audio": "stereo 48000 Hz",
+  "privacy": "blur aplicado no navegador antes da captura",
+  "example": "Supermercado Shimozono",
+  "sources": "interface real, consulta executada; tempo de espera reduzido"
+}

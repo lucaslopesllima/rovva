@@ -74,6 +74,7 @@ beforeEach(() => {
   vi.mocked(toast.success).mockReset();
   m.get.mockImplementation(async (p: string) => {
     if (p.startsWith('/api/recommend')) return { results: [rec({})], page: { count: 1 } };
+    if (p === '/api/represented') return { empresas: [{ id: 7, nome: 'Representada A', ativo: true }, { id: 8, nome: 'Representada B', ativo: true }, { id: 9, nome: 'Inativa', ativo: false }] };
     if (p === '/api/municipios/ufs') return { ufs: [] };
     if (p.includes('/geocode')) return { geocode: { lat: -23.55, lon: -46.63, precisao: 'rua' } };
     if (/\/api\/companies\/\d+$/.test(p)) return { company: { id: 1, cnpj: '11222333000144', razao_social: 'Alvo', nome_fantasia: null, cnae_principal: 4781400, cnae_secundarios: [], cnae_descricao: null, uf: 'SP', municipio_id: 100, cidade: 'SP', regiao: 'Sudeste', porte: 'micro', capital_social: '1', situacao_cadastral: 'Ativa', source: 'RFB', logradouro: null, numero: null, complemento: null, bairro: null, cep: null, telefone1: null, telefone2: null, email: null, fax: null, data_inicio_atividade: null, matriz_filial: 1, natureza_juridica: null, natureza_descricao: null, qualificacao_responsavel: null, qualificacao_descricao: null, ente_federativo: null, motivo_situacao: null, motivo_descricao: null, data_situacao_cadastral: null, situacao_especial: null, data_situacao_especial: null, nome_cidade_exterior: null, pais: null, pais_nome: null, opcao_simples: null, data_opcao_simples: null, data_exclusao_simples: null, opcao_mei: null, data_opcao_mei: null, data_exclusao_mei: null, lat: -23.5, lon: -46.6, raw_data: null, geo_lat: -23.5, geo_lon: -46.6, geo_precisao: 'rua' }, socios: [] };
@@ -126,7 +127,12 @@ describe('Recommend', () => {
     mount();
     await screen.findByText('Loja Alvo', undefined, { timeout: 2000 });
     await userEvent.click(screen.getByRole('button', { name: /Adicionar ao funil/ }));
-    expect(m.post).toHaveBeenCalledWith('/api/relationships', { company_id: 1 });
+    expect(m.post).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Adicionar', exact: true })).toBeDisabled();
+    await userEvent.selectOptions(await screen.findByLabelText('Representada *'), '8');
+    expect(screen.queryByRole('option', { name: 'Inativa' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar', exact: true }));
+    expect(m.post).toHaveBeenCalledWith('/api/relationships', { company_id: 1, represented_id: 8 });
     expect(await screen.findByText('Adicionado ao funil')).toBeInTheDocument();
     expect(m.post).not.toHaveBeenCalledWith('/api/contacts', expect.anything());
   });
@@ -137,8 +143,54 @@ describe('Recommend', () => {
     mount();
     await screen.findByText('Loja Alvo', undefined, { timeout: 2000 });
     await userEvent.click(screen.getByRole('button', { name: /Adicionar ao funil/ }));
+    expect(m.post).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Adicionar', exact: true })).toBeDisabled();
+    await userEvent.selectOptions(await screen.findByLabelText('Representada *'), '8');
+    expect(screen.queryByRole('option', { name: 'Inativa' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar', exact: true }));
     await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledWith('funil falhou'));
     expect(screen.getByRole('button', { name: /Adicionar ao funil/ })).toBeInTheDocument();
+  });
+
+  it('cancelar a seleção não cria vínculo', async () => {
+    comTerritorio();
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Adicionar ao funil' }));
+    await screen.findByLabelText('Representada *');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(m.post).not.toHaveBeenCalled();
+  });
+
+  it.each(['vazia', 'falha'])('bloqueia inclusão com lista de representadas %s', async (cenario) => {
+    comTerritorio();
+    const original = m.get.getMockImplementation()!;
+    m.get.mockImplementation(async (p, ...args) => {
+      if (p === '/api/represented') {
+        if (cenario === 'falha') throw new Error('sem acesso');
+        return { empresas: [] };
+      }
+      return original(p, ...args);
+    });
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Adicionar ao funil' }));
+    await screen.findByText(cenario === 'vazia' ? /Cadastre ou ative/ : /Não foi possível carregar as representadas/);
+    expect(screen.getByRole('button', { name: 'Adicionar', exact: true })).toBeDisabled();
+    expect(m.post).not.toHaveBeenCalled();
+  });
+
+  it('adicionar pelo mapa também exige representada', async () => {
+    comTerritorio();
+    m.post.mockResolvedValue({ relationship: { id: 1 } });
+    mount();
+    await screen.findByText('Loja Alvo');
+    await userEvent.click(screen.getByRole('button', { name: 'Mapa' }));
+    await userEvent.click(screen.getByRole('button', { name: /Adicionar ao funil/ }));
+    expect(m.post).not.toHaveBeenCalled();
+    await userEvent.selectOptions(await screen.findByLabelText('Representada *'), '7');
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar', exact: true }));
+    expect(m.post).toHaveBeenCalledWith('/api/relationships', { company_id: 1, represented_id: 7 });
+    expect(await screen.findByText('✓ no funil')).toBeInTheDocument();
   });
 
   it('erro da busca (400) mostra card com ação de ajustar filtros', async () => {
@@ -323,6 +375,11 @@ describe('Recommend — mapa, rota e interações', () => {
     mount();
     await screen.findByText('Loja Alvo', undefined, { timeout: 2000 });
     await userEvent.click(screen.getByRole('button', { name: /Adicionar ao funil/ }));
+    expect(m.post).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Adicionar', exact: true })).toBeDisabled();
+    await userEvent.selectOptions(await screen.findByLabelText('Representada *'), '8');
+    expect(screen.queryByRole('option', { name: 'Inativa' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar', exact: true }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('duplicado'));
   });
 
@@ -467,6 +524,11 @@ describe('Recommend — cobertura extra', () => {
     await userEvent.click(screen.getByRole('button', { name: /Traçar rota/ }));
     expect(await screen.findByText(/2\.0 km/, undefined, { timeout: 2000 })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Adicionar ao funil/ }));
+    expect(m.post).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Adicionar', exact: true })).toBeDisabled();
+    await userEvent.selectOptions(await screen.findByLabelText('Representada *'), '8');
+    expect(screen.queryByRole('option', { name: 'Inativa' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Adicionar', exact: true }));
     expect(await screen.findByText(/no funil/, undefined, { timeout: 2000 })).toBeInTheDocument();
   });
 

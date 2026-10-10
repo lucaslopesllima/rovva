@@ -1,4 +1,4 @@
-import { test, expect } from '../../fixtures/index.ts';
+import { test, expect, ApiClient } from '../../fixtures/index.ts';
 
 async function setTerritorioSaoPaulo(page: import('@playwright/test').Page): Promise<void> {
   await page.addInitScript(() => {
@@ -11,8 +11,10 @@ async function setTerritorioSaoPaulo(page: import('@playwright/test').Page): Pro
 }
 
 test.describe('prospecção — ações', () => {
-  test('"Adicionar ao funil" na lista cria relationship e some do resultado', async ({ page, loginAs }) => {
-    await loginAs('prospeccao-add-funil');
+  test('"Adicionar ao funil" na lista cria relationship e some do resultado', async ({ page, request, loginAs }) => {
+    const session = await loginAs('prospeccao-add-funil');
+    const api = new ApiClient(request, session);
+    const rep = await api.createRepresented('Representada do funil');
     await setTerritorioSaoPaulo(page);
     await page.goto('/prospeccao');
     await page.waitForLoadState('networkidle');
@@ -20,6 +22,9 @@ test.describe('prospecção — ações', () => {
     const addBtn = page.getByRole('button', { name: 'Adicionar ao funil' }).first();
     await expect(addBtn).toBeVisible({ timeout: 15_000 });
     await addBtn.click();
+    await expect(page.getByRole('button', { name: 'Adicionar', exact: true })).toBeDisabled();
+    await page.getByLabel('Representada *').selectOption(String(rep.id));
+    await page.getByRole('button', { name: 'Adicionar', exact: true }).click();
     await expect(page.getByText('Adicionado ao funil').first()).toBeVisible();
   });
 

@@ -156,9 +156,9 @@ function useNavGroups(): NavGroup[] {
 function Brand({ compact }: { compact?: boolean }): React.JSX.Element {
   return (
     <div className="flex items-center gap-2.5">
-      <LogoMark size={32} className="shrink-0 rounded-xl shadow-sm shadow-black/30" />
+      <LogoMark size={32} className="shrink-0 rounded-xl" />
       {!compact && (
-        <LogoWord className="text-[15px] font-bold tracking-tight text-white" accent="text-brand-400" />
+        <LogoWord className="text-xl font-bold tracking-tight text-ink-900" accent="text-brand-500" />
       )}
     </div>
   );
@@ -206,19 +206,19 @@ function Sidebar(): React.JSX.Element {
   const inicial = (user?.org_nome ?? user?.email ?? '?').charAt(0).toUpperCase();
 
   return (
-    <aside data-chrome className={cn('hidden shrink-0 flex-col bg-ink-900 py-4 transition-[width,padding] duration-300 ease-in-out lg:flex',
-      collapsed ? 'w-16 px-2' : 'w-60 px-3')}>
-      <div className={cn('flex items-center pb-5', collapsed ? 'justify-center' : 'justify-between px-2')}>
+    <aside className={cn('hidden shrink-0 flex-col border-r border-hairline bg-surface py-5 transition-[width,padding] duration-200 ease-out lg:flex',
+      collapsed ? 'w-18 px-2' : 'w-60 px-3')}>
+      <div className={cn('flex items-center pb-6', collapsed ? 'justify-center' : 'justify-between px-2')}>
         {!collapsed && <Brand />}
         <button onClick={() => setCollapsed((v) => !v)} aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-400 hover:bg-white/10 hover:text-white">
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 hover:text-ink-900">
           {/* seta acompanha o menu: aponta p/ dentro (recolher) aberto, p/ fora (expandir) fechado */}
           <Icon name="chevronRight" size={18} className={cn('transition-transform duration-300 ease-in-out', !collapsed && 'rotate-180')} />
         </button>
       </div>
       {/* nav rola na vertical quando os grupos passam da altura da tela */}
       {/* scrollbar invisível: rola, mas sem barra (.no-scrollbar definida no index.css) */}
-      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden no-scrollbar">
+      <nav aria-label="Menu principal" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden no-scrollbar">
         {groups.map((g, gi) => {
           // acordeon só no modo expandido; recolhido sempre mostra os itens
           const isClosed = !collapsed && g.label != null && closed.has(g.label);
@@ -226,27 +226,24 @@ function Sidebar(): React.JSX.Element {
           <div key={g.label ?? 'top'} className={cn('flex flex-col gap-1', gi > 0 && 'mt-2')}>
             {g.label && (collapsed
               // recolhido: cabeçalho some, separador fino marca a fronteira do grupo
-              ? <div className="mx-2 mb-1 border-t border-white/10" />
+              ? <div className="mx-2 mb-1 border-t border-hairline" />
               : <button onClick={() => toggleGroup(g.label!)} aria-expanded={!isClosed}
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-1 text-xs font-semibold uppercase tracking-wider text-ink-500 transition-colors hover:text-ink-300">
+                  className="flex w-full items-center justify-between rounded-lg px-3 py-1 text-[11px] font-semibold tracking-wide text-ink-500 transition-colors hover:text-ink-900">
                   {g.label}
-                  <Icon name="chevronRight" size={14} className={cn('text-white transition-transform duration-200', !isClosed && 'rotate-90')} />
+                  <Icon name="chevronRight" size={14} className={cn('text-ink-400 transition-transform duration-200', !isClosed && 'rotate-90')} />
                 </button>
             )}
             {!isClosed && g.items.map((n) => (
               <NavLink key={n.to} to={n.to} end={n.to === '/'} title={collapsed ? n.label : undefined}
                 aria-label={collapsed ? n.label : undefined}
                 className={({ isActive }) => cn(
-                  'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-base font-medium transition-colors',
+                  'group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors',
                   collapsed && 'justify-center px-0',
-                  isActive ? 'bg-white/10 text-white' : 'text-ink-300 hover:bg-white/5 hover:text-white')}>
+                  isActive ? 'bg-brand-50 font-semibold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900')}>
                 {({ isActive }) => (
                   <>
-                    {isActive && <span className="absolute left-0 top-1/2 h-5 -translate-y-1/2 rounded-r-full bg-brand-400" style={{ width: 3 }} />}
-                    {/* recolhido: escala após a transição de largura (delay = duration do aside) */}
-                    <Icon name={n.icon} size={19} className={cn('transition-transform duration-200 ease-out',
-                      collapsed && 'scale-[1.55] delay-300',
-                      isActive ? 'text-brand-300' : 'text-ink-400 group-hover:text-ink-200')} />
+                    <Icon name={n.icon} size={19} className={cn('shrink-0',
+                      isActive ? 'text-brand-600 dark:text-brand-300' : 'text-ink-400 group-hover:text-ink-700')} />
                     {!collapsed && n.label}
                   </>
                 )}
@@ -257,31 +254,31 @@ function Sidebar(): React.JSX.Element {
         })}
       </nav>
 
-      <div className="mt-auto shrink-0 border-t border-white/10 pt-3">
+      <div className="mt-auto shrink-0 border-t border-hairline pt-3">
         {collapsed ? (
           <div className="flex flex-col items-center gap-2">
             <NavLink to="/conta" title={user?.org_nome ?? 'Meu perfil'} aria-label="Meu perfil"
-              className="grid h-9 w-9 place-items-center rounded-full bg-brand-500/20 text-sm font-bold text-brand-200 transition-colors hover:bg-brand-500/30">
+              className="grid h-9 w-9 place-items-center rounded-full bg-ink-100 text-sm font-bold text-ink-700 transition-colors hover:bg-ink-200">
               {inicial}
             </NavLink>
             <button onClick={logout} aria-label="Sair"
-              className="grid h-10 w-10 place-items-center rounded-lg text-ink-400 hover:bg-white/10 hover:text-white">
+              className="grid h-10 w-10 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 hover:text-ink-900">
               <Icon name="logout" size={26} />
             </button>
           </div>
         ) : (
           <div className="flex items-center gap-2.5 rounded-xl px-2 py-2">
-            <NavLink to="/conta" title="Meu perfil" className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1 transition-colors hover:bg-white/5">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-500/20 text-sm font-bold text-brand-200">
+            <NavLink to="/conta" title="Meu perfil" className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1 transition-colors hover:bg-ink-100">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink-100 text-sm font-bold text-ink-700">
                 {inicial}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-semibold text-white">{user?.org_nome ?? 'Minha conta'}</p>
+                <p className="truncate text-xs font-semibold text-ink-900">{user?.org_nome ?? 'Minha conta'}</p>
                 <p className="truncate text-[11px] text-ink-400">{user?.email}</p>
               </div>
             </NavLink>
             <button onClick={logout} aria-label="Sair"
-              className="grid h-8 w-8 place-items-center rounded-lg text-ink-400 hover:bg-white/10 hover:text-white">
+              className="grid h-8 w-8 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 hover:text-ink-900">
               <Icon name="logout" size={17} />
             </button>
           </div>
@@ -325,7 +322,7 @@ export function NotificationBell({ variant }: { variant: 'light' | 'dark' }): Re
   return (
     <div className="relative">
       <button ref={btnRef} onClick={() => setOpen((o) => !o)} aria-label="Notificações"
-        className={cn('relative grid place-items-center rounded-lg transition', variant === 'dark' ? 'h-11 w-11' : 'h-8 w-8',
+        className={cn('relative grid h-11 w-11 place-items-center rounded-xl transition-colors',
           variant === 'dark' ? 'text-ink-300 hover:bg-white/10 hover:text-white' : 'text-ink-400 hover:bg-ink-100 hover:text-ink-700')}>
         <Icon name="bell" size={18} />
         {unread > 0 && (
@@ -383,7 +380,7 @@ function MobileBottomNav(): React.JSX.Element {
       {open && <div className="fixed inset-0 z-[1090] bg-black/40" onClick={() => setOpen(false)} />}
       {open && (
         <nav aria-label="Navegação"
-          className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] left-3 right-3 z-[1100] max-h-[70vh] overflow-y-auto overscroll-contain rounded-2xl border border-ink-200 bg-glass p-2 shadow-pop backdrop-blur-xl animate-[toastIn_.18s_ease-out]">
+          className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] left-3 right-3 z-[1100] max-h-[70vh] overflow-y-auto overscroll-contain rounded-2xl border border-ink-200 bg-surface p-2 shadow-pop animate-[toastIn_.18s_ease-out]">
           {secondary.map((g, gi) => (
             <div key={g.label ?? 'top'} className={cn(gi > 0 && 'mt-1.5 border-t border-ink-100 pt-1.5')}>
               {g.label && <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-400">{g.label}</p>}
@@ -391,7 +388,7 @@ function MobileBottomNav(): React.JSX.Element {
                 <NavLink key={n.to} to={n.to} end={n.to === '/'} onClick={() => setOpen(false)}
                   className={({ isActive }) => cn(
                     'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
-                    isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-ink-50')}>
+                    isActive ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' : 'text-ink-700 hover:bg-ink-50')}>
                   {({ isActive }) => (
                     <>
                       <Icon name={n.icon} size={20} className={cn('shrink-0', isActive ? 'text-brand-600' : 'text-ink-400')} />
@@ -425,11 +422,11 @@ function MobileBottomNav(): React.JSX.Element {
           <NavLink key={item.to} to={item.to} end={item.to === '/'}
             className={({ isActive }) => cn(
               'flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-semibold transition-colors',
-              isActive ? 'text-brand-600' : 'text-ink-400 active:bg-ink-100',
+              isActive ? 'text-brand-700 dark:text-brand-300' : 'text-ink-400 active:bg-ink-100',
             )}>
             {({ isActive }) => (
               <>
-                <span className={cn('grid h-7 min-w-9 place-items-center rounded-full px-2', isActive && 'bg-brand-50')}>
+                <span className={cn('grid h-7 min-w-9 place-items-center rounded-full px-2', isActive && 'bg-brand-50 dark:bg-brand-500/15')}>
                   <Icon name={item.icon} size={19} />
                 </span>
                 <span className="max-w-full truncate">{item.label === 'Buscar Empresas' ? 'Empresas' : item.label}</span>
@@ -439,8 +436,8 @@ function MobileBottomNav(): React.JSX.Element {
         ))}
         <button onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={open ? 'Fechar menu' : 'Abrir menu'}
           className={cn('flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10px] font-semibold transition-colors',
-            open ? 'text-brand-600' : 'text-ink-400 active:bg-ink-100')}>
-          <span className={cn('grid h-7 min-w-9 place-items-center rounded-full px-2', open && 'bg-brand-50')}>
+            open ? 'text-brand-700 dark:text-brand-300' : 'text-ink-400 active:bg-ink-100')}>
+          <span className={cn('grid h-7 min-w-9 place-items-center rounded-full px-2', open && 'bg-brand-50 dark:bg-brand-500/15')}>
             <Icon name={open ? 'x' : 'moreHorizontal'} size={20} />
           </span>
           Mais
@@ -481,38 +478,46 @@ function OfflineBanner(): React.JSX.Element | null {
 }
 
 function Shell({ children }: { children: ReactNode }): React.JSX.Element {
+  const { user } = useAuth();
   const loc = useLocation();
   const nav = useNav();
   const title = nav.find((n) => n.to === loc.pathname)?.label ?? 'Rovva';
   return (
     <div className="flex h-dvh bg-ink-50">
+      <a href="#main-content" className="sr-only fixed left-4 top-4 z-[2000] rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white focus:not-sr-only focus:fixed">Pular para conteúdo</a>
       <Sidebar />
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* mobile top bar */}
-        <header data-chrome className="flex items-center justify-between gap-3 bg-ink-900 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.5rem)] lg:hidden">
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-hairline bg-surface px-4 pb-2 pt-[calc(env(safe-area-inset-top)+0.5rem)] lg:hidden">
           <div className="flex min-w-0 items-center gap-2">
             <LogoMark size={26} className="shrink-0 rounded-lg" />
-            <span className="truncate text-sm font-semibold text-white">{title}</span>
+            <span className="truncate text-sm font-semibold text-ink-900">{title}</span>
           </div>
           <div className="flex items-center gap-2">
-            <ThemeToggle variant="dark" />
-            <NotificationBell variant="dark" />
+            <ThemeToggle variant="light" />
+            <NotificationBell variant="light" />
             <NavLink to="/conta" aria-label="Meu perfil"
-              className="grid h-11 w-11 place-items-center rounded-lg text-ink-300 hover:bg-white/10 hover:text-white">
+              className="grid h-11 w-11 place-items-center rounded-xl text-ink-500 hover:bg-ink-100 hover:text-ink-900">
               <Icon name="users" size={18} />
             </NavLink>
           </div>
         </header>
 
-        {/* desktop top bar: só o sino, alinhado à direita */}
-        <header className="hidden items-center justify-end gap-1 border-b border-ink-200 bg-surface px-6 py-2 lg:flex">
-          <ThemeToggle variant="light" />
-          <NotificationBell variant="light" />
+        <header className="hidden min-h-16 shrink-0 items-center justify-between gap-4 border-b border-hairline bg-surface px-6 lg:flex">
+          <div className="flex min-w-0 items-center gap-3 text-sm">
+            <span className="truncate font-medium text-ink-500">{user?.org_nome ?? 'Minha conta'}</span>
+            <Icon name="chevronRight" size={14} className="shrink-0 text-ink-400" />
+            <span className="truncate font-medium text-ink-800">{title}</span>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <ThemeToggle variant="light" />
+            <NotificationBell variant="light" />
+          </div>
         </header>
 
         <OfflineBanner />
-        <main className="min-h-0 flex-1 overflow-auto">{children}</main>
+        <main id="main-content" tabIndex={-1} className="min-h-0 flex-1 overflow-auto outline-none">{children}</main>
         <MobileBottomNav />
       </div>
     </div>

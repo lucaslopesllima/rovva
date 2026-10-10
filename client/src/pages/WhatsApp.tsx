@@ -116,7 +116,7 @@ function ChatHeaderActions({ acoes }: { acoes: AcaoChat[] }): React.JSX.Element 
     <div className="flex shrink-0 items-center gap-0.5">
       {expostas.map((a) => (
         <SafeButton key={a.label} title={a.label} aria-label={a.label} onClick={a.onClick}
-          className={cn('grid h-9 w-9 place-items-center rounded-full', cor(a))}>
+          className={cn('grid h-11 w-11 place-items-center lg:h-9 lg:w-9 rounded-full', cor(a))}>
           <Icon name={a.icon} size={18} />
         </SafeButton>
       ))}
@@ -124,7 +124,7 @@ function ChatHeaderActions({ acoes }: { acoes: AcaoChat[] }): React.JSX.Element 
         <>
           <button ref={btnRef} type="button" onClick={() => setOpen((v) => !v)}
             aria-label="Mais ações da conversa" aria-haspopup="menu" aria-expanded={open}
-            className="grid h-9 w-9 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
+            className="grid h-11 w-11 place-items-center lg:h-9 lg:w-9 rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
             <Icon name="menu" size={18} />
           </button>
           <Popover open={open} anchorRef={btnRef} onClose={() => setOpen(false)} width={230}>
@@ -769,7 +769,7 @@ function MergeModal({ current, chats, onClose, onMerged }: { current: WaChat; ch
       <p className="text-sm text-ink-500">
         Una a conversa de telefone com a de <b>@lid</b> do mesmo contato. <b>{nomeChat(current)}</b> permanece e absorve a escolhida.
       </p>
-      <input value={q} maxLength={120} onChange={(e) => setQ(e.target.value)} placeholder="Buscar conversa…" className={inputCls} />
+      <input value={q} maxLength={120} onChange={(e) => setQ(e.target.value)} placeholder="Buscar conversa…" aria-label="Buscar conversa" className={inputCls} />
       <div className="max-h-72 space-y-1 overflow-auto">
         {opts.length === 0 ? (
           <p className="py-4 text-center text-sm text-ink-400">Nenhuma outra conversa.</p>
@@ -1542,15 +1542,15 @@ export function WhatsApp(): React.JSX.Element {
         <div className={cn('w-full shrink-0 flex-col border-r border-[var(--wa-border)] bg-[var(--wa-sidebar)] lg:flex lg:w-[360px]',
           active ? 'hidden lg:flex' : 'flex')}>
           <div className="flex items-center justify-between gap-2 bg-[var(--wa-panel)] px-4 py-2.5">
-            <span className="text-base font-semibold text-[var(--wa-ink)]">Conversas</span>
+            <h1 className="text-base font-semibold text-[var(--wa-ink)]">Conversas</h1>
             <div className="flex shrink-0 items-center gap-0.5">
               <button title="Nova conversa" onClick={() => setNewChatOpen(true)}
-                className="grid h-9 w-9 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
+                className="grid h-11 w-11 place-items-center lg:h-9 lg:w-9 rounded-full text-[var(--wa-muted)] hover:bg-[var(--wa-hover)]">
                 <Icon name="pencil" size={18} />
               </button>
               {can('whatsapp.connect') && (
                 <button title="Desconectar WhatsApp" aria-label="Desconectar WhatsApp" onClick={() => void disconnect()}
-                  className="grid h-9 w-9 place-items-center rounded-full text-[var(--wa-muted)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10">
+                  className="grid h-11 w-11 place-items-center lg:h-9 lg:w-9 rounded-full text-[var(--wa-muted)] hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10">
                   <Icon name="logout" size={18} />
                 </button>
               )}
@@ -1559,8 +1559,8 @@ export function WhatsApp(): React.JSX.Element {
           <div className="px-3 py-2">
             <div className="flex items-center gap-2 rounded-lg bg-[var(--wa-panel)] px-3 py-1.5">
               <Icon name="search" size={16} className="shrink-0 text-[var(--wa-muted)]" />
-              <input value={busca} maxLength={120} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar conversa…"
-                className="min-w-0 flex-1 bg-transparent text-sm text-[var(--wa-ink)] outline-none placeholder:text-[var(--wa-muted)]" />
+              <input value={busca} maxLength={120} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar conversa…" aria-label="Buscar conversa"
+                className="min-h-8 min-w-0 flex-1 bg-transparent text-base sm:text-sm text-[var(--wa-ink)] outline-none placeholder:text-[var(--wa-muted)]" />
               {busca && (
                 <button onClick={() => setBusca('')} aria-label="Limpar" className="shrink-0 text-[var(--wa-muted)] hover:text-[var(--wa-ink)]">
                   <Icon name="x" size={14} />

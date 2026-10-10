@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { cn, inputCls } from './ui.tsx';
 import { api } from './api.ts';
 import { useOptionalUser } from './auth.tsx';
 import type { OrgUser } from './types.ts';
@@ -35,7 +36,7 @@ export function SellerFilter({ value, onChange, sellers }: {
       value={value}
       onChange={(e) => onChange(e.target.value === 'todos' ? 'todos' : Number(e.target.value))}
       aria-label="Filtrar por vendedor"
-      className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400"
+      className={cn(inputCls, 'sm:w-auto')}
     >
       <option value="todos">Todos os vendedores</option>
       {sellers.map((u) => <option key={u.id} value={u.id}>{sellerLabel(u)}</option>)}

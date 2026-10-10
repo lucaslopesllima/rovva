@@ -92,7 +92,7 @@ export function Carriers(): React.JSX.Element {
               <EmptyState icon="car" title="Nenhuma transportadora" hint="Cadastre as transportadoras que entregam seus pedidos." />
             )}
             {list.map((c) => editing === c.id ? (
-              <Card key={c.id} className="border-brand-200 bg-brand-50/40 p-3">
+              <Card key={c.id} className="border-brand-300 bg-ink-50 p-4">
                 <CarrierForm initial={toForm(c)} onSave={(f) => update(c.id, f)} onCancel={() => setEditing(null)} />
               </Card>
             ) : (
@@ -163,12 +163,22 @@ function CarrierForm({ initial, onSave, onCancel }: {
         {tried && !f.nome.trim() && <span className="mt-1 block text-xs text-rose-600">Informe o nome.</span>}
       </label>
       <div className="grid gap-2.5 sm:grid-cols-3">
-        <input value={f.cnpj} autoCapitalize="characters" onChange={(e) => setF((p) => ({ ...p, cnpj: maskCNPJ(e.target.value) }))} placeholder="CNPJ" className={inputCls} />
-        <input value={f.telefone} inputMode="tel" onChange={(e) => setF((p) => ({ ...p, telefone: maskPhone(e.target.value) }))} placeholder="Telefone" className={inputCls} />
-        <input type="email" value={f.email} onChange={set('email')} maxLength={160} placeholder="E-mail" className={inputCls} />
+        <label className="grid gap-1 text-xs font-semibold text-ink-600">CNPJ
+          <input value={f.cnpj} autoCapitalize="characters" onChange={(e) => setF((p) => ({ ...p, cnpj: maskCNPJ(e.target.value) }))} placeholder="CNPJ" className={inputCls} />
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-ink-600">Telefone
+          <input value={f.telefone} inputMode="tel" onChange={(e) => setF((p) => ({ ...p, telefone: maskPhone(e.target.value) }))} placeholder="Telefone" className={inputCls} />
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-ink-600">E-mail
+          <input type="email" value={f.email} onChange={set('email')} maxLength={160} placeholder="E-mail" className={inputCls} />
+        </label>
       </div>
-      <input value={f.contato} onChange={set('contato')} maxLength={120} placeholder="Pessoa de contato" className={inputCls} />
-      <textarea value={f.observacoes} onChange={set('observacoes')} maxLength={2000} placeholder="Observações" rows={2} className={cn(inputCls, 'resize-y')} />
+      <label className="grid gap-1 text-xs font-semibold text-ink-600">Pessoa de contato
+          <input value={f.contato} onChange={set('contato')} maxLength={120} placeholder="Pessoa de contato" className={inputCls} />
+        </label>
+      <label className="grid gap-1 text-xs font-semibold text-ink-600">Observações
+          <textarea value={f.observacoes} onChange={set('observacoes')} maxLength={2000} placeholder="Observações" rows={2} className={cn(inputCls, 'resize-y')} />
+        </label>
       <div className="flex justify-end gap-2">
         <Btn variant="ghost" type="button" onClick={onCancel}>Cancelar</Btn>
         <Btn icon="check" type="submit" disabled={busy}>{busy ? '…' : 'Salvar'}</Btn>

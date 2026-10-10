@@ -30,12 +30,9 @@
   --color-brand-950: #152351;
 
   /* ink — cool, slightly blue neutral for text / surfaces / sidebar */
-  /* 50 é o CANVAS. Estava a 2% do branco da superfície, então o cartão não se
-     descolava do fundo e a tela lia como um plano branco só. Descendo o canvas
-     (e mantendo o hue 226) o cartão volta a ser cartão sem precisar de borda
-     mais dura. */
-  --color-ink-50:  #eef1f8;
-  --color-ink-100: #eceef5;
+  /* Canvas neutro: superfícies são delimitadas por bordas, sem elevação artificial. */
+  --color-ink-50:  #f7f8fb;
+  --color-ink-100: #f0f2f6;
   --color-ink-200: #d9dde9;
   --color-ink-300: #b8bfd2;
   /* 400 também aparece como texto auxiliar pequeno; precisa manter AA sobre
@@ -52,11 +49,10 @@
      no escuro. Substitui `bg-white` para virar tema-aware automaticamente. */
   --color-surface: #ffffff;
 
-  /* raios: escala suavizada (era 0.875/1.125). Sobe junto em toda a app porque
-     rounded-xl/2xl saem daqui — cartões, campos, botões e modais de uma vez. */
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
-  --radius-2xl: 1.25rem;
+  /* Controles de 12px e painéis de 16px compartilham a mesma geometria. */
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
 
   /* Sombras em duas partes: um contato curto e nítido (a peça tocando o fundo)
      e um halo largo e fraco (a luz ambiente). A versão anterior tinha só o
@@ -73,7 +69,7 @@
      lê como camada, não como bloco colado. `hairline` é a borda dessas camadas:
      mais fraca que ink-200 pra o contorno não competir com o desfoque. */
   --color-glass: color-mix(in srgb, #ffffff 78%, transparent);
-  --color-hairline: color-mix(in srgb, #cdd3e2 85%, transparent);
+  --color-hairline: #e2e6ef;
   --color-scrim: color-mix(in srgb, #0c0f1a 42%, transparent);
 
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -98,7 +94,7 @@
      secundário legível, não pelo espelho matemático. */
   --color-ink-50:  #0e111b;  /* canvas */
   --color-ink-100: #1c2130;  /* superfície sutilmente elevada / hover */
-  --color-ink-200: #39415a;  /* bordas, divisores (≈1.9:1 sobre surface) */
+  --color-ink-200: #343c50;  /* bordas, divisores */
   --color-ink-300: #59637f;  /* borda forte / texto bem fraco */
   --color-ink-400: #8b93ab;  /* texto secundário (uso mais comum) */
   --color-ink-500: #9aa2ba;  /* texto secundário forte */
@@ -108,7 +104,7 @@
   --color-ink-900: #eef0f6;
   --color-ink-950: #f7f8fb;  /* contraste máximo */
 
-  --color-surface: #181c2b;  /* cartões/modais elevados sobre o canvas */
+  --color-surface: #171c29;  /* cartões/modais elevados sobre o canvas */
 
   /* brand no escuro — mesma família Rovva Blue (hue 226) do tema claro, mas
      afinada pro canvas: saturação ainda mais baixa (500: 80%→72%,
@@ -144,7 +140,7 @@
 .dark :where(.border-ink-100, [class*='border-ink-100']) { border-color: var(--color-ink-200); }
 .dark :where(.divide-ink-100) > :not([hidden]) ~ :not([hidden]) { border-color: var(--color-ink-200); }
 
-/* CHROME sempre-escuro (sidebar, header mobile, painel do Login).
+/* CHROME sempre-escuro (painel do Login).
    Esses blocos já são escuros no tema claro e seus filhos foram escritos
    p/ fundo escuro usando ink CLARO (text-ink-300/400). Dentro do escuro,
    restauramos a escala ink clara nesse subárvore → o chrome fica
@@ -192,6 +188,18 @@ select:-webkit-autofill {
 
 /* tabular figures for metrics / scores */
 .tabnums { font-variant-numeric: tabular-nums; font-feature-settings: 'tnum' 1; }
+
+::selection { background: var(--color-brand-200); color: #152351; }
+input, textarea { caret-color: var(--color-brand-500); }
+a { text-underline-offset: 3px; }
+
+/* Colunas numéricas e estados de leitura compartilham o mesmo ritmo. */
+@layer base {
+  th { font-weight: 600; }
+  td { font-variant-numeric: tabular-nums; }
+  tbody tr { transition: background-color 150ms ease-out; }
+  tbody tr:hover { background-color: var(--color-ink-50); }
+}
 
 /* thin custom scrollbars for the dense CRM surfaces */
 * { scrollbar-width: thin; scrollbar-color: var(--color-ink-300) transparent; }

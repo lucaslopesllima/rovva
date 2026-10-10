@@ -3,6 +3,7 @@
 // import CSV), baixa com espelho no financeiro, conciliação em lote e
 // isolamento de org. Cada cenário usa uma representada própria — regra de um
 // teste não vaza para o outro.
+import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { makeApp, register, bearer, mail, makeCompany, closeAll, type Session } from './helpers.ts';
@@ -44,6 +45,7 @@ interface Entry {
   id: number; order_id: number; user_id: number | string | null; status: string;
   competencia: string; valor_previsto: string; valor_recebido: string | null;
   percent_aplicado: string; vendedor_split_pct: string; valor_vendedor: string;
+  modalidade: string; prazo: number; valor_liberado: string; valor_cliente_pago: string; saldo_liberado: string; saldo_previsto: string; vencimento: string | null;
   finance_entry_id: number | string | null; order_numero: number; recebida_em: string | null;
 }
 interface Order { id: number; numero: number; status: string; total: string }
@@ -260,7 +262,7 @@ describe('baixa (settle) + espelho no financeiro', () => {
     expect(Number(fin!.valor)).toBe(10);
   });
 
-  it('fora da tolerância marca divergente; re-baixa corrige sem duplicar lançamento', async () => {
+  it('fora da tolerância marca divergente; re-baixa registra somente diferença e preserva histórico', async () => {
     const e = await novaEntry();
     const r1 = await inj(a, 'PATCH', `/api/commissions/${e.id}/settle`, { valor_recebido: 8, recebida_em: '2026-06-10' });
     const d = (r1.json() as { entry: Entry }).entry;
@@ -270,9 +272,16 @@ describe('baixa (settle) + espelho no financeiro', () => {
     const r2 = await inj(a, 'PATCH', `/api/commissions/${e.id}/settle`, { valor_recebido: 10, recebida_em: '2026-06-12' });
     const ok = (r2.json() as { entry: Entry }).entry;
     expect(ok.status).toBe('recebida');
-    expect(Number(ok.finance_entry_id)).toBe(finId); // mesmo espelho, atualizado
+    expect(Number(ok.finance_entry_id)).not.toBe(finId);
     const fin = await one<{ valor: string }>('SELECT valor FROM finance_entries WHERE id = $1', [finId]);
-    expect(Number(fin!.valor)).toBe(10);
+    expect(Number(fin!.valor)).toBe(8);
+    const history = (await inj(a, 'GET', `/api/commissions/${e.id}/history`)).json();
+    expect(history.recebimentos.map((r: { valor: string }) => Number(r.valor))).toEqual([8, 2]);
+    await inj(a, 'PATCH', `/api/commissions/${e.id}/settle`, { valor_recebido: 10, recebida_em: '2026-06-12' });
+    expect((await inj(a, 'GET', `/api/commissions/${e.id}/history`)).json().recebimentos).toHaveLength(2);
+    const reduced = await inj(a, 'PATCH', `/api/commissions/${e.id}/settle`, { valor_recebido: 7, recebida_em: '2026-06-13' });
+    expect(reduced.statusCode).toBe(200);
+    expect((await inj(a, 'GET', `/api/commissions/${e.id}/history`)).json().recebimentos.map((r: { valor: string }) => Number(r.valor))).toEqual([8, 2, -3]);
 
     // tolerância explícita aceita a diferença
     const e2 = await novaEntry();
@@ -335,5 +344,106 @@ describe('conciliação CSV em lote', () => {
 
     expect((await inj(rep, 'POST', '/api/commissions/reconcile', { csv })).statusCode).toBe(403);
     expect((await inj(a, 'POST', '/api/commissions/reconcile', { csv: 'foo;bar\n1;2' })).statusCode).toBe(400);
+  });
+});
+
+
+describe('modalidades, prazos e parcelas acumuladas', () => {
+  it('liquidez libera proporcionalmente, preserva contrato e acumula com proteção contra duplicidade', async () => {
+    const repId = await mkRepresented('Liquidez');
+    expect((await inj(a, 'PATCH', `/api/represented/${repId}`, {
+      comissao_modalidade: 'liquidez', comissao_prazo_tipo: 'mes_seguinte', comissao_prazo: 31,
+    })).statusCode).toBe(200);
+    await mkRule(repId, { percent: 10 });
+    const order = await mkFaturado(a, repId, [{ catalog_item_id: prod1, qtd: 1 }], { frete: 20 });
+    let e = (await entryOf(a, order.id))!;
+    expect(Number(e.valor_previsto)).toBe(10);
+    expect(Number(e.valor_liberado)).toBe(0);
+    await inj(a, 'PATCH', `/api/represented/${repId}`, { comissao_modalidade: 'faturamento', comissao_prazo_tipo: 'dias', comissao_prazo: 90 });
+    const post = (kind: string, valor: number, request_id = randomUUID()) => inj(a, 'POST', `/api/commissions/${e.id}/${kind}`, { valor, data: '2026-01-31', request_id });
+    expect((await post('payments', 1)).statusCode).toBe(400);
+    expect((await post('payments', 0.01)).statusCode).toBe(400);
+    const key = randomUUID();
+    const first = await post('customer-payments', 60, key);
+    expect(first.statusCode).toBe(200);
+    expect(Number(first.json().entry.valor_liberado)).toBe(5);
+    expect(first.json().entry.vencimento).toContain('2026-02-28');
+    expect(first.json().entry.modalidade).toBe('liquidez');
+    expect((await post('customer-payments', 60, key)).statusCode).toBe(200);
+    expect((await post('customer-payments', 61, key)).statusCode).toBe(409);
+    expect((await post('customer-payments', 61)).statusCode).toBe(400);
+    expect((await post('payments', 0.29)).statusCode).toBe(200);
+    const concurrentKey = randomUUID();
+    const duplicate = await Promise.all([post('payments', 1, concurrentKey), post('payments', 1, concurrentKey)]);
+    expect(duplicate.map(r => r.statusCode)).toEqual([200, 200]);
+    const partial = await post('payments', 3.71);
+    expect(partial.json().entry.status).toBe('parcial');
+    expect(Number(partial.json().entry.valor_recebido)).toBe(5);
+    expect(Number(partial.json().entry.saldo_liberado)).toBe(0);
+    expect((await post('payments', 1)).statusCode).toBe(400);
+    expect((await post('customer-payments', 60)).statusCode).toBe(200);
+    const rest = await Promise.all([post('payments', 2), post('payments', 3)]);
+    expect(rest.map(r => r.statusCode)).toEqual([200, 200]);
+    e = (await entryOf(a, order.id))!;
+    expect(e.status).toBe('recebida');
+    expect(Number(e.valor_recebido)).toBe(10);
+    const history = (await inj(a, 'GET', `/api/commissions/${e.id}/history`)).json();
+    expect(history.liberacoes).toHaveLength(2);
+    expect(history.recebimentos).toHaveLength(5);
+    expect((await inj(b, 'GET', `/api/commissions/${e.id}/history`)).statusCode).toBe(404);
+    expect((await inj(rep, 'GET', `/api/commissions/${e.id}/history`)).statusCode).toBe(404);
+    expect((await inj(rep, 'POST', `/api/commissions/${e.id}/payments`, { valor: 1, data: '2026-01-31', request_id: randomUUID() })).statusCode).toBe(403);
+    expect((await inj(a, 'PATCH', `/api/finance/${e.finance_entry_id}`, { valor: 99 })).statusCode).toBe(409);
+    expect((await inj(a, 'DELETE', `/api/finance/${e.finance_entry_id}`)).statusCode).toBe(409);
+    const mirrored = await one<{ total: string }>('SELECT SUM(f.valor) AS total FROM finance_entries f JOIN commission_receipts r ON r.finance_entry_id = f.id WHERE r.commission_id = $1', [e.id]);
+    expect(Number(mirrored!.total)).toBe(10);
+    const dre = await inj(a, 'GET', '/api/finance/dre?ano=2026');
+    expect(dre.statusCode).toBe(200);
+    expect(dre.json().meses.find((m: { mes: number }) => m.mes === 1).receita).toBe(10);
+  });
+
+  it('arredonda liberação acumulada sem perder centavos entre parcelas', async () => {
+    const repId = await mkRepresented('Centavos');
+    await inj(a, 'PATCH', `/api/represented/${repId}`, { comissao_modalidade: 'liquidez' });
+    await mkRule(repId, { percent: 10 });
+    const order = await mkFaturado(a, repId, [{ catalog_item_id: prod1, qtd: 1, preco_unit: 1272.5 }], { frete: 100 });
+    const e = (await entryOf(a, order.id))!;
+    for (let i = 0; i < 2; i++) {
+      const r = await inj(a, 'POST', `/api/commissions/${e.id}/customer-payments`, { valor: Number(order.total) / 2, data: '2026-01-31', request_id: randomUUID() });
+      expect(r.statusCode).toBe(200);
+    }
+    const h = (await inj(a, 'GET', `/api/commissions/${e.id}/history`)).json();
+    expect(h.liberacoes.map((r: { valor: string }) => Number(r.valor))).toEqual([63.63, 63.62]);
+    const fractional = await mkFaturado(a, repId, [{ catalog_item_id: prod1, qtd: 3, preco_unit: 33.333333 }]);
+    const fractionEntry = (await entryOf(a, fractional.id))!;
+    const paid = await inj(a, 'POST', `/api/commissions/${fractionEntry.id}/customer-payments`, { valor: 100, data: '2026-01-31', request_id: randomUUID() });
+    expect(paid.statusCode).toBe(200);
+    expect(Number(paid.json().entry.valor_liberado)).toBe(10);
+  });
+
+  it('faturamento libera integral, prazo em dias e cancelamento mantém recebido sem saldo aberto', async () => {
+    const repId = await mkRepresented('Faturamento com prazo');
+    await inj(a, 'PATCH', `/api/represented/${repId}`, { comissao_prazo: 30 });
+    await mkRule(repId, { percent: 10 });
+    const order = await mkFaturado(a, repId, [{ catalog_item_id: prod1, qtd: 1 }]);
+    const e = (await entryOf(a, order.id))!;
+    expect(Number(e.valor_liberado)).toBe(10);
+    const due = await one<{ days: number }>('SELECT vencimento - data AS days FROM commission_releases WHERE commission_id = $1', [e.id]);
+    expect(due!.days).toBe(30);
+    const url = `/api/commissions/${e.id}/payments`;
+    expect((await inj(a, 'POST', url, { valor: 0.001, data: '2026-01-31', request_id: randomUUID() })).statusCode).toBe(400);
+    expect((await inj(a, 'POST', url, { valor: 1, data: '2099-01-31', request_id: randomUUID() })).statusCode).toBe(400);
+    await inj(a, 'POST', url, { valor: 4, data: '2026-01-31', request_id: randomUUID() });
+    const cashflow = await inj(a, 'GET', '/api/finance/cashflow?months=3');
+    expect(cashflow.statusCode).toBe(200);
+    expect(cashflow.json().semanas.reduce((s: number, w: { comissao_prevista: number }) => s + w.comissao_prevista, 0)).toBeGreaterThanOrEqual(6);
+    await inj(a, 'POST', `/api/orders/${order.id}/transition`, { status: 'cancelado' });
+    const cancelled = (await entryOf(a, order.id))!;
+    expect(cancelled.status).toBe('cancelada');
+    expect(Number(cancelled.valor_recebido)).toBe(4);
+    expect(Number(cancelled.saldo_previsto)).toBe(0);
+    expect((await inj(a, 'POST', url, { valor: 1, data: '2026-01-31', request_id: randomUUID() })).statusCode).toBe(409);
+    expect((await inj(a, 'PATCH', `/api/represented/${repId}`, { comissao_prazo_tipo: 'mes_seguinte', comissao_prazo: 0 })).statusCode).toBe(400);
+    expect((await inj(a, 'PATCH', `/api/represented/${repId}`, { comissao_prazo: 366 })).statusCode).toBe(400);
   });
 });

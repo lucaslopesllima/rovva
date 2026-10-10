@@ -4,6 +4,7 @@ import { requireAuth, requirePermission } from '../auth.ts';
 import { audit, pick } from '../audit.ts';
 import { invalidOrgRef } from '../orgRefs.ts';
 import { scopeOwner } from '../scope.ts';
+import { recordCommissionPayment } from '../commissionPayments.ts';
 
 // Comissionamento (Fase 2): extrato de comissões previstas/recebidas, baixa
 // individual e conciliação CSV em lote, e CRUD das regras. A geração do
@@ -13,13 +14,14 @@ import { scopeOwner } from '../scope.ts';
 const SELECT = `
   SELECT e.id, e.order_id, e.user_id, e.represented_id, e.competencia,
          e.valor_previsto, e.valor_recebido, e.percent_aplicado, e.vendedor_split_pct,
-         e.status, e.recebida_em, e.observacao, e.finance_entry_id, e.created_at,
+         e.status, e.recebida_em, e.observacao, e.finance_entry_id, e.created_at, e.modalidade, e.prazo_tipo, e.prazo,
+         e.valor_liberado, e.valor_cliente_pago, e.saldo_liberado, e.saldo_previsto, e.vencimento,
          o.numero AS order_numero, o.nf_numero, o.total AS order_total,
          c.razao_social AS company_nome,
          r.nome AS represented_nome,
          u.nome AS vendedor_nome, u.email AS vendedor_email,
          COALESCE(e.valor_recebido, e.valor_previsto) * e.vendedor_split_pct / 100 AS valor_vendedor
-  FROM commission_entries e
+  FROM commission_balances e
   JOIN orders o ON o.id = e.order_id
   JOIN companies c ON c.id = o.company_id
   JOIN represented_companies r ON r.id = e.represented_id
@@ -60,8 +62,7 @@ const findEntry = (id: number, orgId: number): Promise<EntryRow | null> =>
   );
 
 // Baixa de uma comissão: marca recebida (ou divergente, fora da tolerância) e
-// espelha no financeiro como conta recebida/liquidada. Re-baixa atualiza o
-// mesmo finance_entry — sem duplicar lançamento.
+// espelha somente a diferença do total acumulado no financeiro, preservando o histórico.
 async function settleEntry(
   req: FastifyRequest,
   entry: EntryRow,
@@ -70,39 +71,7 @@ async function settleEntry(
   observacao: string | null,
   tolerancia: number,
 ): Promise<string> {
-  const status = Math.abs(valorRecebido - Number(entry.valor_previsto)) <= tolerancia
-    ? 'recebida' : 'divergente';
-
-  let financeId = entry.finance_entry_id === null ? null : Number(entry.finance_entry_id);
-  if (financeId !== null) {
-    await query(
-      `UPDATE finance_entries SET valor = $2, vencimento = $3, liquidacao_data = $3,
-         status = 'liquidado' WHERE id = $1`,
-      [financeId, valorRecebido, recebidaEm],
-    );
-  } else {
-    const row = await one<{ id: string }>(
-      `INSERT INTO finance_entries
-         (org_id, kind, descricao, valor, vencimento, liquidacao_data, status,
-          categoria, company_id, represented_id, owner_user_id)
-       VALUES ($1, 'receber', $2, $3, $4, $4, 'liquidado', 'comissao', $5, $6, $7)
-       RETURNING id`,
-      [entry.org_id, `Comissão pedido #${entry.order_numero} · ${entry.represented_nome}`,
-        valorRecebido, recebidaEm, entry.company_id, entry.represented_id, entry.user_id],
-    );
-    financeId = Number(row!.id);
-  }
-
-  await query(
-    `UPDATE commission_entries
-     SET valor_recebido = $2, recebida_em = $3, status = $4::commission_status,
-         observacao = COALESCE($5, observacao), finance_entry_id = $6
-     WHERE id = $1`,
-    [Number(entry.id), valorRecebido, recebidaEm, status, observacao, financeId],
-  );
-  await audit(req, 'commission', Number(entry.id), 'settle',
-    { valor_recebido: valorRecebido, recebida_em: recebidaEm, status });
-  return status;
+  return recordCommissionPayment(req, Number(entry.id), { valor: valorRecebido, data: recebidaEm, observacao }, 'total', tolerancia);
 }
 
 export function commissionRoutes(app: FastifyInstance): void {
@@ -114,7 +83,7 @@ export function commissionRoutes(app: FastifyInstance): void {
         properties: {
           competencia: { type: 'string', pattern: '^\\d{4}-\\d{2}$' },
           represented_id: { type: 'integer' },
-          status: { type: 'string', enum: ['prevista', 'recebida', 'divergente', 'cancelada'] },
+          status: { type: 'string', enum: ['prevista', 'parcial', 'recebida', 'divergente', 'cancelada'] },
           order_id: { type: 'integer' },
           user_id: { type: 'integer' },
         },
@@ -138,6 +107,51 @@ export function commissionRoutes(app: FastifyInstance): void {
     return { entries };
   });
 
+  app.get('/api/commissions/:id/history', {
+    preHandler: [requireAuth, requirePermission('commissions.list')],
+    schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } } },
+  }, async (req, reply) => {
+    const { id } = req.params as { id: number };
+    const params: unknown[] = [id, req.auth!.orgId];
+    const where = ['id = $1', 'org_id = $2'];
+    scopeOwner(req, where, params, 'user_id');
+    if (!await one(`SELECT id FROM commission_entries WHERE ${where.join(' AND ')}`, params)) {
+      return reply.code(404).send({ error: 'Comissão não encontrada.' });
+    }
+    const [liberacoes, recebimentos] = await Promise.all([
+      query('SELECT id, valor_cliente, valor, data, vencimento, observacao FROM commission_releases WHERE commission_id = $1 ORDER BY data, id', [id]),
+      query('SELECT id, valor, data, observacao FROM commission_receipts WHERE commission_id = $1 ORDER BY data, id', [id]),
+    ]);
+    return { liberacoes, recebimentos };
+  });
+
+  for (const kind of ['cliente', 'parcela'] as const) {
+    app.post(`/api/commissions/:id/${kind === 'cliente' ? 'customer-payments' : 'payments'}`, {
+      preHandler: [requireAuth, requirePermission('commissions.settle')],
+      schema: {
+        params: { type: 'object', required: ['id'], properties: { id: { type: 'integer' } } },
+        body: {
+          type: 'object', required: ['valor', 'data', 'request_id'],
+          properties: {
+            valor: { type: 'number', exclusiveMinimum: 0, maximum: 999999999999 },
+            data: { type: 'string', format: 'date' },
+            request_id: { type: 'string', format: 'uuid' },
+            observacao: { type: ['string', 'null'], maxLength: 2000 },
+          },
+        },
+      },
+    }, async (req, reply) => {
+      const { id } = req.params as { id: number };
+      const payment = req.body as { valor: number; data: string; request_id: string; observacao?: string | null };
+      try { await recordCommissionPayment(req, id, payment, kind); } catch (e) {
+        const code = (e as { statusCode?: number }).statusCode;
+        if (code && code >= 400 && code < 500) return reply.code(code).send({ error: (e as Error).message });
+        throw e;
+      }
+      return { entry: await one(`${SELECT} WHERE e.id = $1 AND e.org_id = $2`, [id, req.auth!.orgId]) };
+    });
+  }
+
   app.patch('/api/commissions/:id/settle', {
     preHandler: [requireAuth, requirePermission('commissions.settle')],
     schema: {
@@ -147,7 +161,7 @@ export function commissionRoutes(app: FastifyInstance): void {
         required: ['valor_recebido', 'recebida_em'],
         properties: {
           valor_recebido: { type: 'number', minimum: 0 },
-          recebida_em: { type: 'string' },
+          recebida_em: { type: 'string', format: 'date' },
           observacao: { type: ['string', 'null'] },
           tolerancia: { type: 'number', minimum: 0 },
         },
@@ -161,7 +175,11 @@ export function commissionRoutes(app: FastifyInstance): void {
     if (!entry) return reply.code(404).send({ error: 'não encontrada' });
     if (entry.status === 'cancelada') return reply.code(409).send({ error: 'comissão cancelada' });
     // valor recebido gravado cru (sem arredondar) — fonte de verdade do extrato.
-    await settleEntry(req, entry, b.valor_recebido, b.recebida_em, b.observacao ?? null, b.tolerancia ?? 0.01);
+    try { await settleEntry(req, entry, b.valor_recebido, b.recebida_em, b.observacao ?? null, b.tolerancia ?? 0.01); } catch (e) {
+      const code = (e as { statusCode?: number }).statusCode;
+      if (code && code >= 400 && code < 500) return reply.code(code).send({ error: (e as Error).message });
+      throw e;
+    }
     const updated = await one(`${SELECT} WHERE e.id = $1`, [id]);
     return { entry: updated };
   });
@@ -209,7 +227,7 @@ export function commissionRoutes(app: FastifyInstance): void {
       const rawData = iData >= 0 ? (f[iData] ?? '') : '';
       const br = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(rawData);
       const data = br ? `${br[3]}-${br[2]}-${br[1]}` : (/^\d{4}-\d{2}-\d{2}/.test(rawData) ? rawData.slice(0, 10) : null);
-      if (!ref || !Number.isFinite(valor)) {
+      if (!ref || !Number.isFinite(valor) || valor < 0) {
         results.push({ linha: n + 1, ref, commission_id: null, motivo: 'linha inválida' });
         continue;
       }
@@ -227,8 +245,13 @@ export function commissionRoutes(app: FastifyInstance): void {
       }
       usados.add(cid);
       const entry = (await findEntry(cid, orgId))!;
-      const status = await settleEntry(req, entry, valor, data ?? new Date().toISOString().slice(0, 10), null, tol);
-      results.push({ linha: n + 1, ref, commission_id: cid, status });
+      try {
+        const status = await settleEntry(req, entry, valor, data ?? new Date().toISOString().slice(0, 10), null, tol);
+        results.push({ linha: n + 1, ref, commission_id: cid, status });
+      } catch (e) {
+        if ((e as { statusCode?: number }).statusCode !== 400 && (e as { statusCode?: number }).statusCode !== 409) throw e;
+        results.push({ linha: n + 1, ref, commission_id: null, motivo: (e as Error).message });
+      }
     }
     return {
       processadas: results.length,

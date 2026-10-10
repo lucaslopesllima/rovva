@@ -76,7 +76,7 @@ describe('Catalog', () => {
     await screen.findByText('Furadeira');
 
     await userEvent.click(screen.getByRole('button', { name: /Novo item/ }));
-    await userEvent.type(screen.getByPlaceholderText('Nome do produto / serviço *'), 'Parafusadeira');
+    await userEvent.type(screen.getByRole('textbox', { name: 'Nome do produto / serviço *' }), 'Parafusadeira');
     await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
     expect(await screen.findByText('Parafusadeira')).toBeInTheDocument();
     expect(m.post).toHaveBeenCalledWith('/api/catalog', expect.objectContaining({ nome: 'Parafusadeira' }));
@@ -87,7 +87,7 @@ describe('Catalog', () => {
     render(<Catalog />);
     await screen.findByText('Furadeira');
     await userEvent.click(screen.getByLabelText('Editar'));
-    const nome = screen.getByPlaceholderText('Nome do produto / serviço *');
+    const nome = screen.getByRole('textbox', { name: 'Nome do produto / serviço *' });
     expect(nome).toHaveValue('Furadeira');
     await userEvent.clear(nome);
     await userEvent.type(nome, 'Furadeira X');
@@ -116,7 +116,7 @@ describe('Catalog', () => {
     await userEvent.clear(search);
     await userEvent.click(screen.getByLabelText('Editar'));
     await userEvent.type(search, 'zzz');
-    expect(screen.getByPlaceholderText('Nome do produto / serviço *')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Nome do produto / serviço *' })).toBeInTheDocument();
   });
 
   it('catálogo vazio mostra empty state', async () => {

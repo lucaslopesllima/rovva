@@ -26,8 +26,8 @@ const FILTROS_KEY = 'funil:filtros';
 // Filtros próprios do funil (o CompanyFilterBar só cobre atributos da empresa).
 // Tudo string porque os valores vêm direto do <select>; '' = sem filtro.
 // stage aceita 'none' (cards sem etapa) além do id da etapa.
-interface FunilFiltros { stage: string; status: string; cenario: string; acao: string; label: string }
-const FILTROS_VAZIOS: FunilFiltros = { stage: '', status: '', cenario: '', acao: '', label: '' };
+interface FunilFiltros { stage: string; status: string; representada: string; cenario: string; acao: string; label: string }
+const FILTROS_VAZIOS: FunilFiltros = { stage: '', status: '', representada: '', cenario: '', acao: '', label: '' };
 const filtrosAtivos = (f: FunilFiltros): boolean => Object.values(f).some((v) => v !== '');
 function loadFiltros(): FunilFiltros {
   try {
@@ -207,6 +207,7 @@ export function Kanban(): React.JSX.Element {
       if (ownerId !== 'todos' && c.owner_user_id !== ownerId) return false;
       if (ff.stage !== '' && String(c.stage_id ?? 'none') !== ff.stage) return false;
       if (ff.status !== '' && c.status !== ff.status) return false;
+      if (ff.representada !== '' && String(c.represented_id ?? 'none') !== ff.representada) return false;
       if (ff.cenario !== '' && String(c.cenario_id ?? '') !== ff.cenario) return false;
       if (ff.acao !== '' && String(c.acao_id ?? '') !== ff.acao) return false;
       // ids das labels: number no card (json_agg) vs string em /api/private-labels.
@@ -278,7 +279,7 @@ export function Kanban(): React.JSX.Element {
             <CompanyFilterBar f={filter} onBuscar={buscar} buscando={buscando}
               onLimpar={limparTudo}
               extra={<FunilFiltroCampos v={ff} onChange={setFf} stages={stages}
-                scenarios={scenarios} actions={actions} labels={labels} />} />
+                reps={reps} scenarios={scenarios} actions={actions} labels={labels} />} />
           </div>
         </FilterPanel>
 
@@ -371,9 +372,9 @@ export function Kanban(): React.JSX.Element {
 // colunas do board), status, cenário atual, ação para próximo nível e private
 // label da empresa. Entram no grid do CompanyFilterBar via prop `extra`: uma
 // barra de filtros só, em vez de dois cartões empilhados.
-function FunilFiltroCampos({ v, onChange, stages, scenarios, actions, labels }: {
+function FunilFiltroCampos({ v, onChange, stages, reps, scenarios, actions, labels }: {
   v: FunilFiltros; onChange: (f: FunilFiltros) => void;
-  stages: Stage[]; scenarios: NamedItem[]; actions: NamedItem[]; labels: PrivateLabel[];
+  stages: Stage[]; reps: RepresentedCompany[]; scenarios: NamedItem[]; actions: NamedItem[]; labels: PrivateLabel[];
 }): React.JSX.Element {
   const set = (patch: Partial<FunilFiltros>): void => onChange({ ...v, ...patch });
   return (
@@ -389,6 +390,13 @@ function FunilFiltroCampos({ v, onChange, stages, scenarios, actions, labels }: 
         <select value={v.status} onChange={(e) => set({ status: e.target.value })} className={inputCls}>
           <option value="">Todos</option>
           {STATUS_OPTS.map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+        </select>
+      </Field>
+      <Field label="Representada">
+        <select value={v.representada} onChange={(e) => set({ representada: e.target.value })} className={inputCls}>
+          <option value="">Todas as representadas</option>
+          {reps.map((r) => <option key={r.id} value={String(r.id)}>{r.nome}</option>)}
+          <option value="none">Sem representada</option>
         </select>
       </Field>
       <Field label="Cenário">
@@ -476,6 +484,7 @@ const CardItem = memo(function CardItem({ c, stages, dragging, menuOpen, onDragS
         </button>
       </div>
       <p className="truncate text-xs text-ink-400">{c.razao_social}</p>
+      {c.representada && <p className="mt-1 truncate text-xs font-medium text-ink-600">{c.representada}</p>}
       {(c.marca || (c.contatos?.length ?? 0) > 0) && (
         <p className="mt-1 truncate text-xs text-ink-500">
           {[c.marca, (c.contatos ?? []).map((x) => x.nome).join(', ')].filter(Boolean).join(' · ')}

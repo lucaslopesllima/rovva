@@ -34,14 +34,16 @@ function LabelFormFields({ initial, onSave, onCancel }: {
           className={cn('mt-1', tried && !f.nome.trim() ? inputErrCls : inputCls)} />
         {tried && !f.nome.trim() && <span className="mt-1 block text-xs text-rose-600">Informe o nome.</span>}
       </label>
+      <label className="grid gap-1 text-xs font-semibold text-ink-600">Descrição
       <input value={f.descricao} onChange={(e) => setF((p) => ({ ...p, descricao: e.target.value }))}
         maxLength={500} placeholder="Descrição (opcional)" className={inputCls} />
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-medium text-ink-400">Cor</span>
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-ink-500">Cor</span>
         {PALETTE.map((c) => (
           <button key={c} type="button" onClick={() => setF((p) => ({ ...p, cor: c }))}
-            aria-label={`Cor ${c}`}
-            className={`h-6 w-6 rounded-full ring-offset-2 transition ${f.cor === c ? 'ring-2 ring-ink-400' : ''}`}
+            aria-label={`Cor ${c}`} aria-pressed={f.cor === c}
+            className={`h-11 w-11 rounded-full ring-offset-2 sm:h-8 sm:w-8 transition ${f.cor === c ? 'ring-2 ring-ink-400' : ''}`}
             style={{ backgroundColor: c }} />
         ))}
       </div>

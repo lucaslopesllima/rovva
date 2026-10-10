@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../lib/api.ts';
-import { Badge, Card, EmptyState, PageHeader, Spinner } from '../lib/ui.tsx';
+import { Badge, Card, cn, EmptyState, inputCls, PageHeader, Spinner } from '../lib/ui.tsx';
 import type { Tone } from '../lib/ui.tsx';
 
 type DemoStatus = 'novo' | 'contatado' | 'teste_agendado' | 'concluido' | 'arquivado';
@@ -88,8 +88,8 @@ export function DemoRequests(): React.JSX.Element {
               </div>
 
               <div className="grid gap-2 text-sm sm:grid-cols-2">
-                <a className="rounded-lg bg-ink-50 px-3 py-2 text-brand-600 hover:bg-brand-50" href={`mailto:${lead.email}`}>{lead.email}</a>
-                <a className="rounded-lg bg-ink-50 px-3 py-2 text-brand-600 hover:bg-brand-50" href={`tel:${lead.telefone}`}>{lead.telefone}</a>
+                <a className="min-h-11 break-words rounded-lg bg-ink-50 px-3 py-2.5 text-brand-600 hover:bg-brand-50" href={`mailto:${lead.email}`}>{lead.email}</a>
+                <a className="min-h-11 break-words rounded-lg bg-ink-50 px-3 py-2.5 text-brand-600 hover:bg-brand-50" href={`tel:${lead.telefone}`}>{lead.telefone}</a>
               </div>
 
               {lead.mensagem && <p className="rounded-lg border border-ink-100 bg-ink-50 p-3 text-sm text-ink-600">{lead.mensagem}</p>}
@@ -98,7 +98,7 @@ export function DemoRequests(): React.JSX.Element {
                 Status
                 <select value={lead.status} disabled={savingId === lead.id}
                   onChange={(e) => void changeStatus(lead, e.target.value as DemoStatus)}
-                  className="rounded-lg border border-ink-200 bg-surface px-3 py-2 text-sm text-ink-700 outline-none focus:border-brand-500">
+                  className={cn(inputCls, 'w-auto')}>
                   {Object.entries(STATUS).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}
                 </select>
               </label>

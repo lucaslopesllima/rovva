@@ -5,7 +5,7 @@ import { MapContainer, CircleMarker, Polyline, Popup, Tooltip, useMap } from 're
 import type { LatLngBoundsExpression } from 'leaflet';
 import { api, ApiError } from '../lib/api.ts';
 import type { FunnelCompany, Vehicle, OptimizeResult, RouteStop, SavedRoute } from '../lib/types.ts';
-import { Badge, Btn, Card, cn, EmptyState, Modal, PageHeader, RowActions, SafeButton, Segmented, Spinner, StatRow } from '../lib/ui.tsx';
+import { Badge, Btn, Card, cn, EmptyState, inputCls, Modal, PageHeader, RowActions, SafeButton, Segmented, Spinner, StatRow } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
 import { brl, maskPlaca, maskMoney, clampNum } from '../lib/format.ts';
 import { toast } from '../lib/toast.tsx';
@@ -39,7 +39,7 @@ function PromptModal({ state, onClose }: { state: PromptState; onClose: () => vo
             inputMode={state.kind === 'decimal' ? 'decimal' : undefined}
             maxLength={state.kind === 'decimal' ? undefined : 120}
             placeholder={state.placeholder}
-            className="w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-sm text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200" />
+            className={inputCls} />
         </label>
         <div className="flex justify-end gap-2">
           <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
@@ -326,7 +326,7 @@ function Planner({ vehicles }: { vehicles: Vehicle[] }): React.JSX.Element {
           <div>
             <label className="mb-1 block text-xs font-medium text-ink-500">Veículo</label>
             <select value={vehicleId} onChange={(e) => setVehicleId(e.target.value === '' ? '' : Number(e.target.value))}
-              className="w-full rounded-xl border border-ink-200 bg-surface px-3 py-2 text-sm outline-none focus:border-brand-400">
+              className={inputCls}>
               <option value="">Sem veículo (só distância)</option>
               {vehicles.filter((v) => v.ativo).map((v) => (
                 <option key={v.id} value={v.id}>{v.nome} · {Number(v.consumo_kml)} km/l</option>
@@ -336,7 +336,7 @@ function Planner({ vehicles }: { vehicles: Vehicle[] }): React.JSX.Element {
           <div>
             <label className="mb-1 block text-xs font-medium text-ink-500">Preço do litro (R$) — opcional</label>
             <input value={preco} onChange={(e) => setPreco(maskMoney(e.target.value))} inputMode="decimal" placeholder="ex.: 6,19"
-              className="w-full rounded-xl border border-ink-200 bg-surface px-3 py-2 text-sm outline-none focus:border-brand-400" />
+              className={inputCls} />
             <p className="mt-1 text-[11px] text-ink-400">Vazio usa o preço cadastrado no veículo.</p>
           </div>
           <div className="rounded-xl bg-ink-50 px-3 py-2 text-[11px] text-ink-500 dark:bg-ink-800/40">
@@ -584,39 +584,39 @@ function Vehicles({ vehicles, reload }: { vehicles: Vehicle[]; reload: () => voi
       <Card className="h-fit space-y-3 p-4">
         <p className="text-sm font-semibold text-ink-700">{editId != null ? 'Editar veículo' : 'Novo veículo'}</p>
         <div>
-          <label className="mb-1 block text-xs font-medium text-ink-500">Nome *</label>
-          <input value={form.nome} onChange={(e) => set('nome', e.target.value)} placeholder="Fiat Strada 2022" maxLength={120}
-            className="w-full rounded-xl border border-ink-200 px-3 py-2 text-sm outline-none focus:border-brand-400" />
+          <label htmlFor="vehicle-nome" className="mb-1 block text-xs font-medium text-ink-500">Nome *</label>
+          <input id="vehicle-nome" value={form.nome} onChange={(e) => set('nome', e.target.value)} placeholder="Fiat Strada 2022" maxLength={120}
+            className={inputCls} />
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs font-medium text-ink-500">Combustível</label>
-            <select value={form.combustivel} onChange={(e) => set('combustivel', e.target.value)}
-              className="w-full rounded-xl border border-ink-200 bg-surface px-3 py-2 text-sm outline-none focus:border-brand-400">
+            <label htmlFor="vehicle-combustivel" className="mb-1 block text-xs font-medium text-ink-500">Combustível</label>
+            <select id="vehicle-combustivel" value={form.combustivel} onChange={(e) => set('combustivel', e.target.value)}
+              className={inputCls}>
               {(['gasolina', 'etanol', 'diesel', 'flex'] as const).map((f) => <option key={f} value={f}>{FUEL_LABEL[f]}</option>)}
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-ink-500">Placa</label>
-            <input value={form.placa} onChange={(e) => set('placa', maskPlaca(e.target.value))} placeholder="ABC1D23"
-              className="w-full rounded-xl border border-ink-200 px-3 py-2 text-sm outline-none focus:border-brand-400" />
+            <label htmlFor="vehicle-placa" className="mb-1 block text-xs font-medium text-ink-500">Placa</label>
+            <input id="vehicle-placa" value={form.placa} onChange={(e) => set('placa', maskPlaca(e.target.value))} placeholder="ABC1D23"
+              className={inputCls} />
           </div>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-ink-500">km/litro *</label>
-            <input value={form.consumo_kml} onChange={(e) => set('consumo_kml', maskMoney(e.target.value))} inputMode="decimal" placeholder="12,5"
-              className="w-full rounded-xl border border-ink-200 px-3 py-2 text-sm outline-none focus:border-brand-400" />
+            <label htmlFor="vehicle-consumo_kml" className="mb-1 block text-xs font-medium text-ink-500">km/litro *</label>
+            <input id="vehicle-consumo_kml" value={form.consumo_kml} onChange={(e) => set('consumo_kml', maskMoney(e.target.value))} inputMode="decimal" placeholder="12,5"
+              className={inputCls} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-ink-500">Tanque (L)</label>
-            <input value={form.tanque_litros} onChange={(e) => set('tanque_litros', maskMoney(e.target.value))} inputMode="decimal" placeholder="55"
-              className="w-full rounded-xl border border-ink-200 px-3 py-2 text-sm outline-none focus:border-brand-400" />
+            <label htmlFor="vehicle-tanque_litros" className="mb-1 block text-xs font-medium text-ink-500">Tanque (L)</label>
+            <input id="vehicle-tanque_litros" value={form.tanque_litros} onChange={(e) => set('tanque_litros', maskMoney(e.target.value))} inputMode="decimal" placeholder="55"
+              className={inputCls} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-ink-500">R$/litro</label>
-            <input value={form.preco_litro} onChange={(e) => set('preco_litro', maskMoney(e.target.value))} inputMode="decimal" placeholder="6,19"
-              className="w-full rounded-xl border border-ink-200 px-3 py-2 text-sm outline-none focus:border-brand-400" />
+            <label htmlFor="vehicle-preco_litro" className="mb-1 block text-xs font-medium text-ink-500">R$/litro</label>
+            <input id="vehicle-preco_litro" value={form.preco_litro} onChange={(e) => set('preco_litro', maskMoney(e.target.value))} inputMode="decimal" placeholder="6,19"
+              className={inputCls} />
           </div>
         </div>
         {err && <p className="text-xs text-rose-600">{err}</p>}

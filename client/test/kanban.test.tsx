@@ -111,8 +111,38 @@ describe('Kanban', () => {
     expect(screen.getByText(/R\$[\s ]7\.000/)).toBeInTheDocument();
   });
 
+  it('filtra por representada, persiste seleção e inclui vínculos antigos sem representada', async () => {
+    m.get.mockImplementation(kanbanGet({
+      '/api/represented': { empresas: [{ id: '7', nome: 'Representada A' }, { id: 8, nome: 'Representada B' }] },
+      '/api/kanban': { stages: STAGES, cards: [
+        card({ id: 1, represented_id: 7, representada: 'Representada A' }),
+        card({ id: 2, nome_fantasia: 'Loja Dois', represented_id: '8', representada: 'Representada B' }),
+        card({ id: 3, nome_fantasia: 'Legado' }),
+      ] },
+    }));
+    const view = render(<Kanban />);
+    await screen.findByText('Loja Um');
+    expect(screen.getByText('Representada A', { selector: 'p' })).toBeInTheDocument();
+    await userEvent.click(screen.getByTitle('Expandir filtros'));
+    await userEvent.selectOptions(screen.getByLabelText('Representada'), '8');
+    expect(screen.queryByText('Loja Um')).not.toBeInTheDocument();
+    expect(screen.getByText('Loja Dois')).toBeInTheDocument();
+    expect(screen.queryByText('Legado')).not.toBeInTheDocument();
+    view.unmount();
+    render(<Kanban />);
+    await screen.findByText('Loja Dois');
+    expect(screen.getByLabelText('Representada')).toHaveValue('8');
+    expect(screen.queryByText('Loja Um')).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Representada'), 'none');
+    expect(screen.getByText('Legado')).toBeInTheDocument();
+    expect(screen.queryByText('Loja Dois')).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Representada'), '');
+    expect(screen.getByText('Loja Um')).toBeInTheDocument();
+    expect(screen.getByText('Loja Dois')).toBeInTheDocument();
+  });
+
   it('drag-drop move o card (PATCH stage_id) de forma otimista', async () => {
-    m.patch.mockResolvedValueOnce({});
+    m.patch.mockResolvedValueOnce({ relationship: { status: 'cliente' } });
     render(<Kanban />);
     const cardEl = (await screen.findByText('Loja Um')).closest('[draggable]')!;
     const colNegociacao = coluna('Negociação');
@@ -121,7 +151,7 @@ describe('Kanban', () => {
     fireEvent.dragOver(colNegociacao);
     fireEvent.drop(colNegociacao);
 
-    expect(m.patch).toHaveBeenCalledWith('/api/relationships/1', { stage_id: 11 });
+    await waitFor(() => expect(m.patch).toHaveBeenCalledWith('/api/relationships/1', { stage_id: 11 }));
   });
 
   it('falha no PATCH recarrega o board (revert)', async () => {

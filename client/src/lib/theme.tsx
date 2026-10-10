@@ -127,9 +127,9 @@ export function ThemeSelector({ compact = false }: { compact?: boolean }): React
           aria-label={compact ? option.label : undefined}
           aria-pressed={theme === option.value}
           className={cn(
-            'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors',
+            'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors lg:min-h-9',
             theme === option.value
-              ? 'bg-surface text-brand-700 shadow-card'
+              ? 'bg-surface text-ink-900 shadow-sm'
               : 'text-ink-500 hover:bg-surface/50 hover:text-ink-800',
           )}>
           <Icon name={option.icon} size={15} />

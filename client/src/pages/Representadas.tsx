@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.ts';
-import type { Brand, CompanyHit, RepresentedCompany } from '../lib/types.ts';
+import type { Brand, CompanyHit, CommissionTerms, RepresentedCompany } from '../lib/types.ts';
 import { Badge, Btn, Card, cn, EmptyState, ErrorState, inputCls, inputErrCls, PageHeader, RowActions, SafeButton, Spinner } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
 import { useAuth } from '../lib/auth.tsx';
@@ -11,9 +11,10 @@ import { confirmDialog } from '../lib/confirm.ts';
 
 
 /* ── Empresas representadas (marcas/fornecedores do rep) ──── */
-type EmpForm = { nome: string; cnpj: string; segmento: string; site: string; contato: string; notas: string };
-const EMPTY: EmpForm = { nome: '', cnpj: '', segmento: '', site: '', contato: '', notas: '' };
+type EmpForm = CommissionTerms & { nome: string; cnpj: string; segmento: string; site: string; contato: string; notas: string };
+const EMPTY: EmpForm = { nome: '', cnpj: '', segmento: '', site: '', contato: '', notas: '', comissao_modalidade: 'faturamento', comissao_prazo_tipo: 'dias', comissao_prazo: 0 };
 const toForm = (e: RepresentedCompany): EmpForm => ({
+  comissao_modalidade: e.comissao_modalidade ?? 'faturamento', comissao_prazo_tipo: e.comissao_prazo_tipo ?? 'dias', comissao_prazo: e.comissao_prazo ?? 0,
   nome: e.nome, cnpj: e.cnpj ?? '', segmento: e.segmento ?? '', site: e.site ?? '', contato: e.contato ?? '', notas: e.notas ?? '',
 });
 
@@ -81,7 +82,7 @@ export function Representadas(): React.JSX.Element {
               <EmptyState icon="building" title="Nenhuma empresa cadastrada" hint="Adicione as marcas/fornecedores que você representa." />
             )}
             {list.map((e) => editing === e.id ? (
-              <Card key={e.id} className="border-brand-200 bg-brand-50/40 p-3">
+              <Card key={e.id} className="border-brand-300 bg-ink-50 p-4">
                 <EmpresaForm inputCls={inputCls} initial={toForm(e)} onSave={(f) => update(e.id, f)} onCancel={() => setEditing(null)} />
                 <div className="mt-3 border-t border-brand-200/60 pt-3">
                   <BrandsEditor representedId={e.id} inputCls={inputCls} />
@@ -116,9 +117,9 @@ export function Representadas(): React.JSX.Element {
   );
 }
 
-function normalize(f: EmpForm): Record<string, string | null> {
+function normalize(f: EmpForm): Record<string, string | number | null> {
   const t = (s: string): string | null => (s.trim() === '' ? null : s.trim());
-  return { nome: f.nome.trim(), cnpj: t(f.cnpj), segmento: t(f.segmento), site: t(f.site), contato: t(f.contato), notas: t(f.notas) };
+  return { comissao_modalidade: f.comissao_modalidade, comissao_prazo_tipo: f.comissao_prazo_tipo, comissao_prazo: f.comissao_prazo, nome: f.nome.trim(), cnpj: t(f.cnpj), segmento: t(f.segmento), site: t(f.site), contato: t(f.contato), notas: t(f.notas) };
 }
 
 function EmpresaForm({ inputCls, initial, onSave, onCancel }: {
@@ -155,12 +156,44 @@ function EmpresaForm({ inputCls, initial, onSave, onCancel }: {
         {tried && !f.nome.trim() && <span className="mt-1 block text-xs text-rose-600">Informe o nome.</span>}
       </label>
       <div className="grid gap-2.5 sm:grid-cols-2">
-        <input value={f.segmento} onChange={set('segmento')} maxLength={120} placeholder="Segmento (ex.: Calçados)" className={inputCls} />
-        <input value={f.cnpj} autoCapitalize="characters" onChange={(e) => setF((p) => ({ ...p, cnpj: maskCNPJ(e.target.value) }))} placeholder="CNPJ" className={inputCls} />
-        <input type="text" value={f.contato} onChange={set('contato')} maxLength={120} placeholder="Contato (telefone/e-mail)" className={inputCls} />
-        <input value={f.site} inputMode="url" autoCapitalize="off" onChange={set('site')} maxLength={200} placeholder="Site" className={inputCls} />
+        <label className="grid gap-1 text-xs font-semibold text-ink-600">Segmento
+          <input value={f.segmento} onChange={set('segmento')} maxLength={120} placeholder="Segmento (ex.: Calçados)" className={inputCls} />
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-ink-600">CNPJ
+          <input value={f.cnpj} autoCapitalize="characters" onChange={(e) => setF((p) => ({ ...p, cnpj: maskCNPJ(e.target.value) }))} placeholder="CNPJ" className={inputCls} />
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-ink-600">Contato
+          <input type="text" value={f.contato} onChange={set('contato')} maxLength={120} placeholder="Contato (telefone/e-mail)" className={inputCls} />
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-ink-600">Site
+          <input value={f.site} inputMode="url" autoCapitalize="off" onChange={set('site')} maxLength={200} placeholder="Site" className={inputCls} />
+        </label>
       </div>
-      <textarea value={f.notas} onChange={set('notas')} maxLength={2000} placeholder="Notas (linha de produtos, comissão, etc.)" rows={2} className={cn(inputCls, 'resize-y')} />
+      <label className="grid gap-1 text-xs font-semibold text-ink-600">Notas
+          <textarea value={f.notas} onChange={set('notas')} maxLength={2000} placeholder="Notas (linha de produtos, comissão, etc.)" rows={2} className={cn(inputCls, 'resize-y')} />
+        </label>
+      <fieldset className="space-y-2 rounded-xl border border-hairline p-3">
+        <legend className="px-1 text-sm font-semibold text-ink-800">Pagamento de comissão</legend>
+        <div className="grid gap-2.5 sm:grid-cols-3">
+          <label className="grid gap-1 text-xs font-semibold text-ink-600">Modalidade de comissão
+            <select value={f.comissao_modalidade} onChange={(e) => setF({ ...f, comissao_modalidade: e.target.value as CommissionTerms['comissao_modalidade'] })} className={inputCls}>
+              <option value="faturamento">Integral no faturamento</option>
+              <option value="liquidez">Proporcional ao pagamento do cliente</option>
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-ink-600">Prazo de pagamento
+            <select value={f.comissao_prazo_tipo} onChange={(e) => setF({ ...f, comissao_prazo_tipo: e.target.value as CommissionTerms['comissao_prazo_tipo'], comissao_prazo: e.target.value === 'mes_seguinte' ? 15 : 0 })} className={inputCls}>
+              <option value="dias">Dias após faturamento ou recebimento</option>
+              <option value="mes_seguinte">Dia fixo do mês seguinte</option>
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs font-semibold text-ink-600">{f.comissao_prazo_tipo === 'dias' ? 'Quantidade de dias' : 'Dia de pagamento'}
+            <input type="number" required min={f.comissao_prazo_tipo === 'dias' ? 0 : 1} max={f.comissao_prazo_tipo === 'dias' ? 365 : 31}
+              value={f.comissao_prazo} onChange={(e) => setF({ ...f, comissao_prazo: Number(e.target.value) })} className={inputCls} />
+          </label>
+        </div>
+        <p className="text-xs text-ink-500">Vale para novas comissões. Na modalidade proporcional, registre os pagamentos do cliente no extrato. Dias inexistentes passam para o último dia do mês.</p>
+      </fieldset>
       <div className="flex justify-end gap-2">
         <Btn variant="ghost" type="button" onClick={onCancel}>Cancelar</Btn>
         <Btn icon="check" type="submit" disabled={busy}>{busy ? '…' : 'Salvar'}</Btn>

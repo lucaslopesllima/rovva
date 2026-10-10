@@ -76,21 +76,27 @@ export async function createCommissionForOrder(orderId: number): Promise<void> {
   //   vendedor = Σ total·percent/100·split/100
   // percent_aplicado = previsto/base·100 (média ponderada); split = vendedor/previsto·100.
   await query(
-    `INSERT INTO commission_entries
+    `WITH created AS (INSERT INTO commission_entries
        (org_id, order_id, user_id, represented_id, competencia,
-        valor_previsto, percent_aplicado, vendedor_split_pct)
+        valor_previsto, percent_aplicado, vendedor_split_pct, modalidade, prazo_tipo, prazo)
      SELECT $1, $2, $3, $4, date_trunc('month', $5::timestamptz)::date,
             agg.previsto,
             CASE WHEN agg.base > 0     THEN agg.previsto / agg.base * 100     ELSE 0 END,
-            CASE WHEN agg.previsto > 0 THEN agg.vendedor / agg.previsto * 100 ELSE 0 END
+            CASE WHEN agg.previsto > 0 THEN agg.vendedor / agg.previsto * 100 ELSE 0 END,
+            r.comissao_modalidade, r.comissao_prazo_tipo, r.comissao_prazo
      FROM (
        SELECT COALESCE(SUM(t.total), 0)                              AS base,
               COALESCE(SUM(t.total * t.percent / 100), 0)            AS previsto,
               COALESCE(SUM(t.total * t.percent / 100 * t.split / 100), 0) AS vendedor
        FROM unnest($6::numeric[], $7::numeric[], $8::numeric[]) AS t(total, percent, split)
-     ) agg
+     ) agg JOIN represented_companies r ON r.id = $4 AND r.org_id = $1
      WHERE agg.previsto > 0
-     ON CONFLICT (order_id) DO NOTHING`,
+     ON CONFLICT (order_id) DO NOTHING
+     RETURNING id, valor_previsto, modalidade, prazo_tipo, prazo)
+     INSERT INTO commission_releases (commission_id, valor, data, vencimento)
+     SELECT id, valor_previsto, ($5::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date,
+            commission_due_date(($5::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date, prazo_tipo, prazo)
+     FROM created WHERE modalidade = 'faturamento'`,
     [order.org_id, orderId, order.owner_user_id, order.represented_id,
       order.faturado_em, totals, percents, splits],
   );
@@ -101,7 +107,7 @@ export async function createCommissionForOrder(orderId: number): Promise<void> {
 export async function cancelCommissionForOrder(orderId: number): Promise<void> {
   await query(
     `UPDATE commission_entries SET status = 'cancelada'
-     WHERE order_id = $1 AND status = 'prevista'`,
+     WHERE order_id = $1 AND status IN ('prevista','parcial','divergente')`,
     [orderId],
   );
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { api } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.tsx';
-import { Btn, cn } from '../lib/ui.tsx';
+import { Btn, cn, inputCls, inputErrCls } from '../lib/ui.tsx';
 import { Icon, type IconName } from '../lib/icons.tsx';
 import { LogoMark, LogoWord } from '../lib/logo.tsx';
 import { isEmail } from '../lib/format.ts';
@@ -56,21 +56,19 @@ export function Login(): React.JSX.Element {
   return (
     <div className="grid min-h-dvh lg:grid-cols-2">
       {/* brand panel */}
-      <div data-chrome className="relative hidden flex-col justify-between overflow-hidden bg-ink-900 p-10 text-white lg:flex">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-brand-600/30 blur-3xl" />
-        <div className="pointer-events-none absolute -bottom-20 -left-10 h-72 w-72 rounded-full bg-brand-500/20 blur-3xl" />
+      <div data-chrome className="relative hidden flex-col justify-between bg-ink-900 p-12 text-white lg:flex xl:p-16">
         <div className="relative flex items-center gap-2.5">
           <LogoMark size={36} className="rounded-xl shadow-sm shadow-black/30" />
           <LogoWord className="text-lg font-bold tracking-tight" accent="text-brand-400" />
         </div>
-        <div className="relative space-y-6">
-          <h2 className="max-w-sm text-2xl font-bold leading-snug tracking-tight">
+        <div className="relative my-auto space-y-10 py-16">
+          <h2 className="max-w-md text-4xl font-bold leading-tight tracking-tight">
             Prospecção inteligente para representantes comerciais.
           </h2>
-          <ul className="space-y-4">
+          <ul className="space-y-6">
             {FEATURES.map((f) => (
               <li key={f.title} className="flex gap-3">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/10 text-brand-200">
+                <span className="mt-1 grid h-7 w-7 shrink-0 place-items-center text-brand-300">
                   <Icon name={f.icon} size={18} />
                 </span>
                 <div>
@@ -84,7 +82,7 @@ export function Login(): React.JSX.Element {
       </div>
 
       {/* form */}
-      <div className="grid place-items-center bg-ink-50 p-4">
+      <div className="grid place-items-center bg-surface px-6 py-10 sm:px-12">
         <div className="w-full max-w-sm">
           <div className="mb-5 flex justify-end">
             <ThemeSelector />
@@ -94,7 +92,7 @@ export function Login(): React.JSX.Element {
             <LogoWord className="text-lg font-bold tracking-tight text-ink-900" />
           </div>
 
-          <h1 className="text-xl font-bold tracking-tight text-ink-900">
+          <h1 className="text-2xl font-bold tracking-tight text-ink-900">
             {mode === 'login' ? 'Bem-vindo de volta' : 'Crie sua conta'}
           </h1>
           <p className="mt-1 text-sm text-ink-500">
@@ -113,7 +111,7 @@ export function Login(): React.JSX.Element {
             </div>
           )}
 
-          <form onSubmit={submit} className="mt-5 space-y-3">
+          <form onSubmit={submit} className="mt-7 space-y-5">
             {mode === 'register' && (
               <TipoContaPicker value={tipoConta} onChange={setTipoConta} />
             )}
@@ -199,7 +197,7 @@ function Field(props: {
           autoComplete={props.autoComplete}
           aria-invalid={props.invalid || undefined}
           aria-describedby={props.describedBy}
-          className={cn('w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-base text-ink-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 sm:text-sm',
+          className={cn(props.invalid ? inputErrCls : inputCls,
             isPwd && 'pr-10')}
         />
         {isPwd && (

@@ -13,7 +13,7 @@ export const cn = (...xs: (string | false | null | undefined)[]): string => xs.f
    `text-base sm:text-sm`: abaixo de 16px o iOS dá zoom no foco. Com 16px no
    mobile o zoom não dispara e o pinch-zoom pode continuar liberado (ver o
    viewport no index.html). A altura resultante também passa dos 44px de toque. */
-export const inputCls = 'w-full rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-base text-ink-800 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-200 sm:text-sm';
+export const inputCls = 'w-full min-h-11 rounded-xl border border-ink-200 bg-surface px-3 py-2.5 text-base font-normal text-ink-800 placeholder:text-ink-400 outline-none transition-colors hover:border-ink-300 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15 disabled:cursor-not-allowed disabled:bg-ink-100 disabled:opacity-60 sm:text-sm';
 
 /* Mesma base, para o campo em estado inválido. */
 export const inputErrCls = cn(inputCls, 'border-rose-300 focus:border-rose-400 focus:ring-rose-200');
@@ -50,14 +50,14 @@ export function SafeButton(
 
 /* ── Card ─────────────────────────────────────────────── */
 export function Card({ className, children }: { className?: string; children: ReactNode }): React.JSX.Element {
-  return <div className={cn('rounded-2xl border border-hairline bg-surface shadow-card transition-shadow', className)}>{children}</div>;
+  return <div className={cn('min-w-0 rounded-2xl border border-hairline bg-surface', className)}>{children}</div>;
 }
 
 /* ── Button ───────────────────────────────────────────── */
 type BtnVariant = 'primary' | 'soft' | 'ghost' | 'danger';
 const BTN: Record<BtnVariant, string> = {
-  primary: 'bg-brand-600 text-white hover:bg-brand-700 shadow-sm shadow-brand-600/20',
-  soft: 'bg-brand-50 text-brand-700 hover:bg-brand-100',
+  primary: 'bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 shadow-sm',
+  soft: 'border border-ink-200 bg-surface text-ink-700 hover:border-ink-300 hover:bg-ink-50',
   ghost: 'text-ink-600 hover:bg-ink-100',
   danger: 'bg-rose-50 text-rose-600 hover:bg-rose-100',
 };
@@ -68,14 +68,12 @@ export function Btn(
 ): React.JSX.Element {
   const { busy, handleClick } = useClickGuard(onClick);
   return (
-    <button {...rest} disabled={disabled || busy} onClick={handleClick}
+    <button {...rest} disabled={disabled || busy} aria-busy={busy || undefined} onClick={handleClick}
       className={cn(
         'inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:opacity-50',
-        // piso de toque: `sm` renderiza a 28px, abaixo do mínimo de 44px. No
-        // desktop (ponteiro fino) 28px continua confortável, então o piso vale
-        // em celular/tablet e volta ao compacto em `lg`.
-        size === 'sm' ? 'px-3 py-1.5 text-xs max-lg:min-h-11' : 'px-4 py-2.5 text-sm',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50',
+        // Ações compactas mantêm alvo de 44px em celular e tablet.
+        size === 'sm' ? 'min-h-9 px-3 py-1.5 text-xs max-lg:min-h-11' : 'min-h-11 px-4 py-2.5 text-sm',
         BTN[variant], className)}>
       {busy
         ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" aria-hidden />
@@ -135,24 +133,24 @@ export function StatCard(
   { label, value, sub, icon, tone = 'brand' }:
   { label: string; value: ReactNode; sub?: ReactNode; icon: IconName; tone?: Tone },
 ): React.JSX.Element {
-  const ICON_BG: Record<Tone, string> = {
-    brand: 'bg-brand-50 text-brand-600',
-    success: 'bg-emerald-50 text-emerald-600',
-    info: 'bg-sky-50 text-sky-600',
-    warn: 'bg-amber-50 text-amber-600',
-    danger: 'bg-rose-50 text-rose-600',
-    neutral: 'bg-ink-100 text-ink-600',
+  const ICON_COLOR: Record<Tone, string> = {
+    brand: 'text-brand-600',
+    success: 'text-emerald-600',
+    info: 'text-sky-600',
+    warn: 'text-amber-600',
+    danger: 'text-rose-600',
+    neutral: 'text-ink-400',
   };
   return (
-    <Card className="p-4">
-      <div className="flex items-start justify-between gap-3">
+    <Card className="h-full min-w-0 p-4 sm:p-5">
+      <div className="relative">
         <div className="min-w-0">
-          <p className="text-xs font-medium text-ink-500">{label}</p>
-          <p className="tabnums mt-1 text-2xl font-bold tracking-tight text-ink-900">{value}</p>
-          {sub && <p className="mt-0.5 text-xs text-ink-400">{sub}</p>}
+          <p className="pr-6 text-xs font-medium leading-relaxed text-ink-500">{label}</p>
+          <p className="tabnums mt-3 break-words text-2xl font-bold tracking-tight text-ink-900">{value}</p>
+          {sub && <p className="mt-1 text-xs leading-relaxed text-ink-500">{sub}</p>}
         </div>
-        <span className={cn('grid h-10 w-10 shrink-0 place-items-center rounded-xl', ICON_BG[tone])}>
-          <Icon name={icon} size={20} />
+        <span className={cn('absolute right-0 top-0.5', ICON_COLOR[tone])}>
+          <Icon name={icon} size={17} />
         </span>
       </div>
     </Card>
@@ -184,7 +182,7 @@ export function StatRow(
     );
   }
   return (
-    <div className={cn('grid gap-3 sm:grid-cols-2', cols === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
+    <div className={cn('grid gap-3 sm:grid-cols-2', items.length > 2 && (cols === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'))}>
       {items.map((s) => <StatCard key={s.label} {...s} />)}
     </div>
   );
@@ -390,7 +388,7 @@ export function Collapse(
   }, [open, duration]);
   const dur = { transitionDuration: `${duration}ms` };
   return (
-    <div className={cn('grid transition-[grid-template-rows] ease-in-out', open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')} style={dur}>
+    <div inert={!open} aria-hidden={!open} className={cn('grid transition-[grid-template-rows] ease-in-out', open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')} style={dur}>
       <div className={cn('transition-opacity ease-in-out',
         open && !animating ? 'overflow-visible' : 'overflow-hidden',
         open ? 'opacity-100' : 'opacity-0')} style={dur}>
@@ -437,10 +435,10 @@ export function Segmented<T extends string>(
     // com sombra + peso; os inativos ficam de fato inativos.
     <div className="inline-flex max-w-full overflow-x-auto rounded-xl border border-hairline bg-ink-100 p-1 text-sm font-medium no-scrollbar">
       {options.map((o) => (
-        <button key={o.value} onClick={() => onChange(o.value)} aria-pressed={value === o.value}
+        <button key={o.value} type="button" onClick={() => onChange(o.value)} aria-pressed={value === o.value}
           className={cn('inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 transition-colors max-lg:min-h-11',
             value === o.value
-              ? 'bg-surface font-semibold text-brand-700 shadow-card'
+              ? 'bg-surface font-semibold text-ink-900 shadow-sm'
               : 'text-ink-500 hover:bg-surface/50 hover:text-ink-800')}>
           {o.icon && <Icon name={o.icon} size={15} />}{o.label}
         </button>
@@ -452,13 +450,10 @@ export function Segmented<T extends string>(
 /* ── Page header (section bar atop each route) ──────────── */
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }): React.JSX.Element {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3">
-      <div className="min-w-0">
-        <h2 className="text-lg font-bold tracking-tight text-ink-900">{title}</h2>
-        {/* Os subtítulos são frases inteiras e no celular ocupavam 3–4 linhas de
-            prosa acima da dobra, em toda visita. Uma linha no mobile, completo
-            no desktop. */}
-        {subtitle && <p className="mt-0.5 line-clamp-1 text-sm text-ink-500 sm:line-clamp-none">{subtitle}</p>}
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-3 pb-1">
+      <div className="min-w-0 flex-1 basis-64">
+        <h1 className="text-xl font-bold tracking-tight text-ink-900 sm:text-2xl">{title}</h1>
+        {subtitle && <p className="mt-1 max-w-[72ch] text-sm leading-relaxed text-ink-500">{subtitle}</p>}
       </div>
       {/* As ações do header são 2–4 botões: sem wrap, o último saía da tela. */}
       {actions && <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{actions}</div>}
@@ -478,12 +473,11 @@ export function Spinner({ label }: { label?: string }): React.JSX.Element {
 export function EmptyState({ icon, title, hint, action }: { icon: IconName; title: string; hint?: ReactNode; action?: ReactNode }): React.JSX.Element {
   return (
     <div className="flex flex-col items-center gap-2.5 px-4 py-14 text-center">
-      {/* Halo em vez de bloco chapado: o ícone marca o vazio sem virar botão. */}
-      <span className="grid h-14 w-14 place-items-center rounded-2xl bg-ink-100 text-ink-400 ring-8 ring-ink-100/40">
+      <span className="mb-1 grid h-12 w-12 place-items-center rounded-2xl bg-ink-100 text-ink-500">
         <Icon name={icon} size={26} />
       </span>
       <p className="text-sm font-semibold text-ink-700">{title}</p>
-      {hint && <p className="max-w-sm text-xs leading-relaxed text-ink-400">{hint}</p>}
+      {hint && <p className="max-w-sm text-sm leading-relaxed text-ink-500">{hint}</p>}
       {action && <div className="mt-1">{action}</div>}
     </div>
   );
@@ -707,7 +701,7 @@ export function Modal(
         aria-label={title ? undefined : 'Janela de diálogo'} tabIndex={-1}
         onPointerDown={(e) => e.stopPropagation()}
         className={cn(
-          'flex w-full flex-col overflow-hidden border border-hairline bg-glass shadow-pop backdrop-blur-xl',
+          'flex w-full flex-col overflow-hidden border border-hairline bg-surface shadow-pop',
           // mobile: folha colada no rodapé, cantos só em cima, respeita o notch
           'max-h-[92dvh] rounded-t-2xl pb-[env(safe-area-inset-bottom)] [animation:sheetIn_.22s_cubic-bezier(.32,.72,0,1)]',
           // desktop: diálogo centrado
@@ -720,11 +714,11 @@ export function Modal(
         {(title || subtitle) && (
           <div className="flex shrink-0 items-start justify-between gap-3 px-4 pb-3 pt-3">
             <div className="min-w-0">
-              {title && <h3 id={titleId} className="truncate text-sm font-bold text-ink-900">{title}</h3>}
+              {title && <h3 id={titleId} className="text-base font-bold leading-snug text-ink-900">{title}</h3>}
               {subtitle && <p className="mt-0.5 text-xs text-ink-400">{subtitle}</p>}
             </div>
             <button type="button" onClick={onClose} aria-label="Fechar"
-              className="-mr-1 grid h-9 w-9 shrink-0 place-items-center rounded-xl text-ink-400 transition hover:bg-ink-100 hover:text-ink-700">
+              className="-mr-1 grid h-11 w-11 shrink-0 place-items-center rounded-xl text-ink-500 transition hover:bg-ink-100 hover:text-ink-700 sm:h-9 sm:w-9">
               <Icon name="x" size={18} />
             </button>
           </div>
@@ -736,7 +730,7 @@ export function Modal(
         </div>
 
         {footer && (
-          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-hairline px-4 py-3">
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-hairline px-4 py-3">
             {footer}
           </div>
         )}

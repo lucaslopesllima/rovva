@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.tsx';
 import { useSellers, SellerFilter, sellerLabel } from '../lib/sellers.tsx';
-import { Alert, Badge, Btn, Card, EmptyState, ErrorState, PageHeader, Spinner, StatCard, cn } from '../lib/ui.tsx';
+import { Alert, Badge, Btn, Card, EmptyState, ErrorState, PageHeader, Spinner, StatCard, cn, inputCls } from '../lib/ui.tsx';
 import { brl, brl0, todayStr } from '../lib/format.ts';
 
 interface FunilStage { id: number; nome: string; ordem: number; qtd: number; valor: string }
@@ -27,7 +27,7 @@ const hora = (iso: string): string => new Date(iso).toLocaleTimeString('pt-BR', 
 function KpiAction({ allowed, to, children }: { allowed: boolean; to: string; children: ReactNode }): React.JSX.Element {
   const cls = 'block rounded-2xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300';
   if (!allowed) return <div aria-disabled="true" className={cls}>{children}</div>;
-  return <Link to={to} className={`${cls} hover:shadow-pop`}>{children}</Link>;
+  return <Link to={to} className={`${cls} hover:shadow-card`}>{children}</Link>;
 }
 
 export function Dashboard(): React.JSX.Element {
@@ -63,14 +63,14 @@ export function Dashboard(): React.JSX.Element {
   const commissionsHref = `/comissoes?${context.toString()}`;
 
   return (
-    <div className="space-y-5 p-4 sm:p-6">
+    <div className="space-y-6 p-4 sm:p-6">
       <PageHeader title="Dashboard" subtitle="Visão geral da operação no mês."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {refreshing && data && <span role="status" aria-live="polite" className="text-xs font-medium text-ink-400">Atualizando…</span>}
             <SellerFilter value={ownerId} onChange={setOwnerId} sellers={sellers} />
             <input type="month" value={competencia} onChange={(e) => setCompetencia(e.target.value)} aria-label="Competência"
-              className="rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400" />
+              className={cn(inputCls, 'sm:w-auto font-medium')} />
           </div>
         } />
 
@@ -82,7 +82,7 @@ export function Dashboard(): React.JSX.Element {
               <Btn size="sm" variant="ghost" onClick={() => setRetryKey((v) => v + 1)}>Tentar novamente</Btn>
             </Alert>
           )}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-3 min-[90rem]:grid-cols-5 [&>:last-child]:max-sm:col-span-2">
             {/* KPI → ação: cada card leva à tela onde o usuário age sobre o número */}
             {/* VGV (Valor Geral de Vendas): soma faturada/entregue da competência, mesmos filtros (mês + vendedor). */}
             <KpiAction allowed={can('orders.list')} to={ordersHref}>
@@ -109,8 +109,8 @@ export function Dashboard(): React.JSX.Element {
           </div>
 
           {metaPct != null && (
-            <Card className="p-4">
-              <div className="flex items-center justify-between text-sm">
+            <Card className="p-4 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                 <span className="font-semibold text-ink-700">Meta do mês</span>
                 <span className="tabnums text-ink-500">{brl(data.vendas.total)} / {brl(data.vendas.meta)}</span>
               </div>
@@ -123,7 +123,7 @@ export function Dashboard(): React.JSX.Element {
 
           <div className="grid gap-4 lg:grid-cols-2">
             {/* Funil por stage */}
-            <Card className="p-4">
+            <Card className="p-4 sm:p-5">
               <h3 className="mb-3 text-sm font-semibold text-ink-900">Funil por etapa</h3>
               {funilTotal === 0 ? (
                 <EmptyState icon="columns" title="Funil vazio" hint="Adicione empresas pela Prospecção."
@@ -149,7 +149,7 @@ export function Dashboard(): React.JSX.Element {
             </Card>
 
             {/* Agenda de hoje */}
-            <Card className="p-4">
+            <Card className="p-4 sm:p-5">
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-ink-900">Agenda de hoje</h3>
                 <Link to="/agenda" className="text-xs font-semibold text-brand-600 hover:underline">Ver agenda</Link>
@@ -174,7 +174,7 @@ export function Dashboard(): React.JSX.Element {
 
           {/* Alertas */}
           <div className="grid gap-4 lg:grid-cols-2">
-            <Card className="p-4">
+            <Card className="p-4 sm:p-5">
               <h3 className="mb-1 text-sm font-semibold text-ink-900">Clientes sem contato</h3>
               <p className="mb-3 text-xs text-ink-400">Prospects sem contato há mais de {data.inatividade_dias} dias.</p>
               {data.alertas.sem_contato.length === 0 ? (
@@ -184,14 +184,14 @@ export function Dashboard(): React.JSX.Element {
                   {data.alertas.sem_contato.map((x) => (
                     <li key={x.id} className="flex items-center justify-between gap-2 text-sm">
                       <Link to={`/funil?relationship_id=${x.id}`} className="truncate text-ink-700 hover:text-brand-600">{x.nome_fantasia || x.razao_social}</Link>
-                      <Badge tone="warn">{x.dias} dias</Badge>
+                      <Badge tone="warn" className="shrink-0">{x.dias} dias</Badge>
                     </li>
                   ))}
                 </ul>
               )}
             </Card>
 
-            <Card className="p-4">
+            <Card className="p-4 sm:p-5">
               <h3 className="mb-1 text-sm font-semibold text-ink-900">Negócios parados</h3>
               <p className="mb-3 text-xs text-ink-400">No mesmo estágio há 30+ dias.</p>
               {data.alertas.parados.length === 0 ? (
@@ -204,7 +204,7 @@ export function Dashboard(): React.JSX.Element {
                         {x.nome_fantasia || x.razao_social}
                         {x.stage && <span className="ml-1 text-xs text-ink-400">· {x.stage}</span>}
                       </Link>
-                      <Badge tone="danger">{x.dias} dias</Badge>
+                      <Badge tone="danger" className="shrink-0">{x.dias} dias</Badge>
                     </li>
                   ))}
                 </ul>
@@ -214,20 +214,20 @@ export function Dashboard(): React.JSX.Element {
 
           {/* Ranking (admin consolidado) — só em conta escritório com equipe. */}
           {isOffice && data.ranking.length > 0 && (
-            <Card className="p-4">
+            <Card className="p-4 sm:p-5">
               <h3 className="mb-3 text-sm font-semibold text-ink-900">Ranking de vendas do mês</h3>
               <div className="space-y-2">
                 {data.ranking.map((r, i) => {
                   const top = data.ranking[0] ? Number(data.ranking[0].total) : 0;
                   const pct = top > 0 ? (Number(r.total) / top) * 100 : 0;
                   return (
-                    <div key={r.user_id} className="flex items-center gap-3">
+                    <div key={r.user_id} className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 sm:grid-cols-[1.25rem_8rem_minmax(0,1fr)_7rem]">
                       <span className="tabnums w-5 shrink-0 text-xs font-bold text-ink-400">{i + 1}º</span>
-                      <span className="w-32 shrink-0 truncate text-sm text-ink-700">{r.nome ?? r.email}</span>
-                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-ink-100">
+                      <span className="min-w-0 truncate text-sm text-ink-700">{r.nome ?? r.email}</span>
+                      <div className="col-start-2 row-start-2 h-1.5 overflow-hidden rounded-full bg-ink-100 sm:col-start-auto sm:row-start-auto">
                         <div className="h-full rounded-full bg-brand-400" style={{ width: `${pct}%` }} />
                       </div>
-                      <span className="tabnums w-28 shrink-0 text-right text-sm font-semibold text-ink-800">{brl0(Number(r.total))}</span>
+                      <span className="tabnums col-start-3 row-start-1 text-right text-sm font-semibold text-ink-800 sm:col-start-auto sm:row-start-auto">{brl0(Number(r.total))}</span>
                     </div>
                   );
                 })}

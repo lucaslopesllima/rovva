@@ -63,7 +63,7 @@ describe('Carriers', () => {
     await screen.findByText('Transp X');
 
     await userEvent.click(screen.getByRole('button', { name: /Nova transportadora/ }));
-    await userEvent.type(screen.getByPlaceholderText('Nome da transportadora *'), 'Entrega Já');
+    await userEvent.type(screen.getByRole('textbox', { name: 'Nome da transportadora *' }), 'Entrega Já');
     await userEvent.type(screen.getByPlaceholderText('Pessoa de contato'), 'Zé');
     await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));
 
@@ -77,7 +77,7 @@ describe('Carriers', () => {
     await screen.findByText('Transp X');
 
     await userEvent.click(screen.getByLabelText('Editar transportadora'));
-    const nome = screen.getByPlaceholderText('Nome da transportadora *');
+    const nome = screen.getByRole('textbox', { name: 'Nome da transportadora *' });
     await userEvent.clear(nome);
     await userEvent.type(nome, 'Transp Y');
     await userEvent.click(screen.getByRole('button', { name: 'Salvar' }));

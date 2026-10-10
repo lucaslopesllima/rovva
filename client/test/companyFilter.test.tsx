@@ -221,15 +221,20 @@ describe('PartidaInput', () => {
 });
 
 describe('RecommendConfig', () => {
-  it('território e score recolhem de forma independente', async () => {
+  it('território e critérios ficam visíveis juntos, sem fechamentos internos', async () => {
     render(<Bar recommend />);
-    const [territorio, score] = Array.from(document.querySelectorAll('details'));
+    const cidade = screen.getByPlaceholderText(/Buscar cidade/);
+    expect(cidade).toBeVisible();
+    const pesos = screen.getAllByRole('slider');
+    expect(pesos).toHaveLength(5);
+    pesos.forEach((peso) => expect(peso).toBeVisible());
 
-    expect(territorio!).toHaveAttribute('open');
-    expect(score!).not.toHaveAttribute('open');
-    await userEvent.click(territorio!.querySelector('summary')!);
-    expect(territorio!).not.toHaveAttribute('open');
-    expect(score!).not.toHaveAttribute('open');
+    await userEvent.click(screen.getByRole('heading', { name: /Território/ }));
+    await userEvent.click(screen.getByRole('heading', { name: /Critérios avançados/ }));
+    expect(cidade).toBeVisible();
+    pesos.forEach((peso) => expect(peso).toBeVisible());
+    await userEvent.click(screen.getByRole('button', { name: 'Mais próximas' }));
+    expect(pesos[1]).toHaveValue('0.6');
   });
 
   it('território por UF, por cidade, pesos e limpar', async () => {

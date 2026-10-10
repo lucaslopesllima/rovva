@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../lib/api.ts';
 import type { Activity, KanbanCard, OptimizeResult } from '../lib/types.ts';
-import { Btn, Card, cn, EmptyState, ErrorState, Modal, PageHeader, SafeButton, Segmented, Spinner, useIsMobile } from '../lib/ui.tsx';
+import { Btn, Card, cn, EmptyState, ErrorState, inputCls, Modal, PageHeader, SafeButton, Segmented, Spinner, useIsMobile } from '../lib/ui.tsx';
 import { Icon, type IconName } from '../lib/icons.tsx';
 import { ActivityCreateModal, VisitModal, type RepresentedOption } from '../lib/activityModal.tsx';
 import { toast } from '../lib/toast.tsx';
@@ -226,7 +226,7 @@ export function Agenda(): React.JSX.Element {
 
       {/* ── control panel ─────────────────────────────── */}
       <Card className="flex flex-wrap items-center justify-between gap-3 p-3">
-        <div className="flex items-center gap-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
           <button onClick={goPrev} aria-label="Anterior"
             className="grid h-11 w-11 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 lg:h-9 lg:w-9">
             <Icon name="chevronRight" size={18} className="rotate-180" />
@@ -237,7 +237,7 @@ export function Agenda(): React.JSX.Element {
             className="grid h-11 w-11 place-items-center rounded-lg text-ink-500 hover:bg-ink-100 lg:h-9 lg:w-9">
             <Icon name="chevronRight" size={18} />
           </button>
-          <span className="ml-2 text-base font-bold capitalize tracking-tight text-ink-900">{navLabel}</span>
+          <span className="ml-2 min-w-0 text-base font-bold capitalize tracking-tight text-ink-900">{navLabel}</span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -246,7 +246,7 @@ export function Agenda(): React.JSX.Element {
             {TIPOS.map((t) => {
               const on = tipoFilter.has(t);
               return (
-                <button key={t} onClick={() => toggleTipo(t)}
+                <button key={t} onClick={() => toggleTipo(t)} aria-pressed={on}
                   className={cn('inline-flex min-h-11 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition lg:min-h-0',
                     on ? 'border-transparent ' + TIPO[t]!.chip : 'border-ink-200 text-ink-400 hover:bg-ink-50')}>
                   <span className="h-2 w-2 rounded-full" style={{ background: on ? TIPO[t]!.dot : '#cbd5e1' }} />
@@ -257,7 +257,7 @@ export function Agenda(): React.JSX.Element {
           </div>
           <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}
             aria-label="Filtrar atividades por status"
-            className="min-h-11 rounded-lg border border-ink-200 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-600 outline-none focus:border-brand-400 lg:min-h-0">
+            className={cn(inputCls, 'sm:w-auto')}>
             <option value="todos">Todos</option>
             <option value="pendente">Pendentes</option>
             <option value="feito">Concluídos</option>

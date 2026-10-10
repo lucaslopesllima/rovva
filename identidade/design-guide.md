@@ -25,9 +25,15 @@ Visual B2B moderno, geométrico, limpo e funcional. Contraste forte, bastante es
 ## Elementos-chave
 
 - Bordas: finas, claras e discretas.
-- Border-radius dos cards: entre 12px e 22px conforme hierarquia.
-- Botões: sólidos em Rovva Blue, texto branco, radius aproximado de 13px.
-- Sombras: suaves nos cards; maior profundidade somente em elementos elevados.
+- Painéis: raio de 16px, borda discreta e superfície opaca; sem sombra por padrão.
+- Botões e campos: raio de 12px; ação principal sólida em Rovva Blue, ações secundárias neutras com borda.
+- Sombras: reservadas a elementos elevados e feedback de interação.
+- Navegação da aplicação: superfície clara ou escura conforme tema; seleção em azul suave, ícones de tamanho constante.
+- Títulos de página: 20px no celular e 24px no computador; subtítulos legíveis sem truncar orientações.
+- Controles principais: altura mínima de 44px; ações compactas de 36px no computador e 44px no celular.
+- Formulários mantêm rótulos visíveis; campos preenchidos não dependem de placeholders para identificação.
+- Abas selecionadas usam texto de alto contraste em ambos os temas. Painéis recolhidos ficam fora da navegação por teclado.
+- Filtros de território e critérios compartilham uma única abertura, colunas equilibradas no computador e disposição vertical no celular.
 - Mapas: pins Signal Orange; clusters e território Rovva Blue.
 
 ## O que NUNCA fazer

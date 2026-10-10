@@ -1,0 +1,13 @@
+Ferramenta: imagegen integrada. Arte adaptada do print com dados identificáveis substituídos por barras opacas.
+
+Use case: compositing / ads-marketing.
+Edit target: attached screenshot of Rovva. Turn it into a polished Brazilian Portuguese Instagram single-image post, vertical 4:5, ideally 1080x1350.
+Brand: white #FFFFFF background, ink #0D1220, Rovva Blue #3E66EA, subtle blue-tinted surfaces #ECF0FD. Inter-like bold tight typography. Clean modern editorial software ad with generous margins, no decorative emoji, no generic clipart.
+Top small wordmark "Rovva" with vv blue, do not invent a symbol.
+Main headline exactly: "Dados do seu lead em um clique."
+Emphasize "em um clique." in blue. Supporting line exactly: "Mais contexto para sua próxima abordagem."
+Central and lower main hero: show a large faithful cropped view of the supplied actual dark interface and its "Dados da empresa" modal, placed within a refined rounded rectangular frame; preserve genuine UI structure and recognizable functional labels, allow readable labels E-mail, Site, Pessoas no LinkedIn, Google Maps, Contato, Situação cadastral. Integrate screenshot into composition with enough scale, rather than tiny full desktop thumbnail.
+CRITICAL PRIVACY: REMOVE all original identifying content across the ENTIRE screenshot, including background cards and account/business name, names of companies and people, email addresses, domains, website search result text, street addresses, city/state/postal code, phones, dates, ratings and counts. Replace each identifying text region with solid opaque neutral gray rounded redaction bars, no residual original letters, no faint under-text. Do not use weak blur. Do not generate replacement personal data. Keep only generic interface section labels and functional controls. Redact data even if already blurred in original background.
+Footer short label exactly: "Dados ocultados para preservar a privacidade."
+Bottom call to action exactly: "Conheça a Rovva".
+No social handle or URL. No invented product features or claims of verified contacts. Avoid extra copy. Deliver finished flat graphic, no phone mockup.

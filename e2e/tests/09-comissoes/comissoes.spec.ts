@@ -31,11 +31,11 @@ test.describe('comissões', () => {
 
     await page.goto('/comissoes');
     await page.waitForLoadState('networkidle');
-    const row = rowFor(page, `#${order.numero}`, page.getByRole('button', { name: 'Dar baixa' }));
-    await row.getByRole('button', { name: 'Dar baixa' }).click();
-    await page.getByLabel('Valor recebido *').fill('10');
-    await page.getByLabel('Recebida em *').fill(new Date().toISOString().slice(0, 10));
-    await page.getByRole('button', { name: 'Confirmar baixa' }).click();
+    const row = rowFor(page, `#${order.numero}`, page.getByRole('button', { name: 'Parcelas' }));
+    await row.getByRole('button', { name: 'Parcelas' }).click();
+    await page.getByLabel('Valor da parcela *').fill('10');
+    await page.getByLabel('Data do recebimento *').fill(new Date().toISOString().slice(0, 10));
+    await page.getByRole('button', { name: 'Registrar parcela' }).click();
     await page.waitForLoadState('networkidle');
   });
 

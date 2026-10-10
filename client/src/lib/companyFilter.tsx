@@ -393,11 +393,11 @@ export function CompanyFilterBar({ f, recommend = false, onBuscar, buscando = fa
   // padding e rodapé — então aqui o cartão e a linha de ações somem para não
   // desenhar quadro dentro de quadro nem repetir Limpar/Buscar.
   return (
-    <div className="rounded-2xl border border-hairline bg-surface p-3 shadow-card max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:p-0 max-sm:shadow-none">
+    <div className="rounded-2xl border border-hairline bg-surface p-4 sm:p-5 max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:p-0">
       {recommend && <RecommendConfig f={f} />}
 
       <div className={cn('grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3',
-        recommend && 'mt-3 border-t border-ink-100 pt-3')}>
+        recommend && 'mt-5 border-t border-hairline pt-5')}>
         <label className="block">
           <span className="mb-1 block text-xs font-medium text-ink-500">Nome / CNPJ</span>
           <input value={f.fq} onChange={(e) => f.setFq(maskSearchCNPJ(e.target.value))} maxLength={120} placeholder="Razão, fantasia ou CNPJ" className={inputCls} />
@@ -498,7 +498,6 @@ function RecommendConfig({ f }: { f: CompanyFilter }): React.JSX.Element {
   const [munResults, setMunResults] = useState<Municipio[]>([]);
   const [ufs, setUfs] = useState<{ uf: string; total: number }[]>([]);
   const [munOpen, setMunOpen] = useState(false);
-  const [territorioOpen, setTerritorioOpen] = useState(true);
   const [munBusy, setMunBusy] = useState(false);
   const [munError, setMunError] = useState('');
   const [ufsError, setUfsError] = useState(false);
@@ -557,17 +556,16 @@ function RecommendConfig({ f }: { f: CompanyFilter }): React.JSX.Element {
   ];
 
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
+    <div className="grid items-stretch gap-5 lg:grid-cols-2 lg:gap-6">
       {/* Território */}
-      <details open={territorioOpen} onToggle={(e) => setTerritorioOpen(e.currentTarget.open)}
-        className="group self-start rounded-2xl border border-hairline bg-surface p-3 shadow-card">
+      <section aria-label="Território" className="min-w-0">
         {/* Único critério obrigatório da tela: sem município a busca nem sai
             (ver `semTerritorio` no Recommend). Marca o `*` da app, e o asterisco
             fica fora do texto lido em voz alta — o aria-label já diz. */}
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-xl text-sm font-semibold text-ink-900">
+        <h3 className="text-sm font-semibold text-ink-900">
           <span>Território <span aria-hidden className="text-rose-500">*</span><span className="sr-only"> (obrigatório)</span></span>
-          <Icon name="chevronRight" size={16} className="text-ink-400 transition-transform group-open:rotate-90" />
-        </summary>
+        </h3>
+        <p className="mt-2 text-xs leading-relaxed text-ink-500">Selecione estados ou cidades para definir onde buscar.</p>
         <div>
         <p className="mb-1.5 mt-3 text-[11px] font-semibold uppercase tracking-wider text-ink-400">Por estado</p>
         <div className="flex flex-wrap gap-1">
@@ -659,21 +657,19 @@ function RecommendConfig({ f }: { f: CompanyFilter }): React.JSX.Element {
           <PartidaInput value={f.partida} onChange={f.setPartida} />
         </div>
         </div>
-      </details>
+      </section>
 
-      {/* Critérios avançados ficam recolhidos: território e filtros básicos
-          resolvem a maioria das buscas; sliders continuam disponíveis a quem
-          precisa afinar o ranking. */}
-      <details className="group self-start rounded-2xl border border-hairline bg-surface p-3 shadow-card">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-xl text-sm font-semibold text-ink-900">
-          <span className="inline-flex items-center gap-1.5">Critérios avançados do score <Hint text={PESO_SLIDER_HINT} /></span>
-          <Icon name="chevronRight" size={16} className="text-ink-400 transition-transform group-open:rotate-90" />
-        </summary>
-        <p className="mt-2 text-xs text-ink-400">Escolha um perfil pronto ou ajuste cada influência.</p>
+      {/* O botão Filtros da página controla as duas seções juntas. */}
+      <section aria-label="Critérios avançados do score" className="min-w-0 border-t border-hairline pt-5 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+        <div className="flex items-center gap-1.5">
+          <h3 className="text-sm font-semibold text-ink-900">Critérios avançados do score</h3>
+          <Hint text={PESO_SLIDER_HINT} />
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-ink-500">Escolha um perfil pronto ou ajuste cada influência.</p>
         <div className="mt-3 flex flex-wrap gap-1.5">
           {presets.map((preset) => (
             <button key={preset.label} type="button" onClick={() => f.setPesos({ ...preset.value })}
-              className="rounded-lg border border-ink-200 bg-ink-50 px-2.5 py-1.5 text-xs font-semibold text-ink-600 transition hover:border-brand-300 hover:text-brand-700">
+              className="min-h-11 rounded-lg border border-ink-200 bg-ink-50 px-3 py-2 text-xs font-semibold text-ink-600 transition-colors hover:border-brand-300 hover:text-brand-700 sm:min-h-9">
               {preset.label}
             </button>
           ))}
@@ -689,7 +685,7 @@ function RecommendConfig({ f }: { f: CompanyFilter }): React.JSX.Element {
               className="mt-1.5 w-full accent-brand-600" />
           </label>
         ))}
-      </details>
+      </section>
     </div>
   );
 }

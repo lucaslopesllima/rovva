@@ -226,8 +226,8 @@ function Usuarios(): React.JSX.Element {
         <Card className="overflow-x-auto">
           {/* Tabela permanece no desktop; tablet e celular usam cartões acima. */}
           <table className="w-full min-w-[720px] text-sm">
-            <thead className="sticky top-0 z-10 [&>tr>th]:bg-surface">
-              <tr className="border-b border-ink-200 text-left text-xs font-semibold uppercase tracking-wide text-ink-400">
+            <thead className="sticky top-0 z-10 [&>tr>th]:bg-ink-50">
+              <tr className="border-b border-hairline text-left text-xs font-semibold text-ink-500">
                 <th className="px-4 py-3">Nome</th>
                 <th className="px-4 py-3">E-mail</th>
                 <th className="px-4 py-3">Papel</th>
