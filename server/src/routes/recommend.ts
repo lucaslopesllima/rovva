@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { query, withClient } from '../db.ts';
+import { query, query as dbQuery, withClient } from '../db.ts';
 import { requireAuth, requirePermission } from '../auth.ts';
 import { config } from '../config.ts';
 import {
@@ -183,8 +183,25 @@ export function recommendRoutes(app: FastifyInstance): void {
       }
     });
 
+    // CNPJ completo sem resultado: a empresa pode existir e só estar fora do
+    // filtro (território/CNAE) ou já no funil (NOT EXISTS da recomendação). Sem
+    // isso a tela dizia "nenhuma empresa" para um CNPJ que está na base.
+    const digits = (query.q ?? '').replace(/\D/g, '');
+    let cnpjMatch = null;
+    if (rows.length === 0 && offset === 0 && digits.length === 14 && !/[a-zA-Z]/.test(query.q!)) {
+      [cnpjMatch = null] = await dbQuery<Record<string, unknown>>(
+        `SELECT c.id, c.cnpj, c.razao_social, c.nome_fantasia, c.uf, m.nome AS cidade,
+                EXISTS (SELECT 1 FROM company_relationships r
+                        WHERE r.org_id = $2 AND r.company_id = c.id) AS in_funnel
+         FROM companies c LEFT JOIN municipios m ON m.id = c.municipio_id
+         WHERE c.cnpj = $1 AND c.source <> 'demo'`,
+        [digits, orgId],
+      );
+    }
+
     return {
       results: rows,
+      cnpj_match: cnpjMatch,
       origin: {
         ...prox.origin,
         source: partida ? 'partida' : accountOrigin ? 'conta' : 'territorio',

@@ -461,6 +461,30 @@ describe('Recommend — mapa, rota e interações', () => {
     expect(await screen.findByText('Nenhuma empresa encontrada', undefined, { timeout: 2000 })).toBeInTheDocument();
   });
 
+  it('CNPJ já no funil ou fora do território explica o vazio (lista e mapa)', async () => {
+    comTerritorio();
+    let match = { id: 7, razao_social: 'EC Private', cidade: 'Brusque', uf: 'SC', in_funnel: true };
+    m.get.mockImplementation(async (p: string) => {
+      if (p.startsWith('/api/recommend')) return { results: [], cnpj_match: match, page: { count: 0 } };
+      if (p === '/api/municipios/ufs') return { ufs: [] };
+      return {};
+    });
+    const { unmount } = mount();
+    expect(await screen.findByText('Empresa já está no seu funil', undefined, { timeout: 2000 })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Ver empresa' }));
+    expect(await screen.findByText('Dados da empresa')).toBeInTheDocument();
+    unmount();
+    match = { ...match, in_funnel: false };
+    mount();
+    expect(await screen.findByText(/fica em Brusque\/SC/, undefined, { timeout: 2000 })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Mapa' }));
+    expect(await screen.findByText('Empresa fora dos filtros')).toBeInTheDocument();
+    unmount();
+    match = { ...match, cidade: null as unknown as string };
+    mount();
+    expect(await screen.findByText('EC Private e não bate com o território ou CNAE selecionados.', undefined, { timeout: 2000 })).toBeInTheDocument();
+  });
+
   it('empresas na mesma coordenada são espalhadas (espiral) no mapa', async () => {
     comTerritorio();
     m.get.mockImplementation(async (p: string) => {

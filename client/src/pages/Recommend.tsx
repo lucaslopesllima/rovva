@@ -38,6 +38,7 @@ function FitBounds({ pts, focus }: { pts: [number, number][]; focus: MapFocus | 
 type MapFocus = { id: string; lat: number; lon: number };
 type RouteInfo = { destId: string; origem: [number, number]; origemLabel: string; coords: [number, number][]; distKm: number; durMin: number };
 type DistanceOrigin = { lat: number; lon: number; source: 'partida' | 'conta' | 'territorio' };
+type CnpjMatch = { id: number; razao_social: string; cidade: string | null; uf: string | null; in_funnel: boolean };
 
 // Centraliza/zoom na empresa focada (botão "Ver no mapa").
 function FlyTo({ focus }: { focus: MapFocus | null }): null {
@@ -144,6 +145,9 @@ export function Recommend(): React.JSX.Element {
     panels.abrir('filtros');
   };
   const [viewing, setViewing] = useState<number | null>(null);
+  // CNPJ completo buscado e sem resultado: o servidor diz se a empresa existe
+  // (fora do filtro ou já no funil) para a tela não dizer "nenhuma empresa".
+  const [cnpjMatch, setCnpjMatch] = useState<CnpjMatch | null>(null);
   const [addingContact, setAddingContact] = useState<ContactForm | null>(null);
   const [focus, setFocus] = useState<MapFocus | null>(null);
   const [route, setRoute] = useState<RouteInfo | null>(null);
@@ -323,6 +327,14 @@ export function Recommend(): React.JSX.Element {
   const faixaRuim = faixasInvalidas(filter.faixas);
   // total de empresas que batem com o perfil. O servidor para de contar no teto
   // (100), então acima disso o número vira "100+" em vez de um valor exato.
+  const cnpjVazio = cnpjMatch && (
+    <EmptyState icon="building"
+      title={cnpjMatch.in_funnel ? 'Empresa já está no seu funil' : 'Empresa fora dos filtros'}
+      hint={cnpjMatch.in_funnel
+        ? `${cnpjMatch.razao_social} já foi adicionada ao funil, por isso não aparece na prospecção.`
+        : `${cnpjMatch.razao_social}${cnpjMatch.cidade ? ` fica em ${cnpjMatch.cidade}/${cnpjMatch.uf}` : ''} e não bate com o território ou CNAE selecionados.`}
+      action={<Btn onClick={() => setViewing(Number(cnpjMatch.id))}>Ver empresa</Btn>} />
+  );
   const totalLabel = total === null
     ? `${recs.length} empresa(s)`
     : `${total.n.toLocaleString('pt-BR')}${total.capped ? '+' : ''} empresa(s)`;
@@ -357,14 +369,14 @@ export function Recommend(): React.JSX.Element {
       if (filter.fPorte) qs.set('porte', filter.fPorte);
       if (filter.partida) { qs.set('partida_lat', String(filter.partida.lat)); qs.set('partida_lon', String(filter.partida.lon)); }
       const r = await api.get<{
-        results: Recommendation[]; origin?: DistanceOrigin;
+        results: Recommendation[]; origin?: DistanceOrigin; cnpj_match?: CnpjMatch | null;
         page: { count: number; total: number; total_capped: boolean };
       }>(`/api/recommend?${qs.toString()}`, { signal: ac.signal });
       // total ausente (resposta antiga/parcial): cai no fallback do totalLabel.
       setTotal(typeof r.page?.total === 'number'
         ? { n: r.page.total, capped: !!r.page.total_capped } : null);
       setRecs((prev) => (off === 0 ? r.results : [...prev, ...r.results]));
-      if (off === 0) setDistanceOrigin(r.origin ?? null);
+      if (off === 0) { setDistanceOrigin(r.origin ?? null); setCnpjMatch(r.cnpj_match ?? null); }
       setDone(r.results.length < LIMIT);
       setOffset(off + r.results.length);
     } catch (e) {
@@ -380,7 +392,7 @@ export function Recommend(): React.JSX.Element {
   // com debounce p/ não disparar a cada tecla. Roda também no mount.
   useEffect(() => {
     loadCtl.current?.abort();
-    setRoute(null); setFocus(null); setErr(''); setRecs([]); setTotal(null); setOffset(0);
+    setRoute(null); setFocus(null); setErr(''); setRecs([]); setTotal(null); setOffset(0); setCnpjMatch(null);
     if (semTerritorio) {  // sem território -> tela vazia, sem consultar
       setDone(true);
       setLoading(false); // sem isso o spinner inicial nunca dá lugar ao empty state
@@ -621,7 +633,7 @@ export function Recommend(): React.JSX.Element {
                 ) : err ? (
                   <EmptyState icon="alertTriangle" title="Não foi possível carregar" hint={err}
                     action={<Btn variant="soft" onClick={() => load(0)}>Tentar novamente</Btn>} />
-                ) : (
+                ) : cnpjMatch ? cnpjVazio : (
                   <EmptyState icon="building" title="Nenhuma empresa encontrada" hint="Ajuste os critérios da busca."
                     action={<Btn onClick={abrirFiltros}>Ajustar filtros</Btn>} />
                 )}
@@ -719,6 +731,7 @@ export function Recommend(): React.JSX.Element {
             ? <EmptyState icon="mapPin" title="Defina o território"
                 hint="Selecione municípios ou um estado inteiro para buscar empresas."
                 action={<Btn icon="mapPin" onClick={abrirFiltros}>Definir território</Btn>} />
+            : cnpjMatch ? cnpjVazio
             : <EmptyState icon="building" title="Nenhuma empresa encontrada"
                 hint="Nenhuma empresa bate com os filtros aplicados. Ajuste os critérios." />)}
         </div>
