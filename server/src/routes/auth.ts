@@ -30,14 +30,16 @@ export function authRoutes(app: FastifyInstance): void {
           email: { type: 'string', minLength: 3 },
           senha: { type: 'string', minLength: 6 },
           tipo_conta: { type: 'string', enum: ['escritorio', 'individual'], default: 'escritorio' },
+          convite: { type: 'string', maxLength: 40 },
         },
       },
     },
   }, async (req, reply) => {
-    if (!config.signupEnabled) return reply.code(403).send({ error: 'cadastro indisponível' });
-    const { org_nome, email, senha, tipo_conta } = req.body as {
-      org_nome: string; email: string; senha: string; tipo_conta: 'escritorio' | 'individual';
+    const { org_nome, email, senha, tipo_conta, convite } = req.body as {
+      org_nome: string; email: string; senha: string; tipo_conta: 'escritorio' | 'individual'; convite?: string;
     };
+    // Cadastro fechado: só entra com código de convite (signup_convites, 084).
+    if (!config.signupEnabled && !convite?.trim()) return reply.code(403).send({ error: 'informe o código de convite' });
     const normEmail = email.trim().toLowerCase();
 
     const existing = await one('SELECT id FROM users WHERE email = $1', [normEmail]);
@@ -50,6 +52,18 @@ export function authRoutes(app: FastifyInstance): void {
         'INSERT INTO organizations (nome, tipo_conta) VALUES ($1,$2) RETURNING id',
         [org_nome, tipo_conta],
       )).rows[0];
+      // Consumo atômico: dois cadastros com o mesmo código, só um passa.
+      if (!config.signupEnabled) {
+        const usado = await client.query(
+          `UPDATE signup_convites SET usado_em = now(), org_id = $2
+            WHERE codigo = upper(trim($1)) AND usado_em IS NULL RETURNING codigo`,
+          [convite, org.id],
+        );
+        if (!usado.rowCount) {
+          await client.query('ROLLBACK');
+          return reply.code(403).send({ error: 'código de convite inválido ou já usado' });
+        }
+      }
       const senhaHash = await hashPassword(senha);
       const user = (await client.query(
         'INSERT INTO users (org_id, email, senha_hash, role) VALUES ($1,$2,$3,$4) RETURNING id, role',

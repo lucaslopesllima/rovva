@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireAuth } from '../auth.ts';
 import { config } from '../config.ts';
@@ -80,5 +81,39 @@ export function leadRoutes(app: FastifyInstance, adminEmail = config.leadsAdminE
     );
     if (!updated) return reply.code(404).send({ error: 'pedido não encontrado' });
     return { lead: updated };
+  });
+
+  // Códigos de convite do cadastro fechado (084). Sem código informado, gera um.
+  const CONVITE_COLS = `c.codigo, c.created_at, c.usado_em, o.nome AS org_nome`;
+  app.get('/api/convites', { preHandler: [requireAuth, ownerGuard] }, async () => ({
+    convites: await query(
+      `SELECT ${CONVITE_COLS} FROM signup_convites c LEFT JOIN organizations o ON o.id = c.org_id
+        ORDER BY c.usado_em IS NOT NULL, c.created_at DESC`,
+    ),
+  }));
+
+  app.post('/api/convites', {
+    preHandler: [requireAuth, ownerGuard],
+    schema: {
+      body: { type: 'object', additionalProperties: false,
+        properties: { codigo: { type: 'string', pattern: '^[A-Za-z0-9-]{4,40}$' } } },
+    },
+  }, async (req, reply) => {
+    const { codigo } = (req.body ?? {}) as { codigo?: string };
+    const novo = (codigo ?? randomBytes(4).toString('hex')).toUpperCase();
+    const row = await one(
+      `INSERT INTO signup_convites (codigo) VALUES ($1) ON CONFLICT DO NOTHING
+       RETURNING codigo, created_at, usado_em, NULL::text AS org_nome`,
+      [novo],
+    );
+    if (!row) return reply.code(409).send({ error: 'código já existe' });
+    return reply.code(201).send({ convite: row });
+  });
+
+  app.delete('/api/convites/:codigo', { preHandler: [requireAuth, ownerGuard] }, async (req, reply) => {
+    const { codigo } = req.params as { codigo: string };
+    const del = await one('DELETE FROM signup_convites WHERE codigo = $1 AND usado_em IS NULL RETURNING codigo', [codigo]);
+    if (!del) return reply.code(404).send({ error: 'código não encontrado ou já usado' });
+    return { ok: true };
   });
 }

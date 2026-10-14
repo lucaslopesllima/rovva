@@ -21,6 +21,9 @@ export function Login(): React.JSX.Element {
   // só aparece se /api/config confirmar — assim a aba nunca pisca em produção,
   // onde o registro está fechado, nem se a chamada falhar.
   const [signupOn, setSignupOn] = useState(false);
+  // Cadastro fechado ao público: a aba aparece, mas pede código de convite.
+  const [precisaConvite, setPrecisaConvite] = useState(false);
+  const [convite, setConvite] = useState('');
   const [tipoConta, setTipoConta] = useState<'individual' | 'escritorio'>('individual');
   const [orgNome, setOrgNome] = useState('');
   const [email, setEmail] = useState('');
@@ -29,8 +32,11 @@ export function Login(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void api.get<{ signup_enabled: boolean }>('/api/config')
-      .then((r) => setSignupOn(r.signup_enabled === true))
+    void api.get<{ signup_enabled: boolean; signup_convite?: boolean }>('/api/config')
+      .then((r) => {
+        setSignupOn(r.signup_enabled === true || r.signup_convite === true);
+        setPrecisaConvite(r.signup_convite === true);
+      })
       .catch(() => undefined); // servidor fora do ar: mantém só o login
   }, []);
 
@@ -42,10 +48,11 @@ export function Login(): React.JSX.Element {
     // só no cadastro: no login o formato não importa (a senha decide) e não
     // vale bloquear um e-mail legado que o type="email" nativo aceitou.
     if (mode === 'register' && !isEmail(email)) { setErr('E-mail inválido.'); return; }
+    if (mode === 'register' && precisaConvite && !convite.trim()) { setErr('Informe o código de convite.'); return; }
     setBusy(true);
     try {
       if (mode === 'login') await login(email, senha);
-      else await register(orgNome, email, senha, tipoConta);
+      else await register(orgNome, email, senha, tipoConta, precisaConvite ? convite.trim() : undefined);
     } catch (e2) {
       setErr((e2 as Error).message);
     } finally {
@@ -129,6 +136,10 @@ export function Login(): React.JSX.Element {
               autoComplete="email" invalid={Boolean(err)} describedBy={err ? 'login-error' : undefined} />
             <Field label="Senha" type="password" value={senha} onChange={setSenha} placeholder="mínimo 6 caracteres" maxLength={200}
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'} invalid={Boolean(err)} describedBy={err ? 'login-error' : undefined} />
+            {mode === 'register' && precisaConvite && (
+              <Field label="Código de convite" value={convite} onChange={setConvite} placeholder="ex.: A1B2C3D4" maxLength={40}
+                autoComplete="off" />
+            )}
             {err && <p id="login-error" role="alert" aria-live="assertive" className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-600">{err}</p>}
             <Btn type="submit" disabled={busy} className="w-full">
               {busy ? mode === 'login' ? 'Entrando…' : 'Criando conta…' : mode === 'login' ? 'Entrar' : 'Criar conta'}

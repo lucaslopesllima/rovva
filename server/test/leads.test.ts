@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.ts';
 import { pool } from '../src/db.ts';
+import { config } from '../src/config.ts';
 
 const run = Date.now();
 const ownerEmail = `leads.owner.${run}@teste.com`;
@@ -63,5 +64,40 @@ describe('pedidos de demonstração', () => {
     });
     expect(response.statusCode).toBe(200);
     expect((response.json() as { lead: { status: string } }).lead.status).toBe('contatado');
+  });
+});
+
+describe('códigos de convite (cadastro fechado)', () => {
+  it('só o dono gerencia; código é de uso único', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/convites', headers: auth(otherToken) })).statusCode).toBe(403);
+    const codigo = `T${run}`.slice(0, 20);
+    const criado = await app.inject({ method: 'POST', url: '/api/convites', headers: auth(ownerToken), payload: { codigo: codigo.toLowerCase() } });
+    expect(criado.statusCode).toBe(201);
+    expect(criado.json().convite.codigo).toBe(codigo);
+    expect((await app.inject({ method: 'POST', url: '/api/convites', headers: auth(ownerToken), payload: { codigo } })).statusCode).toBe(409);
+
+    config.signupEnabled = false;
+    try {
+      const cad = (email: string, convite?: string) => app.inject({
+        method: 'POST', url: '/api/auth/register',
+        payload: { org_nome: `Convidado ${run}`, email, senha: 'senha123', ...(convite && { convite }) },
+      });
+      expect((await app.inject({ method: 'GET', url: '/api/config' })).json()).toEqual({ signup_enabled: false, signup_convite: true });
+      expect((await cad(`conv.sem.${run}@teste.com`)).statusCode).toBe(403);
+      expect((await cad(`conv.errado.${run}@teste.com`, 'NAOEXISTE')).statusCode).toBe(403);
+      // Código inválido não deixa usuário nem org para trás.
+      const sobra = await pool.query(
+        `SELECT (SELECT count(*) FROM users WHERE email LIKE $1)::int AS u,
+                (SELECT count(*) FROM organizations WHERE nome = $2)::int AS o`, [`conv.%.${run}@teste.com`, `Convidado ${run}`]);
+      expect(sobra.rows[0]).toEqual({ u: 0, o: 0 });
+      expect((await cad(`conv.ok.${run}@teste.com`, ` ${codigo.toLowerCase()} `)).statusCode).toBe(201);
+      expect((await cad(`conv.reuso.${run}@teste.com`, codigo)).statusCode).toBe(403);
+    } finally {
+      config.signupEnabled = true;
+    }
+
+    const lista = (await app.inject({ method: 'GET', url: '/api/convites', headers: auth(ownerToken) })).json().convites;
+    expect(lista.find((c: { codigo: string }) => c.codigo === codigo)).toMatchObject({ org_nome: `Convidado ${run}` });
+    expect((await app.inject({ method: 'DELETE', url: `/api/convites/${codigo}`, headers: auth(ownerToken) })).statusCode).toBe(404);
   });
 });

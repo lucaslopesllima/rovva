@@ -39,7 +39,7 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   login: (email: string, senha: string) => Promise<void>;
-  register: (org_nome: string, email: string, senha: string, tipo_conta: 'escritorio' | 'individual') => Promise<void>;
+  register: (org_nome: string, email: string, senha: string, tipo_conta: 'escritorio' | 'individual', convite?: string) => Promise<void>;
   refresh: () => Promise<void>;
   logout: () => void;
   // true se o usuário pode executar a ação (admin faz bypass).
@@ -83,8 +83,8 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
     cacheUser(r.user);
   }, []);
 
-  const register = useCallback(async (org_nome: string, email: string, senha: string, tipo_conta: 'escritorio' | 'individual'): Promise<void> => {
-    const r = await api.post<{ token: string; user: User }>('/api/auth/register', { org_nome, email, senha, tipo_conta });
+  const register = useCallback(async (org_nome: string, email: string, senha: string, tipo_conta: 'escritorio' | 'individual', convite?: string): Promise<void> => {
+    const r = await api.post<{ token: string; user: User }>('/api/auth/register', { org_nome, email, senha, tipo_conta, ...(convite && { convite }) });
     setToken(r.token);
     setUser(r.user);
     cacheUser(r.user);

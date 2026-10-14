@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../lib/api.ts';
-import { Badge, Card, cn, EmptyState, inputCls, PageHeader, Spinner } from '../lib/ui.tsx';
+import { Badge, Btn, Card, cn, EmptyState, inputCls, PageHeader, Spinner } from '../lib/ui.tsx';
 import type { Tone } from '../lib/ui.tsx';
 
 type DemoStatus = 'novo' | 'contatado' | 'teste_agendado' | 'concluido' | 'arquivado';
@@ -28,6 +28,72 @@ function quando(iso: string): string {
   return new Date(iso).toLocaleString('pt-BR', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
+}
+
+interface Convite { codigo: string; created_at: string; usado_em: string | null; org_nome: string | null }
+
+// Códigos para o cadastro fechado: o cliente informa um deles em "Criar conta".
+function Convites(): React.JSX.Element {
+  const [convites, setConvites] = useState<Convite[]>([]);
+  const [codigo, setCodigo] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get<{ convites: Convite[] }>('/api/convites').then((r) => setConvites(r.convites), () => setError('Falha ao carregar convites'));
+  }, []);
+
+  async function criar(e: React.FormEvent): Promise<void> {
+    e.preventDefault();
+    setBusy(true); setError('');
+    try {
+      const r = await api.post<{ convite: Convite }>('/api/convites', codigo.trim() ? { codigo: codigo.trim() } : {});
+      setConvites((c) => [r.convite, ...c]);
+      setCodigo('');
+    } catch (e2) {
+      setError(e2 instanceof ApiError ? e2.message : 'Falha ao criar convite');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remover(c: Convite): Promise<void> {
+    try {
+      await api.del(`/api/convites/${encodeURIComponent(c.codigo)}`);
+      setConvites((l) => l.filter((x) => x.codigo !== c.codigo));
+    } catch (e2) {
+      setError(e2 instanceof ApiError ? e2.message : 'Falha ao remover convite');
+    }
+  }
+
+  return (
+    <Card className="space-y-3 p-4 sm:p-5">
+      <h2 className="font-semibold text-ink-900">Códigos de convite</h2>
+      <form onSubmit={criar} className="flex flex-wrap gap-2">
+        <input value={codigo} onChange={(e) => setCodigo(e.target.value)} maxLength={40} pattern="[A-Za-z0-9-]{4,40}"
+          placeholder="Código (vazio = gerar)" aria-label="Código de convite" className={cn(inputCls, 'w-auto flex-1 uppercase')} />
+        <Btn type="submit" disabled={busy}>{codigo.trim() ? 'Cadastrar' : 'Gerar'}</Btn>
+      </form>
+      {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
+      {convites.length > 0 && (
+        <ul className="divide-y divide-ink-100 text-sm">
+          {convites.map((c) => (
+            <li key={c.codigo} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <span className="font-mono font-semibold text-ink-800">{c.codigo}</span>
+              {c.usado_em
+                ? <span className="text-xs text-ink-400">usado por {c.org_nome ?? 'conta removida'} em {quando(c.usado_em)}</span>
+                : (
+                  <span className="flex items-center gap-2">
+                    <Badge tone="success">Disponível</Badge>
+                    <button type="button" onClick={() => void remover(c)} className="text-xs text-rose-600 hover:underline">remover</button>
+                  </span>
+                )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
 }
 
 export function DemoRequests(): React.JSX.Element {
@@ -67,6 +133,8 @@ export function DemoRequests(): React.JSX.Element {
     <div className="space-y-5 p-4 sm:p-6">
       <PageHeader title="Pedidos de demonstração"
         subtitle={`${leads.length} pedido${leads.length === 1 ? '' : 's'} · ${novos} novo${novos === 1 ? '' : 's'}`} />
+
+      <Convites />
 
       {loading ? <Card><Spinner /></Card> : error && leads.length === 0 ? (
         <Card><EmptyState icon="alertCircle" title={error} hint="Recarregue a página para tentar novamente." /></Card>

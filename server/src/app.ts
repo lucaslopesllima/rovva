@@ -98,7 +98,7 @@ export async function buildApp(opts: { logger?: boolean; authRateLimitMax?: numb
 
   // Config pública lida pela tela de login antes de haver token: hoje só diz se o
   // cadastro está aberto (SIGNUP_ENABLED). Nada sensível pode entrar aqui.
-  app.get('/api/config', async () => ({ signup_enabled: config.signupEnabled }));
+  app.get('/api/config', async () => ({ signup_enabled: config.signupEnabled, signup_convite: !config.signupEnabled }));
 
   leadRoutes(app, (opts.leadsAdminEmail ?? config.leadsAdminEmail).trim().toLowerCase());
   authRoutes(app);
