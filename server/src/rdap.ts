@@ -105,7 +105,7 @@ export async function contarDominios(cnpj: string): Promise<number | null> {
 export const SOCIETARIO = /\b(LTDA|EIRELI|EPP|ME|MEI|S\s?[/.]?\s?A|CIA|SOCIEDADE ANONIMA|EM RECUPERACAO JUDICIAL|FILIAL|MATRIZ)\b/g;
 // Palavras que quase nunca entram no domínio ("INDUSTRIA E COMERCIO DE ALIMENTOS"
 // -> "alimentos"). Removidas só na 2ª rodada de candidatos, nunca na 1ª.
-const GENERICAS = /\b(INDUSTRIA|INDUSTRIAL|COMERCIO|COMERCIAL|IMPORTACAO|EXPORTACAO|DISTRIBUIDORA|REPRESENTACOES|PARTICIPACOES|EMPREENDIMENTOS|SERVICOS|TRANSPORTES|DE|DA|DO|DAS|DOS|E)\b/g;
+export const GENERICAS = /\b(INDUSTRIA|INDUSTRIAL|COMERCIO|COMERCIAL|IMPORTACAO|EXPORTACAO|DISTRIBUIDORA|REPRESENTACOES|PARTICIPACOES|EMPREENDIMENTOS|SERVICOS|TRANSPORTES|DE|DA|DO|DAS|DOS|E)\b/g;
 
 // Tem que rodar ANTES do filtro [^A-Z0-9], sen\u00e3o "Ind\u00fastria A\u00e7\u00e3o" perde as
 // letras acentuadas em vez de virar "industriaacao". A base da Receita j\u00e1 vem

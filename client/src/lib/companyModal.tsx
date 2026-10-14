@@ -169,6 +169,8 @@ type BuscaWeb = {
   // Funcionários no LinkedIn, decisores primeiro. Opcional: investigação salva
   // antes deste campo existir não o tem.
   pessoas?: { nome: string; cargo: string | null; url: string }[];
+  noticias?: { titulo: string; url: string; data: string | null; trecho: string | null }[];
+  fornecedor?: { titulo: string; url: string } | null;
   buscado_em: string; // resultado salvo; "atualizar" refaz a busca paga
 };
 
@@ -527,7 +529,8 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
       );
     }
     if (!web) return null;
-    const vazio = !web.local && !web.redes.length && !web.contatos.length && !web.links.length && !web.socios.length && !web.pessoas?.length;
+    const vazio = !web.local && !web.redes.length && !web.contatos.length && !web.links.length && !web.socios.length && !web.pessoas?.length
+      && !web.noticias?.length && !web.fornecedor;
     const link = 'text-brand-600 hover:underline';
     return (
       <div className="flex flex-col gap-2">
@@ -582,6 +585,25 @@ export function CompanyModal({ companyId, onClose }: { companyId: number; onClos
                   {p.cargo && <span className="text-ink-400">{p.cargo}</span>}
                   <a href={p.url} target="_blank" rel="noopener noreferrer"
                     className={`rounded-full border border-ink-200 px-2 py-0.5 ${link}`}>LinkedIn</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {web.fornecedor && (
+          <p className="text-xs">
+            <span className="text-ink-400">Cadastro de fornecedor · </span>
+            <a href={web.fornecedor.url} target="_blank" rel="noopener noreferrer" className={link}>{web.fornecedor.titulo}</a>
+          </p>
+        )}
+        {!!web.noticias?.length && (
+          <div className="text-xs">
+            <p className="mb-0.5 text-ink-400">Notícias</p>
+            <ul className="flex flex-col gap-0.5">
+              {web.noticias.map((n) => (
+                <li key={n.url} className="truncate">
+                  {n.data && <span className="text-ink-400">{n.data} · </span>}
+                  <a href={n.url} title={n.trecho ?? n.titulo} target="_blank" rel="noopener noreferrer" className={link}>{n.titulo}</a>
                 </li>
               ))}
             </ul>

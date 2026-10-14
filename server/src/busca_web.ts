@@ -13,7 +13,7 @@
 // Nada é persistido, como no resto do enriquecimento: vai para a tela e o
 // representante escolhe o que vira contato.
 import { config } from './config.ts';
-import { candidatosDominio, SOCIETARIO } from './rdap.ts';
+import { candidatosDominio, GENERICAS, SOCIETARIO } from './rdap.ts';
 import { extrairContatos, normalizarFone, type ContatoSite } from './contatos_site.ts';
 
 export class BuscaWebDesligadaError extends Error {
@@ -41,7 +41,14 @@ export interface BuscaWeb {
   // Funcionários com perfil público no LinkedIn que cita a empresa. Só nome,
   // cargo e link: o LinkedIn não expõe contato no Google.
   pessoas: Pessoa[];
+  // Notícias recentes: momento da empresa (expansão, crise, feira) dá o gancho
+  // da abordagem. Opcional: investigação salva antes deste campo não o tem.
+  noticias?: Noticia[];
+  // Página de cadastro de fornecedor: em empresa grande é a porta de entrada.
+  fornecedor?: { titulo: string; url: string } | null;
 }
+
+export interface Noticia { titulo: string; url: string; data: string | null; trecho: string | null }
 
 export interface Pessoa { nome: string; cargo: string | null; url: string }
 
@@ -65,12 +72,12 @@ export function citaPessoa(titulo: string, nome: string): boolean {
 
 // null = a consulta falhou (rede, crédito, chave inválida -> 403). Sem resultado
 // não é falha: vem 200 com a lista vazia.
-async function serper(endpoint: 'maps' | 'search', q: string): Promise<Record<string, unknown> | null> {
+async function serper(endpoint: 'maps' | 'search' | 'news', q: string): Promise<Record<string, unknown> | null> {
   try {
     const r = await fetch(`${config.serperUrl}/${endpoint}`, {
       method: 'POST',
       headers: { 'X-API-KEY': config.serperApiKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q, gl: 'br', hl: 'pt-br', ...(endpoint === 'search' && { num: 10 }) }),
+      body: JSON.stringify({ q, gl: 'br', hl: 'pt-br', ...(endpoint !== 'maps' && { num: 10 }) }),
       signal: AbortSignal.timeout(20000),
     });
     const json = await r.json() as Record<string, unknown>;
@@ -81,6 +88,19 @@ async function serper(endpoint: 'maps' | 'search', q: string): Promise<Record<st
     console.warn(`[serper] ${endpoint}: ${(e as Error).message}`);
     return null;
   }
+}
+
+// Nome curto da marca, como o funcionário escreve no LinkedIn ("Comprador na
+// Lunelli") e a imprensa noticia: 1ª palavra sem tipo societário/genéricas.
+// ponytail: 1ª palavra só; "SUPERMERCADO X" vira "SUPERMERCADO" — tratar
+// segmento como genérico se a busca de compradores trouxer lixo. Mínimo 3 (TBM).
+export function marcaCurta(razaoSocial: string, nomeFantasia?: string | null): string | null {
+  for (const bruto of [nomeFantasia, razaoSocial]) {
+    const p = (bruto ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+      .replace(SOCIETARIO, ' ').replace(GENERICAS, ' ').replace(/[^A-Z0-9 ]/g, ' ').trim().split(/\s+/)[0];
+    if (p && p.length >= 3) return p;
+  }
+  return null;
 }
 
 // O título cita a empresa? Slugs de 4+ letras: 3 é genérico demais ("abc").
@@ -171,7 +191,10 @@ export function pessoaDoLinkedin(o: Organico, slugs: string[]): Pessoa | null {
   const titulo = (o.title ?? '').replace(/\s*[|–-]\s*LinkedIn\s*$/i, '');
   const [nome, ...resto] = titulo.split(/\s+[-–]\s+/);
   const texto = `${titulo} ${o.snippet ?? ''}`;
-  if (!nome?.trim() || !citaEmpresa(texto, slugs)) return null;
+  // A empresa citada fora do nome da pessoa: "Silvana Lunelli - Analista de
+  // Compras" é sobrenome, não funcionária da Lunelli.
+  const semNome = nome ? texto.split(new RegExp(nome.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')).join(' ') : '';
+  if (!nome?.trim() || !citaEmpresa(semNome, slugs)) return null;
 
   const trechos = [resto.join(' - '), ...(o.snippet ?? '').split(/\s*[·|]\s*/)];
   let cargo: string | null = null;
@@ -197,18 +220,24 @@ export async function buscarNaWeb(e: EmpresaBusca): Promise<BuscaWeb> {
   const slugs = candidatosDominio(e.razao_social, e.nome_fantasia);
 
   const socios = (e.socios ?? []).slice(0, 2);
+  const marca = marcaCurta(e.razao_social, e.nome_fantasia);
 
   // UF só no Maps: na busca web o Google lê "SC" como South Carolina.
   // Sócios numa 3ª busca (+1 crédito), só quando há sócio pessoa física.
   // LinkedIn: num 10 é o teto do plano gratuito do Serper (20 dá "Query
   // pattern not allowed for free accounts").
-  const [maps, google, pessoas, linkedin] = await Promise.all([
+  // Compradores, notícias e fornecedor buscam pela marca curta: a razão
+  // social inteira entre aspas não casa com "Comprador na Lunelli".
+  const [maps, google, pessoas, linkedin, compradores, news, fornecedor] = await Promise.all([
     serper('maps', [nome, e.cidade, e.uf].filter(Boolean).join(' ')),
     serper('search', [termo, e.cidade, EXCLUI].filter(Boolean).join(' ')),
     socios.length
       ? serper('search', [`(${socios.map((n) => `"${n}"`).join(' OR ')})`, e.cidade, EXCLUI].filter(Boolean).join(' '))
       : Promise.resolve(null),
     serper('search', `site:linkedin.com/in ${termo}`),
+    marca ? serper('search', `site:linkedin.com/in "${marca}" (compras OR comprador OR compradora OR suprimentos)`) : Promise.resolve(null),
+    marca ? serper('news', `"${marca}"`) : Promise.resolve(null),
+    marca ? serper('search', `"${marca}" fornecedor (cadastro OR "seja um fornecedor" OR "portal de fornecedores")`) : Promise.resolve(null),
   ]);
   // Sem sócio a 3ª busca nem sai: falha é só quando o que foi pedido falhou todo.
   if (!maps && !google && !linkedin && (!socios.length || !pessoas)) throw new Error('falha na busca na internet');
@@ -254,9 +283,18 @@ export async function buscarNaWeb(e: EmpresaBusca): Promise<BuscaWeb> {
     links: organicos.filter((o) => !/(instagram|facebook|linkedin|youtube|tiktok)\.com\//i.test(o.link!))
       .slice(0, 5).map((o) => ({ titulo: o.title ?? o.link!, url: o.link! })),
     socios: doSocio.slice(0, 5).map(({ nome: n, o }) => ({ nome: n, titulo: o.title!, url: o.link! })),
-    pessoas: ((linkedin?.organic ?? []) as Organico[])
+    pessoas: [...new Map([...((compradores?.organic ?? []) as Organico[]), ...((linkedin?.organic ?? []) as Organico[])]
       .map((o) => pessoaDoLinkedin(o, slugs))
       .filter((p): p is Pessoa => !!p)
+      .map((p) => [p.url, p] as const)).values()]
       .sort((a, b) => Number(DECISOR.test(b.cargo ?? '')) - Number(DECISOR.test(a.cargo ?? ''))),
+    noticias: ((news?.news ?? []) as (Organico & { date?: string })[])
+      .filter((o) => o.link && WEB.test(o.link) && citaEmpresa(o.title ?? '', slugs))
+      .slice(0, 5)
+      .map((o) => ({ titulo: o.title!, url: o.link!, data: o.date ?? null, trecho: o.snippet ?? null })),
+    fornecedor: ((fornecedor?.organic ?? []) as Organico[])
+      .filter((o) => o.link && WEB.test(o.link) && !deAgregador(o.link) && /fornecedor/i.test(`${o.title ?? ''} ${o.link}`)
+        && citaEmpresa(`${o.title ?? ''} ${o.link}`, slugs))
+      .map((o) => ({ titulo: o.title ?? o.link!, url: o.link! }))[0] ?? null,
   };
 }

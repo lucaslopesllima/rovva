@@ -1,7 +1,7 @@
 // buscarNaWeb com fetch mockado: leitura do Maps, filtro por nome, redes
 // sociais, contatos nos trechos e os dois modos de falha.
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
-import { buscarNaWeb, BuscaWebDesligadaError, citaEmpresa, citaPessoa, deAgregador, pessoaDoLinkedin, redesSociais } from '../src/busca_web.ts';
+import { buscarNaWeb, BuscaWebDesligadaError, citaEmpresa, citaPessoa, deAgregador, marcaCurta, pessoaDoLinkedin, redesSociais } from '../src/busca_web.ts';
 import { config } from '../src/config.ts';
 
 const fetchMock = vi.fn();
@@ -102,13 +102,43 @@ describe('buscarNaWeb', () => {
     });
     expect(r.socios.map((p) => p.url)).toEqual(['https://br.linkedin.com/in/michel', 'https://www.cylex.com.br/m']);
     expect(r.contatos).toEqual([expect.objectContaining({ nome: 'MICHEL AKROUCHE', cargo: 'Sócio', telefone: '4733235669' })]);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
   });
 
-  it('sem sócio: 3 buscas (maps, google, linkedin)', async () => {
+  it('sem sócio: 6 buscas (maps, google, linkedin, compradores, notícias, fornecedor)', async () => {
     serp(resp({ places: [] }), resp({ organic: [] }));
     await buscarNaWeb(EMPRESA);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  it('compradores, notícias e fornecedor pela marca curta; sobrenome igual não entra', async () => {
+    fetchMock.mockImplementation((url: string, init: RequestInit) => {
+      const q = JSON.parse(String(init.body)).q as string;
+      if (String(url).endsWith('/news')) {
+        expect(q).toBe('"LUNELLI"');
+        return Promise.resolve(resp({ news: [
+          { title: 'Lunelli chega aos 45 anos com 14 fábricas', link: 'https://fiesc.com.br/l', date: '2 semanas atrás', snippet: '4,2 mil colaboradores' },
+          { title: 'Malha em alta no Ceará', link: 'https://x.com/m' },
+        ] }));
+      }
+      if (q.startsWith('site:linkedin.com/in "LUNELLI" (compras')) {
+        return Promise.resolve(resp({ organic: [
+          { title: 'Fábio Tobias - Comprador na Lunelli', link: 'https://br.linkedin.com/in/fabio', snippet: 'Comprador na Lunelli · Guaramirim' },
+          { title: 'Silvana Lunelli - Analista de Compras', link: 'https://br.linkedin.com/in/silvana', snippet: '18 anos em Gestão de Compras' },
+        ] }));
+      }
+      if (q.startsWith('"LUNELLI" fornecedor')) {
+        return Promise.resolve(resp({ organic: [
+          { title: 'Portal de fornecedores - Outra', link: 'https://outra.com.br/fornecedor' },
+          { title: 'SEJA UM FORNECEDOR LUNELLI', link: 'https://lunelli.com.br/site/index.php/seja-um-fornecedor-lunelli/' },
+        ] }));
+      }
+      return Promise.resolve(resp({ organic: [], places: [] }));
+    });
+    const r = await buscarNaWeb({ razao_social: 'LUNELLI COMERCIO DO VESTUARIO LTDA', nome_fantasia: 'LUNELLI COMERCIO', cidade: 'Guaramirim', uf: 'SC' });
+    expect(r.pessoas).toEqual([{ nome: 'Fábio Tobias', cargo: 'Comprador', url: 'https://br.linkedin.com/in/fabio' }]);
+    expect(r.noticias).toEqual([{ titulo: 'Lunelli chega aos 45 anos com 14 fábricas', url: 'https://fiesc.com.br/l', data: '2 semanas atrás', trecho: '4,2 mil colaboradores' }]);
+    expect(r.fornecedor).toEqual({ titulo: 'SEJA UM FORNECEDOR LUNELLI', url: 'https://lunelli.com.br/site/index.php/seja-um-fornecedor-lunelli/' });
   });
 
   it('LinkedIn: 10 resultados (teto do plano grátis) e decisor primeiro', async () => {
@@ -134,7 +164,7 @@ describe('buscarNaWeb', () => {
 
   it('sem resultados é vazio, não falha', async () => {
     serp(resp({ places: [] }), resp({ organic: [] }));
-    expect(await buscarNaWeb(EMPRESA)).toEqual({ local: null, redes: [], contatos: [], links: [], socios: [], pessoas: [] });
+    expect(await buscarNaWeb(EMPRESA)).toEqual({ local: null, redes: [], contatos: [], links: [], socios: [], pessoas: [], noticias: [], fornecedor: null });
   });
 
   it('as duas buscas falhando -> erro', async () => {
@@ -145,6 +175,14 @@ describe('buscarNaWeb', () => {
   it('uma falhando, a outra ainda responde', async () => {
     serp(resp({ message: 'Unauthorized.', statusCode: 403 }, false), resp({ organic: [] }));
     expect((await buscarNaWeb(EMPRESA)).local).toBeNull();
+  });
+});
+
+describe('marcaCurta', () => {
+  it('1ª palavra sem societário/genéricas; fantasia antes', () => {
+    expect(marcaCurta('LUNELLI COMERCIO DO VESTUARIO LTDA', 'LUNELLI COMERCIO')).toBe('LUNELLI');
+    expect(marcaCurta('TBM S A INDUSTRIA TEXTIL', null)).toBe('TBM');
+    expect(marcaCurta('INDUSTRIA E COMERCIO LTDA', null)).toBeNull();
   });
 });
 
