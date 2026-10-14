@@ -531,8 +531,10 @@ function RecommendConfig({ f }: { f: CompanyFilter }): React.JSX.Element {
   }, [munQ]);
 
   const sel = f.territorio;
+  // Cidade de estado já inteiro já está no território: vira destaque (chip próprio).
   const addMun = (m: Municipio): void => {
     if (!sel.some((x) => x.id === m.id)) f.setTerritorio([...sel, m]);
+    else f.setTerritorio(sel.map((x) => (x.id === m.id ? { ...x, destaque: true } : x)));
     setMunQ(''); setMunResults([]); setMunOpen(false);
   };
   const removeMun = (id: number): void => f.setTerritorio(sel.filter((x) => x.id !== id));
@@ -548,7 +550,7 @@ function RecommendConfig({ f }: { f: CompanyFilter }): React.JSX.Element {
   for (const m of sel) countByUf[m.uf] = (countByUf[m.uf] ?? 0) + 1;
   const isFull = (uf: string, total: number): boolean => (countByUf[uf] ?? 0) === total && total > 0;
   const fullUfs = ufs.filter((u) => isFull(u.uf, u.total)).map((u) => u.uf);
-  const looseCities = sel.filter((m) => !fullUfs.includes(m.uf)).sort((a, b) => a.nome.localeCompare(b.nome));
+  const looseCities = sel.filter((m) => !fullUfs.includes(m.uf) || m.destaque).sort((a, b) => a.nome.localeCompare(b.nome));
   const presets: { label: string; value: Pesos }[] = [
     { label: 'Equilibrado', value: DEFAULT_PESOS },
     { label: 'Melhor fit', value: { cnae: 0.6, proximidade: 0.15, porte: 0.1, capital: 0.1, idade: 0.05 } },
@@ -616,7 +618,7 @@ function RecommendConfig({ f }: { f: CompanyFilter }): React.JSX.Element {
           {munOpen && munResults.length > 0 && (
             <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-ink-200 bg-surface py-1 shadow-pop">
               {munResults.map((m) => {
-                const on = sel.some((x) => x.id === m.id);
+                const on = looseCities.some((x) => x.id === m.id);
                 return (
                   <button key={m.id} onClick={() => addMun(m)} disabled={on}
                     className={cn('flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-ink-50 disabled:opacity-40', on && 'cursor-default')}>

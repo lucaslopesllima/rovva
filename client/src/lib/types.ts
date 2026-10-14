@@ -22,7 +22,9 @@ export interface Recommendation {
   };
 }
 
-export interface Municipio { id: number; nome: string; uf: string; regiao: string }
+// destaque: cidade escolhida pelo nome com o estado dela já inteiro no território.
+// Não muda a busca (a cidade já estava incluída), só mantém o chip visível.
+export interface Municipio { id: number; nome: string; uf: string; regiao: string; destaque?: boolean }
 
 export interface CnaeItem { codigo: number; descricao: string; secao: string; divisao: number }
 export interface CnaeGrupo { divisao: number; secao: string; itens: CnaeItem[] }
