@@ -226,13 +226,15 @@ function CnaeSearchInput({ value, onChange, label }: { value: string; onChange: 
     return () => { if (deb.current) clearTimeout(deb.current); ctrl.abort(); };
   }, [q]);
 
-  const add = (code: number, descricao?: string): void => {
-    if (!Number.isFinite(code) || codes.includes(code)) { setQ(''); setGrupos([]); return; }
+  const remove = (code: number): void => onChange(codes.filter((c) => c !== code).join(', '));
+  // Multiseleção: a lista fica aberta e cada item alterna (marca/desmarca).
+  // Fecha só com Escape ou clique fora.
+  const toggle = (code: number, descricao?: string): void => {
+    if (!Number.isFinite(code)) return;
+    if (codes.includes(code)) { remove(code); return; }
     if (descricao) seedCnae(code, descricao);
     onChange([...codes, code].join(', '));
-    setQ(''); setGrupos([]); setOpen(false);
   };
-  const remove = (code: number): void => onChange(codes.filter((c) => c !== code).join(', '));
 
   // Enter com dígitos puros adiciona o código direto, sem depender da busca.
   const onKey = (e: React.KeyboardEvent): void => {
@@ -240,7 +242,7 @@ function CnaeSearchInput({ value, onChange, label }: { value: string; onChange: 
     if (e.key !== 'Enter') return;
     e.preventDefault();
     const digits = onlyDigits(q);
-    if (digits) add(Number(digits));
+    if (digits && !codes.includes(Number(digits))) { toggle(Number(digits)); setQ(''); setGrupos([]); }
   };
 
   return (
@@ -270,9 +272,12 @@ function CnaeSearchInput({ value, onChange, label }: { value: string; onChange: 
               <div key={g.divisao}>
                 <div className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-ink-400">Divisão {g.divisao} · seção {g.secao}</div>
                 {g.itens.map((it) => (
-                  <button key={it.codigo} type="button" onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => add(it.codigo, it.descricao)} disabled={codes.includes(it.codigo)}
-                    className="flex w-full items-start gap-2 px-3 py-1.5 text-left text-sm hover:bg-ink-50 disabled:opacity-40">
+                  <button key={it.codigo} type="button" role="option" aria-selected={codes.includes(it.codigo)}
+                    onMouseDown={(e) => e.preventDefault()} onClick={() => toggle(it.codigo, it.descricao)}
+                    className="flex w-full items-start gap-2 px-3 py-1.5 text-left text-sm hover:bg-ink-50 aria-selected:bg-brand-50">
+                    <span aria-hidden className="mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-ink-300 text-brand-600">
+                      {codes.includes(it.codigo) && <Icon name="check" size={11} />}
+                    </span>
                     <span className="shrink-0 font-mono text-xs text-ink-400">{it.codigo}</span>
                     <span className="text-ink-700">{it.descricao}</span>
                   </button>

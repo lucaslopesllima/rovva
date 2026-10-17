@@ -16,6 +16,8 @@ export function cnaeRoutes(app: FastifyInstance): void {
   }, async (req) => {
     const { q } = req.query as { q: string };
     const term = q.trim().toLowerCase();
+    // Termo numérico ("478", "4781-4/00"): prefixo do código, sem passar pelo texto.
+    const digits = term.replace(/\D/g, '');
 
     const rows = await query<{ codigo: number; descricao: string; secao: string; divisao: number }>(
       `WITH syn AS (
@@ -29,13 +31,15 @@ export function cnaeRoutes(app: FastifyInstance): void {
          SELECT codigo FROM cnae_reference WHERE descricao ILIKE '%' || $1 || '%'
          UNION
          SELECT codigo FROM cnae_reference WHERE similarity(lower(descricao), $1) > 0.2
+         UNION
+         SELECT codigo FROM cnae_reference WHERE $2 <> '' AND codigo::text LIKE $2 || '%'
        )
        SELECT cr.codigo, cr.descricao, cr.secao, cr.divisao
        FROM cnae_reference cr
        JOIN matches m ON m.codigo = cr.codigo
        ORDER BY cr.divisao, cr.codigo
        LIMIT 100`,
-      [term],
+      [term, digits],
     );
 
     // Group by divisao so the UI can show fabricação (indústria) vs comércio etc.

@@ -57,6 +57,14 @@ describe('cnae', () => {
     expect(grupos.flatMap((g) => g.itens.map((i) => i.codigo))).toContain(4781400);
   });
 
+  it('search por número acha pelo prefixo do código, inclusive formatado', async () => {
+    for (const q of ['478', '4781-4/00']) {
+      const r = await inj(a, 'GET', `/api/cnae/search?q=${encodeURIComponent(q)}`);
+      const codes = (r.json() as { grupos: { itens: { codigo: number }[] }[] }).grupos.flatMap((g) => g.itens.map((i) => i.codigo));
+      expect(codes).toContain(4781400);
+    }
+  });
+
   it('labels resolve códigos; vazio sem códigos válidos', async () => {
     const r = await inj(a, 'GET', '/api/cnae/labels?codes=4781400,xx');
     expect((r.json() as { labels: { codigo: number }[] }).labels[0]!.codigo).toBe(4781400);
