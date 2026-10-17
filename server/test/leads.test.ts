@@ -109,4 +109,9 @@ describe('códigos de convite (cadastro fechado)', () => {
     const after = await one<{ visitas: number }>(`SELECT visitas FROM landing_visits WHERE dia = ${dia}`);
     expect(after!.visitas).toBe(before + 1);
   });
+
+  it('libera Referer cross-origin (OSM bloqueia tiles sem ele)', async () => {
+    const response = await app.inject({ method: 'POST', url: '/api/landing/visit' });
+    expect(response.headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
+  });
 });

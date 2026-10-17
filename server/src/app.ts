@@ -81,6 +81,8 @@ export async function buildApp(opts: { logger?: boolean; authRateLimitMax?: numb
     // COEP off: bloquearia tiles/recursos cross-origin sem CORP; não precisamos de
     // cross-origin isolation aqui.
     crossOriginEmbedderPolicy: false,
+    // OSM bloqueia (403) tiles sem Referer; o padrão do helmet é no-referrer.
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   });
   // Compressão HTTP global (br/gzip) — respostas JSON grandes (listas, dashboard)
   // encolhem bem; threshold evita comprimir payload pequeno. Registrado antes das rotas.
