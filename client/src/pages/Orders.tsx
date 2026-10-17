@@ -6,7 +6,8 @@ import { useSellers, SellerFilter } from '../lib/sellers.tsx';
 import type { Order, OrderStatus, RepresentedCompany } from '../lib/types.ts';
 import { Badge, Btn, Card, cn, Collapse, EmptyState, ErrorState, FilterPanel, inputCls, Modal, PageHeader, RowActions, SafeButton, Spinner, StatRow, useIsNarrow, usePanels, type Tone } from '../lib/ui.tsx';
 import { Icon } from '../lib/icons.tsx';
-import { brl, csvNum, fmtDate, maskSearchCNPJ } from '../lib/format.ts';
+import { brl, csvNum, fmtDate, maskCNPJ, maskSearchCNPJ } from '../lib/format.ts';
+import { CompanySearch } from '../lib/companySearch.tsx';
 import { downloadCsv } from '../lib/export.ts';
 import { toast } from '../lib/toast.tsx';
 import { OrderModal } from '../lib/orderModal.tsx';
@@ -79,6 +80,7 @@ export function Orders(): React.JSX.Element {
   const [editing, setEditing] = useState<Order | null>(null);
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importingPdf, setImportingPdf] = useState(false);
   const [nfModal, setNfModal] = useState<Order | null>(null);
   // Painéis colapsáveis — mesmo padrão da Prospecção (toggle no header +
   // grid-rows, estado persistido). Filtros fechados / indicadores abertos.
@@ -269,6 +271,9 @@ export function Orders(): React.JSX.Element {
             {can('orders.import') && (
               <Btn variant="ghost" icon="arrowDown" onClick={() => setImporting(true)}>Importar NF</Btn>
             )}
+            {can('orders.import') && (
+              <Btn variant="ghost" icon="arrowDown" onClick={() => setImportingPdf(true)}>Importar PDF</Btn>
+            )}
             {can('orders.create') && (
               <Btn icon="plus" onClick={() => setAdding(true)}>Novo pedido</Btn>
             )}
@@ -367,6 +372,10 @@ export function Orders(): React.JSX.Element {
       )}
       {importing && (
         <ImportModal onClose={() => setImporting(false)} onDone={() => { setImporting(false); void load(); }} />
+      )}
+      {importingPdf && (
+        <ImportPdfModal reps={reps} onClose={() => setImportingPdf(false)}
+          onDone={() => { setImportingPdf(false); void load(); }} />
       )}
       {nfModal && (
         <NfModal order={nfModal} onClose={() => setNfModal(null)}
@@ -541,6 +550,189 @@ function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
             <Btn icon="check" type="submit" disabled={busy}>{busy ? '…' : 'Importar'}</Btn>
           </div>
         </form>
+      )}
+    </Modal>
+  );
+}
+
+interface PdfCandidato { id: number; cnpj: string; razao_social: string; cidade: string | null; uf: string; ativa: boolean; in_funnel: boolean }
+interface PdfPreview {
+  linhas: number; ignoradas: number; total: number; statuses: string[]; ja_importados: string[]; produtos_novos: number;
+  clientes: { nome: string; pedidos: number; total: number; candidatos: PdfCandidato[] }[];
+  pedidos: { externo: string; cliente: string; status: string; data: string | null;
+    items: { codigo: string; descricao: string; qtd: number; unidade: string; total: number }[] }[];
+}
+
+// Status do sistema da representada → status do pedido aqui. Palpite inicial; o usuário ajusta.
+const guessStatus = (s: string): OrderStatus => {
+  const n = s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  if (n.includes('cancel')) return 'cancelado';
+  if (n.includes('entreg')) return 'entregue';
+  if (/final|fatur|conclu/.test(n)) return 'faturado';
+  if (/orc|cota/.test(n)) return 'cotacao';
+  return 'enviado';
+};
+
+// Histórico de pedidos em PDF (relatório exportado do sistema da representada):
+// lê no servidor, o usuário confere empresa de cada cliente e status, e grava.
+function ImportPdfModal({ reps, onClose, onDone }: {
+  reps: RepresentedCompany[]; onClose: () => void; onDone: () => void;
+}): React.JSX.Element {
+  const [repId, setRepId] = useState<number | ''>(reps.length === 1 ? reps[0]!.id : '');
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [pv, setPv] = useState<PdfPreview | null>(null);
+  const [statusMap, setStatusMap] = useState<Record<string, OrderStatus>>({});
+  // cliente → company_id escolhido; null = não importar
+  const [escolha, setEscolha] = useState<Record<string, number | null>>({});
+  const [outra, setOutra] = useState<Record<string, PdfCandidato>>({});
+  const [buscando, setBuscando] = useState<string | null>(null);
+  const [result, setResult] = useState<{ criados: number; pulados: string[]; produtos_criados: number; clientes: number } | null>(null);
+
+  const ler = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (!file || repId === '') return;
+    setBusy(true);
+    try {
+      const pdf = await new Promise<string>((ok, fail) => {
+        const r = new FileReader();
+        r.onload = () => ok(String(r.result).split(',')[1] ?? '');
+        r.onerror = () => fail(new Error('Não foi possível ler o arquivo.'));
+        r.readAsDataURL(file);
+      });
+      const r = await api.post<PdfPreview>('/api/orders/import-pdf/preview', { pdf, represented_id: repId });
+      setPv(r);
+      setStatusMap(Object.fromEntries(r.statuses.map((s) => [s, guessStatus(s)])));
+      setEscolha(Object.fromEntries(r.clientes.filter((c) => c.candidatos[0]).map((c) => [c.nome, Number(c.candidatos[0]!.id)])));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não foi possível ler o PDF.');
+    } finally { setBusy(false); }
+  };
+
+  const ja = new Set(pv?.ja_importados ?? []);
+  const aImportar = (pv?.pedidos ?? []).filter((p) => !ja.has(p.externo) && escolha[p.cliente] != null);
+  const pendentes = (pv?.clientes ?? []).filter((c) => !(c.nome in escolha)).length;
+
+  const importar = async (): Promise<void> => {
+    if (!pv || repId === '') return;
+    setBusy(true);
+    try {
+      const r = await api.post<NonNullable<typeof result>>('/api/orders/import-pdf', {
+        represented_id: repId,
+        pedidos: aImportar.map((p) => ({
+          externo: p.externo, company_id: escolha[p.cliente], status: statusMap[p.status] ?? 'enviado',
+          data: p.data, items: p.items,
+        })),
+      });
+      setResult(r);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Não foi possível importar.');
+    } finally { setBusy(false); }
+  };
+
+  const optLabel = (c: PdfCandidato): string =>
+    `${c.razao_social} · ${maskCNPJ(c.cnpj)}${c.cidade ? ` · ${c.cidade}/${c.uf}` : ''}${c.in_funnel ? ' · na carteira' : ''}${c.ativa ? '' : ' · inativa'}`;
+
+  return (
+    <Modal onClose={onClose} width={pv && !result ? '4xl' : 'lg'} title="Importar histórico de pedidos (PDF)">
+      {result ? (
+        <div className="space-y-3">
+          <p className="text-sm text-ink-700">
+            {result.criados} pedido(s) criado(s) para {result.clientes} cliente(s); {result.produtos_criados} produto(s) novo(s) no catálogo.
+            {result.pulados.length > 0 && ` ${result.pulados.length} já estavam importados e foram pulados.`}
+          </p>
+          <div className="flex justify-end"><Btn onClick={onDone}>Concluir</Btn></div>
+        </div>
+      ) : !pv ? (
+        <form onSubmit={ler} className="space-y-3">
+          <p className="text-xs text-ink-400">
+            Relatório de pedidos exportado do sistema da representada, com uma linha por item (pedido, data, produto,
+            quantidade e valor). PDF escaneado ainda não é lido.
+          </p>
+          <select value={repId} onChange={(e) => setRepId(e.target.value === '' ? '' : Number(e.target.value))}
+            aria-label="Representada" required className={inputCls}>
+            <option value="">Representada dos pedidos…</option>
+            {reps.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
+          </select>
+          <input type="file" accept="application/pdf" required aria-label="Arquivo PDF"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="block w-full text-sm text-ink-600" />
+          <div className="flex justify-end gap-2">
+            <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
+            <Btn icon="check" type="submit" disabled={busy || !file || repId === ''}>{busy ? 'Lendo…' : 'Ler PDF'}</Btn>
+          </div>
+        </form>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-sm text-ink-700">
+            {pv.pedidos.length} pedido(s) · {pv.linhas} item(ns) · {brl(pv.total)} · {pv.produtos_novos} produto(s) novo(s) no catálogo.
+            <span className="block text-xs text-ink-400">Confira se o total bate com o rodapé do PDF.</span>
+            {ja.size > 0 && <span className="block text-xs text-ink-500">{ja.size} pedido(s) já importado(s) serão pulados.</span>}
+            {pv.ignoradas > 0 && <span className="block text-xs text-amber-600">{pv.ignoradas} linha(s) sem quantidade ou valor foram ignoradas.</span>}
+          </p>
+
+          <div>
+            <h4 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-ink-500">Status</h4>
+            <div className="flex flex-wrap gap-3">
+              {pv.statuses.map((s) => (
+                <label key={s} className="flex items-center gap-2 text-sm text-ink-700">
+                  <span className="font-semibold">{s || '(vazio)'}</span> →
+                  <select value={statusMap[s]} onChange={(e) => setStatusMap({ ...statusMap, [s]: e.target.value as OrderStatus })}
+                    className={cn(inputCls, 'w-auto')}>
+                    {Object.entries(STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <p className="mt-1 text-xs text-ink-400">Pedido importado não gera comissão prevista.</p>
+          </div>
+
+          <div>
+            <h4 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-ink-500">Clientes</h4>
+            <ul className="divide-y divide-ink-100">
+              {pv.clientes.map((c) => {
+                const extra = outra[c.nome];
+                const opts = extra && !c.candidatos.some((x) => Number(x.id) === Number(extra.id)) ? [extra, ...c.candidatos] : c.candidatos;
+                const v = escolha[c.nome];
+                return (
+                  <li key={c.nome} className="space-y-1.5 py-2">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                      <span className="font-semibold text-ink-800">{c.nome || '(sem nome)'}</span>
+                      <span className="text-xs text-ink-500">{c.pedidos} pedido(s) · {brl(c.total)}</span>
+                    </div>
+                    <select aria-label={`Empresa de ${c.nome}`}
+                      value={v === undefined ? '' : v === null ? 'pular' : String(v)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'buscar') { setBuscando(c.nome); return; }
+                        setEscolha({ ...escolha, [c.nome]: val === 'pular' ? null : Number(val) });
+                      }}
+                      className={cn(inputCls, v === undefined && 'border-amber-400')}>
+                      {v === undefined && <option value="">Escolha a empresa…</option>}
+                      {opts.map((x) => <option key={x.id} value={Number(x.id)}>{optLabel(x)}</option>)}
+                      <option value="buscar">Buscar outra empresa…</option>
+                      <option value="pular">Não importar este cliente</option>
+                    </select>
+                    {buscando === c.nome && (
+                      <CompanySearch onPick={(h) => {
+                        setOutra({ ...outra, [c.nome]: { id: h.id, cnpj: h.cnpj, razao_social: h.razao_social, cidade: h.cidade ?? null, uf: h.uf, ativa: true, in_funnel: false } });
+                        setEscolha({ ...escolha, [c.nome]: Number(h.id) });
+                        setBuscando(null);
+                      }} />
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          <div className="flex items-center justify-end gap-2">
+            {pendentes > 0 && <span className="text-xs text-amber-600">{pendentes} cliente(s) sem empresa</span>}
+            <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
+            <Btn icon="check" onClick={() => void importar()} disabled={busy || pendentes > 0 || aImportar.length === 0}>
+              {busy ? 'Importando…' : `Importar ${aImportar.length} pedido(s)`}
+            </Btn>
+          </div>
+        </div>
       )}
     </Modal>
   );

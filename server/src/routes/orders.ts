@@ -6,6 +6,7 @@ import { invalidOrgRef } from '../orgRefs.ts';
 import { scopeOwner } from '../scope.ts';
 import { createCommissionForOrder, cancelCommissionForOrder } from '../commissions.ts';
 import { orgTaxDefaults, TAX_FIELDS } from './tax.ts';
+import { parsePedidos, pdfWords } from '../pdfPedidos.ts';
 
 type TaxField = (typeof TAX_FIELDS)[number];
 
@@ -695,7 +696,7 @@ export function orderRoutes(app: FastifyInstance): void {
   // Importação de faturamento: CSV com colunas nf, data, cnpj, valor (header
   // obrigatório, ',' ou ';'). Match com pedido 'enviado' da org pelo CNPJ do
   // cliente + valor (tolerância 1 centavo); marca faturado + nf_numero.
-  // Admin only — fatura pedido de qualquer vendedor.
+  // Admin fatura pedido de qualquer vendedor; os demais só os próprios.
   app.post('/api/orders/import', {
     preHandler: [requireAuth, requirePermission('orders.import')],
     schema: {
@@ -739,9 +740,9 @@ export function orderRoutes(app: FastifyInstance): void {
       const candidates = await query<{ id: string }>(
         `SELECT o.id FROM orders o JOIN companies c ON c.id = o.company_id
          WHERE o.org_id = $1 AND o.status = 'enviado' AND c.cnpj = $2
-           AND abs(o.total - $3) <= 0.01
+           AND abs(o.total - $3) <= 0.01 AND ($4::bigint IS NULL OR o.owner_user_id = $4)
          ORDER BY o.numero`,
-        [orgId, cnpj, valor],
+        [orgId, cnpj, valor, req.auth!.isAdmin ? null : req.auth!.userId],
       );
       const match = candidates.map((r) => Number(r.id)).find((oid) => !usados.has(oid));
       if (match === undefined) {
@@ -760,5 +761,257 @@ export function orderRoutes(app: FastifyInstance): void {
       results.push({ linha: n + 1, nf, order_id: match });
     }
     return { processadas: results.length, faturadas: results.filter((r) => r.order_id !== null).length, results };
+  });
+
+  // Importação de histórico a partir do PDF de pedidos da representada, em 2
+  // passos: preview lê o PDF e sugere empresa por cliente; o usuário confere e
+  // manda o lote resolvido para /api/orders/import-pdf.
+  app.post('/api/orders/import-pdf/preview', {
+    preHandler: [requireAuth, requirePermission('orders.import')],
+    bodyLimit: 15 * 1024 * 1024,
+    schema: {
+      body: {
+        type: 'object',
+        required: ['pdf', 'represented_id'],
+        properties: { pdf: { type: 'string', minLength: 1 }, represented_id: { type: 'integer' } },
+      },
+    },
+  }, async (req, reply) => {
+    const orgId = req.auth!.orgId;
+    const { pdf, represented_id } = req.body as { pdf: string; represented_id: number };
+    if (await invalidOrgRef(orgId, { represented_id }, ['represented_id'])) {
+      return reply.code(400).send({ error: 'represented_id inválido' });
+    }
+    const buf = Buffer.from(pdf, 'base64');
+    if (buf.subarray(0, 5).toString() !== '%PDF-') return reply.code(400).send({ error: 'arquivo não é PDF' });
+    let rows;
+    try {
+      rows = parsePedidos(await pdfWords(buf));
+    } catch (e) {
+      req.log.warn({ err: e }, 'import-pdf: falha ao ler PDF');
+      return reply.code(422).send({ error: 'não foi possível ler o PDF' });
+    }
+    if (rows.length === 0) {
+      return reply.code(422).send({ error: 'nenhuma tabela de pedidos encontrada (PDF escaneado ainda não é suportado)' });
+    }
+
+    // agrupa itens em pedidos pelo nº externo
+    const pedidos = new Map<string, { externo: string; cliente: string; status: string; data: string | null;
+      items: { codigo: string; descricao: string; qtd: number; unidade: string; total: number }[] }>();
+    let ignoradas = 0;
+    for (const r of rows) {
+      if (!r.pedido || !r.qtd || r.total == null || !(r.descricao || r.codigo)) { ignoradas++; continue; }
+      const p = pedidos.get(r.pedido)
+        ?? { externo: r.pedido, cliente: r.cliente, status: r.status, data: r.data, items: [] };
+      p.items.push({ codigo: r.codigo, descricao: r.descricao || r.codigo, qtd: r.qtd, unidade: r.unidade, total: r.total });
+      pedidos.set(r.pedido, p);
+    }
+    const lista = [...pedidos.values()];
+
+    const ja = await query<{ numero_externo: string }>(
+      'SELECT numero_externo FROM orders WHERE org_id = $1 AND represented_id = $2 AND numero_externo = ANY($3)',
+      [orgId, represented_id, lista.map((p) => p.externo)],
+    );
+    const codigos = [...new Set(lista.flatMap((p) => p.items.map((i) => i.codigo)).filter(Boolean))];
+    const conhecidos = await query<{ codigo: string }>(
+      `SELECT DISTINCT codigo FROM catalog_items
+       WHERE org_id = $1 AND (represented_id = $2 OR represented_id IS NULL) AND codigo = ANY($3)`,
+      [orgId, represented_id, codigos],
+    );
+
+    // Sugestão de empresa por nome de cliente. Base RFB é maiúscula sem acento.
+    // Candidatos: razão exata + prefixo da 1ª palavra (btree COLLATE "C") + empresas
+    // do funil parecidas. Trigram na base inteira levava segundos por nome.
+    // Homônimos (mesma razão em UFs diferentes): UF da org primeiro.
+    const nomes = [...new Set(lista.map((p) => p.cliente))];
+    const clientes = await Promise.all(nomes.map(async (nome) => {
+      const alvo = nome.normalize('NFKD').replace(/[̀-ͯ]/g, '').toUpperCase()
+        .replace(/\s+/g, ' ').trim().replace(/\.$/, '');
+      const palavras = alvo.replace(/[\\%_]/g, (m) => `\\${m}`).split(' ');
+      const candidatos = alvo ? await query(
+        `WITH cand AS (
+           (SELECT id FROM companies WHERE razao_social COLLATE "C" IN ($1, $1 || '.') AND source <> 'demo' LIMIT 50)
+           UNION
+           (SELECT id FROM companies WHERE razao_social COLLATE "C" LIKE $2 AND source <> 'demo' LIMIT 50)
+           UNION
+           (SELECT id FROM companies WHERE razao_social COLLATE "C" LIKE $3 AND source <> 'demo' LIMIT 50)
+           UNION
+           (SELECT r.company_id FROM company_relationships r JOIN companies c ON c.id = r.company_id
+            WHERE r.org_id = $4 AND similarity(c.razao_social, $1) > 0.4)
+         )
+         SELECT c.id, c.cnpj, c.razao_social, c.nome_fantasia, c.uf, m.nome AS cidade,
+                c.situacao_cadastral = 'ativa' AS ativa,
+                EXISTS (SELECT 1 FROM company_relationships r WHERE r.org_id = $4 AND r.company_id = c.id) AS in_funnel
+         FROM cand JOIN companies c ON c.id = cand.id LEFT JOIN municipios m ON m.id = c.municipio_id
+         ORDER BY in_funnel DESC, round(similarity(c.razao_social, $1)::numeric, 1) DESC,
+                  c.uf = (SELECT uf FROM organizations WHERE id = $4) DESC, ativa DESC,
+                  substr(c.cnpj, 9, 4) = '0001' DESC, c.cnpj
+         LIMIT 10`,
+        [alvo, `${palavras[0]} %`, `${palavras.slice(0, 2).join(' ')} %`, orgId],
+      ) : [];
+      const dele = lista.filter((p) => p.cliente === nome);
+      return {
+        nome, pedidos: dele.length,
+        total: dele.reduce((s, p) => s + p.items.reduce((t, i) => t + i.total, 0), 0),
+        candidatos,
+      };
+    }));
+
+    return {
+      linhas: rows.length, ignoradas,
+      total: rows.reduce((s, r) => s + (r.total ?? 0), 0),
+      statuses: [...new Set(lista.map((p) => p.status))],
+      ja_importados: ja.map((r) => r.numero_externo),
+      produtos_novos: codigos.length - conhecidos.length,
+      clientes, pedidos: lista,
+    };
+  });
+
+  // Grava o lote revisado: cria produto que falta no catálogo (por código),
+  // vincula a empresa à carteira como cliente e cria o pedido já no status de
+  // origem, com a data do relatório. Pedido já importado (mesmo nº externo) é
+  // pulado. Histórico NÃO gera comissão prevista — já foi pago fora do sistema.
+  app.post('/api/orders/import-pdf', {
+    preHandler: [requireAuth, requirePermission('orders.import')],
+    bodyLimit: 15 * 1024 * 1024,
+    schema: {
+      body: {
+        type: 'object',
+        required: ['represented_id', 'pedidos'],
+        properties: {
+          represented_id: { type: 'integer' },
+          pedidos: {
+            type: 'array', minItems: 1, maxItems: 5000,
+            items: {
+              type: 'object',
+              required: ['externo', 'company_id', 'status', 'items'],
+              properties: {
+                externo: { type: 'string', minLength: 1, maxLength: 60 },
+                company_id: { type: 'integer' },
+                status: { type: 'string', enum: Object.keys(TRANSITIONS) },
+                data: { type: ['string', 'null'], pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+                items: {
+                  type: 'array', minItems: 1, maxItems: 500,
+                  items: {
+                    type: 'object',
+                    required: ['descricao', 'qtd', 'total'],
+                    properties: {
+                      codigo: { type: 'string', maxLength: 100 },
+                      descricao: { type: 'string', minLength: 1, maxLength: 500 },
+                      qtd: { type: 'number', exclusiveMinimum: 0 },
+                      unidade: { type: 'string', maxLength: 20 },
+                      total: { type: 'number', minimum: 0 },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    const orgId = req.auth!.orgId;
+    const userId = req.auth!.userId;
+    const { represented_id, pedidos } = req.body as {
+      represented_id: number;
+      pedidos: { externo: string; company_id: number; status: string; data?: string | null;
+        items: { codigo?: string; descricao: string; qtd: number; unidade?: string; total: number }[] }[];
+    };
+    if (await invalidOrgRef(orgId, { represented_id }, ['represented_id'])) {
+      return reply.code(400).send({ error: 'represented_id inválido' });
+    }
+    const companyIds = [...new Set(pedidos.map((p) => p.company_id))];
+    const found = await query<{ id: string }>('SELECT id FROM companies WHERE id = ANY($1)', [companyIds]);
+    if (found.length !== companyIds.length) return reply.code(400).send({ error: 'company_id inválido' });
+
+    const res = await withClient(async (c) => {
+      await c.query('BEGIN');
+      try {
+        await c.query('SELECT pg_advisory_xact_lock(42, $1)', [orgId]);
+        const stage = await c.query('SELECT id FROM stages WHERE org_id = $1 ORDER BY ordem LIMIT 1', [orgId]);
+        const rels = new Map<number, number>();
+        const produtos = new Map<string, number>();
+        let produtosCriados = 0;
+        const criados: number[] = [];
+        const pulados: string[] = [];
+        for (const p of pedidos) {
+          const dup = await c.query(
+            'SELECT 1 FROM orders WHERE org_id = $1 AND represented_id = $2 AND numero_externo = $3',
+            [orgId, represented_id, p.externo],
+          );
+          if (dup.rowCount) { pulados.push(p.externo); continue; }
+
+          let relId = rels.get(p.company_id);
+          if (relId === undefined) {
+            await c.query(
+              `INSERT INTO company_relationships (org_id, company_id, owner_user_id, stage_id, status)
+               VALUES ($1, $2, $3, $4, 'cliente') ON CONFLICT ON CONSTRAINT company_relationships_uq DO NOTHING`,
+              [orgId, p.company_id, userId, stage.rows[0]?.id ?? null],
+            );
+            const r = await c.query('SELECT id FROM company_relationships WHERE org_id = $1 AND company_id = $2', [orgId, p.company_id]);
+            relId = Number(r.rows[0].id);
+            rels.set(p.company_id, relId);
+          }
+
+          const emitido = p.status !== 'cotacao' && p.status !== 'rascunho';
+          const faturado = p.status === 'faturado' || p.status === 'entregue';
+          const o = await c.query(
+            `INSERT INTO orders (org_id, numero, relationship_id, company_id, represented_id, owner_user_id,
+               status, numero_externo, created_at, emitido_em, faturado_em)
+             VALUES ($1, (SELECT COALESCE(MAX(numero),0)+1 FROM orders WHERE org_id = $1), $2, $3, $4, $5,
+               $6::order_status, $7, COALESCE($8::date::timestamptz, now()),
+               CASE WHEN $9 THEN COALESCE($8::date::timestamptz, now()) END,
+               CASE WHEN $10 THEN COALESCE($8::date::timestamptz, now()) END)
+             RETURNING id`,
+            [orgId, relId, p.company_id, represented_id, userId, p.status, p.externo, p.data ?? null, emitido, faturado],
+          );
+          const orderId = Number(o.rows[0].id);
+
+          for (const it of p.items) {
+            // produto: mesmo código (ou nome, se o PDF não traz código) da representada ou sem representada
+            const chave = it.codigo ? `c:${it.codigo}` : `n:${it.descricao}`;
+            let catId = produtos.get(chave);
+            if (catId === undefined) {
+              const ex = await c.query(
+                `SELECT id FROM catalog_items WHERE org_id = $1 AND (represented_id = $2 OR represented_id IS NULL)
+                   AND ${it.codigo ? 'codigo = $3' : "nome = $3 AND COALESCE(codigo, '') = ''"}
+                 ORDER BY represented_id NULLS LAST, id LIMIT 1`,
+                [orgId, represented_id, it.codigo || it.descricao],
+              );
+              if (ex.rowCount) catId = Number(ex.rows[0].id);
+              else {
+                const n = await c.query(
+                  `INSERT INTO catalog_items (org_id, nome, codigo, unidade_medida, represented_id)
+                   VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+                  [orgId, it.descricao, it.codigo || null, it.unidade || null, represented_id],
+                );
+                catId = Number(n.rows[0].id);
+                produtosCriados++;
+              }
+              produtos.set(chave, catId);
+            }
+            // preço = total ÷ qtd do relatório; impostos 0 p/ o total bater com o PDF
+            await c.query(
+              `INSERT INTO order_items (order_id, catalog_item_id, descricao_snapshot, unidade_medida_snapshot, qtd, preco_unit)
+               VALUES ($1, $2, $3, $4, $5, round($6::numeric / $5::numeric, 6))`,
+              [orderId, catId, it.descricao, it.unidade || null, it.qtd, it.total],
+            );
+          }
+          await c.query(RECOMPUTE_TOTAL, [orderId]);
+          criados.push(orderId);
+        }
+        await c.query('COMMIT');
+        return { criados, pulados, produtosCriados, clientes: rels.size };
+      } catch (e) {
+        await c.query('ROLLBACK');
+        throw e;
+      }
+    });
+    for (const id of res.criados) await audit(req, 'order', id, 'create', { import_pdf: true, represented_id });
+    return {
+      criados: res.criados.length, pulados: res.pulados,
+      produtos_criados: res.produtosCriados, clientes: res.clientes,
+    };
   });
 }

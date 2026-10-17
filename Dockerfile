@@ -13,8 +13,9 @@ RUN npm run build
 FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-# Chromium renderiza SPAs durante fallback da busca de contatos.
-RUN apk add --no-cache chromium
+# Chromium renderiza SPAs durante fallback da busca de contatos; poppler-utils
+# (pdftotext) lê o PDF de pedidos na importação de histórico.
+RUN apk add --no-cache chromium poppler-utils
 ENV CHROMIUM_PATH=/usr/bin/chromium-browser
 # only production deps; the server runs TypeScript directly via Node 24 type-stripping
 COPY server/package.json server/package-lock.json ./

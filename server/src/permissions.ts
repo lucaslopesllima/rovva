@@ -200,7 +200,8 @@ const byModule = (m: Permission['module']): string[] =>
 
 // Ações de carteira ficavam restritas ao admin antes do RBAC fino — não entram
 // no preset do vendedor para não afrouxar o que já era admin-only.
-const ADMIN_ONLY_VENDAS = new Set(['carteiras.view', 'relationships.transfer', 'orders.import']);
+// orders.import saiu daqui (087): importar pedido é de todos os usuários.
+const ADMIN_ONLY_VENDAS = new Set(['carteiras.view', 'relationships.transfer']);
 
 // Cadastros de apoio que o funil/pedidos consomem no dia a dia (representadas,
 // marcas, contatos, cenários, ações, etapas, amostras) — antes do RBAC eram só

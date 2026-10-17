@@ -380,7 +380,7 @@ describe('orders: importação de faturamento (CSV)', () => {
     expect(after.order.faturado_em).toContain('2026-06-01');
   });
 
-  it('duas linhas iguais consomem pedidos distintos; delimitador vírgula; só admin importa', async () => {
+  it('duas linhas iguais consomem pedidos distintos; delimitador vírgula; vendedor só fatura os próprios', async () => {
     const cid = await makeCompany();
     const cnpj = (await one<{ cnpj: string }>('SELECT cnpj FROM companies WHERE id = $1', [cid]))!.cnpj;
     const mk = async (): Promise<Order> => {
@@ -395,6 +395,10 @@ describe('orders: importação de faturamento (CSV)', () => {
     const o2 = await mk();
 
     const csv = `nf,data,cnpj,valor\nA1,2026-06-10,${cnpj},500\nA2,2026-06-11,${cnpj},500`;
+    // pedidos são do admin: vendedor importa, mas não fatura pedido alheio
+    const dele = await inj(rep, 'POST', '/api/orders/import', { csv });
+    expect(dele.statusCode).toBe(200);
+    expect((dele.json() as { faturadas: number }).faturadas).toBe(0);
     const r = await inj(a, 'POST', '/api/orders/import', { csv });
     const res = r.json() as { faturadas: number; results: { order_id: number | null }[] };
     expect(res.faturadas).toBe(2);
@@ -402,7 +406,6 @@ describe('orders: importação de faturamento (CSV)', () => {
     expect([Number(o1.id), Number(o2.id)].sort()).toEqual(res.results.map((x) => Number(x.order_id)).sort());
 
     expect((await inj(a, 'POST', '/api/orders/import', { csv: 'foo;bar\n1;2' })).statusCode).toBe(400);
-    expect((await inj(rep, 'POST', '/api/orders/import', { csv })).statusCode).toBe(403);
   });
 });
 
@@ -456,5 +459,94 @@ describe('orders/price-tables: ROLLBACK em erro de transação', () => {
     // tabela continua sem itens (rollback)
     const det = (await inj(a, 'GET', `/api/price-tables/${t.id}`)).json() as { table: { items: unknown[] } };
     expect(det.table.items.length).toBe(0);
+  });
+});
+
+// PDF mínimo com texto posicionado (Helvetica, A4 paisagem) — o mesmo tipo de
+// relatório que a representada exporta. cells: [x, yDoTopo, texto].
+function pdfDe(cells: [number, number, string][]): string {
+  const body = cells.map(([x, y, t]) => `BT /F1 9 Tf ${x} ${595 - y} Td (${t}) Tj ET`).join('\n');
+  const objs = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+    `<< /Length ${body.length} >>\nstream\n${body}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offs = objs.map((o, i) => { const off = pdf.length; pdf += `${i + 1} 0 obj\n${o}\nendobj\n`; return off; });
+  const xref = pdf.length;
+  pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${offs.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}`;
+  pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return Buffer.from(pdf, 'latin1').toString('base64');
+}
+
+describe('orders: importação de histórico (PDF)', () => {
+  const head: [number, number, string][] = [
+    [10, 80, 'Id'], [60, 80, 'Status'], [140, 80, 'Data'], [220, 80, 'Produto, codigo'],
+    [330, 80, 'Produto, descricao'], [560, 80, 'Quantidade'], [700, 80, 'Valor total'],
+  ];
+  const pdf = (cliente: string): string => pdfDe([
+    [10, 50, cliente], ...head,
+    // pedido 9001: 2 itens, código do 1º quebrado em duas linhas
+    [10, 110, '9.001'], [60, 110, 'FINALIZADO'], [140, 110, '16/05/2025'],
+    [220, 104, '135144-'], [220, 116, '422B0063'], [330, 110, 'Taiti, OFF WHITE'], [565, 110, '10 m'], [705, 110, 'R$ 92,60'],
+    [10, 140, '9.001'], [60, 140, 'FINALIZADO'], [140, 140, '16/05/2025'],
+    [220, 140, 'XPTO-1'], [330, 140, 'Perry, PECAN'], [565, 140, '42,3 m'], [705, 140, 'R$ 718,68'],
+    [10, 170, '9.002'], [60, 170, 'CANCELADO'], [140, 170, '06/08/2025'],
+    [220, 170, 'XPTO-1'], [330, 170, 'Perry, PECAN'], [565, 170, '1.000 m'], [705, 170, 'R$ 16.990,10'],
+    // subtotal (sem data) não vira item
+    [10, 200, '3'], [565, 200, '1.052,3 m'], [705, 200, 'R$ 17.801,38'],
+  ]);
+
+  it('preview lê o PDF e sugere a empresa; import cria produto, carteira e pedido; reimportar pula', async () => {
+    const razao = `PDF IMPORT ${Math.random().toString(36).replace(/[^a-z]/g, '')} LTDA`;
+    const cid = await makeCompany({ razao });
+    const pv = await inj(a, 'POST', '/api/orders/import-pdf/preview', { pdf: pdf(razao.toLowerCase()), represented_id: repA });
+    expect(pv.statusCode).toBe(200);
+    const p = pv.json() as {
+      linhas: number; total: number; statuses: string[]; produtos_novos: number; ja_importados: string[];
+      clientes: { nome: string; candidatos: { id: string }[] }[];
+      pedidos: { externo: string; status: string; data: string; items: { codigo: string; qtd: number; total: number }[] }[];
+    };
+    expect(p.linhas).toBe(3);
+    expect(p.total).toBeCloseTo(17801.38, 2);
+    expect(p.statuses.sort()).toEqual(['CANCELADO', 'FINALIZADO']);
+    expect(p.produtos_novos).toBe(2);
+    expect(Number(p.clientes[0]!.candidatos[0]!.id)).toBe(cid);
+    expect(p.pedidos[0]!.items[0]!.codigo).toBe('135144-422B0063');
+    expect(p.pedidos[0]!.data).toBe('2025-05-16');
+
+    const lote = {
+      represented_id: repA,
+      pedidos: p.pedidos.map((o) => ({ ...o, company_id: cid, status: o.status === 'CANCELADO' ? 'cancelado' : 'faturado' })),
+    };
+    const imp = await inj(a, 'POST', '/api/orders/import-pdf', lote);
+    expect(imp.statusCode).toBe(200);
+    expect(imp.json()).toMatchObject({ criados: 2, pulados: [], produtos_criados: 2, clientes: 1 });
+
+    const ord = await one<{ status: string; total: string; faturado_em: Date; relationship_id: string | null; n: string }>(
+      `SELECT o.status, o.total, o.faturado_em, o.relationship_id,
+              (SELECT count(*) FROM commission_entries e WHERE e.order_id = o.id) AS n
+       FROM orders o WHERE o.numero_externo = '9001' AND o.company_id = $1`, [cid],
+    );
+    expect(ord!.status).toBe('faturado');
+    expect(Number(ord!.total)).toBeCloseTo(811.28, 2);
+    expect(ord!.faturado_em.toISOString()).toContain('2025-05-1');
+    expect(ord!.relationship_id).not.toBeNull();
+    expect(Number(ord!.n)).toBe(0); // histórico não gera comissão
+
+    const de_novo = await inj(a, 'POST', '/api/orders/import-pdf', lote);
+    expect(de_novo.json()).toMatchObject({ criados: 0, pulados: ['9001', '9002'], produtos_criados: 0 });
+    const pv2 = (await inj(a, 'POST', '/api/orders/import-pdf/preview', { pdf: pdf(razao), represented_id: repA })).json() as typeof p;
+    expect(pv2.ja_importados.sort()).toEqual(['9001', '9002']);
+    expect(pv2.produtos_novos).toBe(0);
+  });
+
+  it('rejeita não-PDF, PDF sem tabela e representada de outra org; vendedor pode importar', async () => {
+    expect((await inj(a, 'POST', '/api/orders/import-pdf/preview', { pdf: Buffer.from('oi').toString('base64'), represented_id: repA })).statusCode).toBe(400);
+    expect((await inj(a, 'POST', '/api/orders/import-pdf/preview', { pdf: pdfDe([[10, 50, 'nada aqui']]), represented_id: repA })).statusCode).toBe(422);
+    expect((await inj(rep, 'POST', '/api/orders/import-pdf/preview', { pdf: pdf('X'), represented_id: repA })).statusCode).toBe(200);
+    expect((await inj(a, 'POST', '/api/orders/import-pdf/preview', { pdf: pdf('X'), represented_id: repB })).statusCode).toBe(400);
   });
 });
