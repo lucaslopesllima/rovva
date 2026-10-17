@@ -644,21 +644,58 @@ function ImportPdfModal({ reps, onClose, onDone }: {
           <div className="flex justify-end"><Btn onClick={onDone}>Concluir</Btn></div>
         </div>
       ) : !pv ? (
-        <form onSubmit={ler} className="space-y-3">
-          <p className="text-xs text-ink-400">
-            Relatório de pedidos exportado do sistema da representada, com uma linha por item (pedido, data, produto,
-            quantidade e valor). PDF escaneado ainda não é lido.
+        <form onSubmit={ler} className="space-y-5">
+          <p className="text-sm text-ink-600">
+            Traga os pedidos antigos que estão no sistema da representada. Você confere tudo antes de gravar.
           </p>
-          <select value={repId} onChange={(e) => setRepId(e.target.value === '' ? '' : Number(e.target.value))}
-            aria-label="Representada" required className={inputCls}>
-            <option value="">Representada dos pedidos…</option>
-            {reps.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
-          </select>
-          <input type="file" accept="application/pdf" required aria-label="Arquivo PDF"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="block w-full text-sm text-ink-600" />
+
+          <div>
+            <label htmlFor="pdf-rep" className="mb-1.5 block text-sm font-semibold text-ink-800">
+              1. De qual representada são os pedidos?
+            </label>
+            <select id="pdf-rep" value={repId} onChange={(e) => setRepId(e.target.value === '' ? '' : Number(e.target.value))}
+              required className={inputCls}>
+              <option value="">Escolha a representada…</option>
+              {reps.map((r) => <option key={r.id} value={r.id}>{r.nome}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <p className="mb-1.5 text-sm font-semibold text-ink-800">2. Envie o relatório de pedidos em PDF</p>
+            <label
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files[0];
+                if (f?.type === 'application/pdf') setFile(f); else toast.error('Envie um arquivo PDF.');
+              }}
+              className={cn('flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors',
+                file ? 'border-brand-400 bg-brand-50 dark:bg-brand-500/10' : 'border-ink-200 hover:border-brand-400 hover:bg-ink-50 dark:hover:bg-white/5')}>
+              <input type="file" accept="application/pdf" className="sr-only"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+              {file ? (
+                <>
+                  <Icon name="check" size={20} className="text-brand-600 dark:text-brand-400" />
+                  <span className="text-sm font-semibold text-ink-800">{file.name}</span>
+                  <span className="text-xs text-ink-500">{(file.size / 1024).toFixed(0)} KB · clique para trocar</span>
+                </>
+              ) : (
+                <>
+                  <Icon name="paperclip" size={20} className="text-ink-400" />
+                  <span className="text-sm font-semibold text-ink-800">Clique para escolher ou arraste o PDF aqui</span>
+                  <span className="text-xs text-ink-500">Exportado do sistema da representada</span>
+                </>
+              )}
+            </label>
+            <p className="mt-1.5 text-xs text-ink-400">
+              O relatório precisa ter uma linha por item com pedido, data, produto, quantidade e valor.
+              PDF escaneado (foto/imagem) ainda não é lido.
+            </p>
+          </div>
+
           <div className="flex justify-end gap-2">
             <Btn variant="ghost" type="button" onClick={onClose}>Cancelar</Btn>
-            <Btn icon="check" type="submit" disabled={busy || !file || repId === ''}>{busy ? 'Lendo…' : 'Ler PDF'}</Btn>
+            <Btn icon="arrowRight" type="submit" disabled={busy || !file || repId === ''}>{busy ? 'Lendo…' : 'Ler pedidos do PDF'}</Btn>
           </div>
         </form>
       ) : (
