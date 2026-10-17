@@ -42,11 +42,15 @@ export interface AuthClaims {
   // mudam em runtime). isAdmin = bypass total. Preenchidos por requireAuth.
   permissions: Set<string>;
   isAdmin: boolean;
+  // master (config.masterEmail): admin em qualquer org que estiver no token.
+  isMaster: boolean;
 }
 
-// Só os campos que vão (e voltam) no JWT — permissions/isAdmin são carregados
+// Só os campos que vão (e voltam) no JWT — permissions/isAdmin/isMaster são carregados
 // do banco em requireAuth, não trafegam no token.
 export type TokenClaims = Pick<AuthClaims, 'userId' | 'orgId' | 'role' | 'tokenVersion'>;
+
+export const isMasterEmail = (email: string): boolean => email.trim().toLowerCase() === config.masterEmail;
 
 export async function signToken(claims: TokenClaims): Promise<string> {
   return new SignJWT({ org: claims.orgId, role: claims.role, ver: claims.tokenVersion })
@@ -82,9 +86,9 @@ export async function authorizeToken(token: string, requiredPerm?: string): Prom
   // Mesma ida ao banco que valida ativo/token_version já traz o grupo do usuário
   // (LEFT JOIN, sem N+1). group_id NULL → sem permissões (admin ainda passa via role).
   const u = await one<{
-    ativo: boolean; token_version: number; is_admin: boolean | null; permissions: string[] | null;
+    email: string; ativo: boolean; token_version: number; is_admin: boolean | null; permissions: string[] | null;
   }>(
-    `SELECT u.ativo, u.token_version, g.is_admin, g.permissions
+    `SELECT u.email, u.ativo, u.token_version, g.is_admin, g.permissions
        FROM users u LEFT JOIN permission_groups g ON g.id = u.group_id
       WHERE u.id = $1`,
     [claims.userId],
@@ -92,10 +96,11 @@ export async function authorizeToken(token: string, requiredPerm?: string): Prom
   if (!u || !u.ativo) throw new AuthError('usuário desativado');
   // Token de versão antiga (senha trocada/resetada depois da emissão) não vale mais.
   if (u.token_version !== claims.tokenVersion) throw new AuthError('sessão expirada');
-  const isAdmin = claims.role === 'admin' || u.is_admin === true;
+  const isMaster = isMasterEmail(u.email);
+  const isAdmin = isMaster || claims.role === 'admin' || u.is_admin === true;
   const permissions = new Set(u.permissions ?? []);
   if (requiredPerm && !isAdmin && !permissions.has(requiredPerm)) throw new AuthError('sem permissão');
-  return { ...claims, permissions, isAdmin };
+  return { ...claims, permissions, isAdmin, isMaster };
 }
 
 // Fastify preHandler: require a valid Bearer token, attach claims to request.auth.

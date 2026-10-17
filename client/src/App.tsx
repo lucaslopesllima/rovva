@@ -1,7 +1,7 @@
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useAuth } from './lib/auth.tsx';
-import { api } from './lib/api.ts';
+import { useAuth, clearCachedUser } from './lib/auth.tsx';
+import { api, setToken } from './lib/api.ts';
 import type { Notification } from './lib/types.ts';
 import { Icon, type IconName } from './lib/icons.tsx';
 import { LogoMark, LogoWord } from './lib/logo.tsx';
@@ -288,6 +288,27 @@ function Sidebar(): React.JSX.Element {
   );
 }
 
+// Seletor de org do usuário master: troca a org do token e recarrega o app
+// do zero (caches de página/usuário são da org anterior).
+export function OrgSwitcher({ orgId }: { orgId: number | string }): React.JSX.Element {
+  const [orgs, setOrgs] = useState<{ id: number | string; nome: string }[]>([]);
+  useEffect(() => {
+    api.get<{ orgs: { id: number | string; nome: string }[] }>('/api/auth/orgs').then((r) => setOrgs(r.orgs)).catch(() => undefined);
+  }, []);
+  const trocar = async (id: string): Promise<void> => {
+    const r = await api.post<{ token: string }>('/api/auth/switch-org', { org_id: Number(id) });
+    setToken(r.token);
+    clearCachedUser();
+    location.href = '/';
+  };
+  return (
+    <select aria-label="Trocar organização" value={String(orgId)} onChange={(e) => void trocar(e.target.value)}
+      className="h-9 max-w-32 rounded-lg lg:max-w-48 border border-ink-200 bg-surface px-2 text-xs font-medium text-ink-700">
+      {orgs.map((o) => <option key={o.id} value={String(o.id)}>{o.nome}</option>)}
+    </select>
+  );
+}
+
 // Destino de cada tipo de notificação ao clicar.
 const NOTIF_DEST: Record<Notification['tipo'], string> = {
   vencimento: '/financeiro', agenda: '/agenda', comissao: '/comissoes', parado: '/funil',
@@ -495,6 +516,7 @@ function Shell({ children }: { children: ReactNode }): React.JSX.Element {
             <span className="truncate text-sm font-semibold text-ink-900">{title}</span>
           </div>
           <div className="flex items-center gap-2">
+            {user?.is_master && <OrgSwitcher orgId={user.org_id} />}
             <ThemeToggle variant="light" />
             <NotificationBell variant="light" />
             <NavLink to="/conta" aria-label="Meu perfil"
@@ -511,6 +533,7 @@ function Shell({ children }: { children: ReactNode }): React.JSX.Element {
             <span className="truncate font-medium text-ink-800">{title}</span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {user?.is_master && <OrgSwitcher orgId={user.org_id} />}
             <ThemeToggle variant="light" />
             <NotificationBell variant="light" />
           </div>

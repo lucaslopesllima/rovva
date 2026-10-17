@@ -54,6 +54,9 @@ export const config = {
   authRateLimitWindow: process.env.AUTH_RATE_LIMIT_WINDOW ?? '1 minute',
   // Captação da landing. Só este login visualiza e administra os pedidos.
   leadsAdminEmail: (process.env.LEADS_ADMIN_EMAIL ?? 'lucaslopesllima@gmail.com').trim().toLowerCase(),
+  // Usuário master: entra em qualquer org com todas as permissões (troca via
+  // POST /api/auth/switch-org). Só este e-mail.
+  masterEmail: (process.env.MASTER_EMAIL ?? 'lucaslopesllima@gmail.com').trim().toLowerCase(),
   leadRateLimitMax: Number(process.env.LEAD_RATE_LIMIT_MAX ?? 5),
   leadRateLimitWindow: process.env.LEAD_RATE_LIMIT_WINDOW ?? '1 hour',
   // Evolution API (gateway WhatsApp não oficial). URL interna do container e a

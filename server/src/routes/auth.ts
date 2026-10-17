@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { pool, query, one } from '../db.ts';
-import { hashPassword, verifyPassword, verifyAgainstDummy, signToken, requireAuth } from '../auth.ts';
+import { hashPassword, verifyPassword, verifyAgainstDummy, signToken, requireAuth, isMasterEmail } from '../auth.ts';
+import { audit } from '../audit.ts';
 import { ensureDefaultGroups } from '../seedGroups.ts';
 import { config } from '../config.ts';
 
@@ -135,31 +136,59 @@ export function authRoutes(app: FastifyInstance): void {
         org_nome: user.org_nome, tipo_conta: user.tipo_conta,
         nome: user.nome, must_change_password: user.must_change_password,
         group_id: user.group_id, group_nome: user.group_nome,
-        is_admin: user.role === 'admin' || user.is_admin === true,
+        is_admin: isMasterEmail(email) || user.role === 'admin' || user.is_admin === true,
+        is_master: isMasterEmail(email),
         permissions: user.permissions ?? [],
       },
     };
   });
 
   app.get('/api/auth/me', { preHandler: requireAuth }, async (req) => {
-    const { userId, orgId } = req.auth!;
+    const { userId, orgId, isMaster } = req.auth!;
+    // Master pode estar numa org que não é a dele: org vem do token, não de users.org_id.
     const user = await one<{ role: string; is_admin: boolean | null; permissions: string[] | null }>(
       `SELECT u.id, u.email, u.nome, u.role, u.must_change_password, u.group_id,
               g.nome AS group_nome, g.is_admin, g.permissions,
               o.nome AS org_nome, o.id AS org_id, o.tipo_conta
          FROM users u
-         JOIN organizations o ON o.id = u.org_id
+         JOIN organizations o ON o.id = $2
          LEFT JOIN permission_groups g ON g.id = u.group_id
-        WHERE u.id = $1 AND u.org_id = $2`,
-      [userId, orgId],
+        WHERE u.id = $1 AND (u.org_id = $2 OR $3)`,
+      [userId, orgId, isMaster],
     );
     if (!user) return { user: null };
     return {
       user: {
         ...user,
-        is_admin: user.role === 'admin' || user.is_admin === true,
+        is_admin: isMaster || user.role === 'admin' || user.is_admin === true,
+        is_master: isMaster,
         permissions: user.permissions ?? [],
       },
     };
+  });
+
+  // ── Master: lista todas as orgs e troca a org do token ──────────────────
+  app.get('/api/auth/orgs', { preHandler: requireAuth }, async (req, reply) => {
+    if (!req.auth!.isMaster) return reply.code(403).send({ error: 'apenas master' });
+    const orgs = await query('SELECT id, nome, tipo_conta FROM organizations ORDER BY nome');
+    return { orgs };
+  });
+
+  app.post('/api/auth/switch-org', {
+    preHandler: requireAuth,
+    schema: {
+      body: { type: 'object', required: ['org_id'], properties: { org_id: { type: 'integer', minimum: 1 } } },
+    },
+  }, async (req, reply) => {
+    const a = req.auth!;
+    if (!a.isMaster) return reply.code(403).send({ error: 'apenas master' });
+    const { org_id } = req.body as { org_id: number };
+    const org = await one('SELECT id FROM organizations WHERE id = $1', [org_id]);
+    if (!org) return reply.code(404).send({ error: 'org não encontrada' });
+    const token = await signToken({ userId: a.userId, orgId: org_id, role: 'admin', tokenVersion: a.tokenVersion });
+    // registrado na org de destino: o dono da org vê na auditoria que o master entrou.
+    req.auth = { ...a, orgId: org_id };
+    await audit(req, 'organization', org_id, 'master_switch_org', { de: a.orgId });
+    return { token };
   });
 }

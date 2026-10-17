@@ -13,7 +13,7 @@ function cacheUser(u: User): void {
 function getCachedUser(): User | null {
   try { const raw = localStorage.getItem(USER_KEY); return raw ? (JSON.parse(raw) as User) : null; } catch { return null; }
 }
-function clearCachedUser(): void {
+export function clearCachedUser(): void {
   try { localStorage.removeItem(USER_KEY); } catch { /* noop */ }
 }
 
@@ -30,6 +30,8 @@ export interface User {
   group_id?: number | string | null;
   group_nome?: string | null;
   is_admin?: boolean;
+  // master: entra em qualquer org (seletor no header, POST /api/auth/switch-org).
+  is_master?: boolean;
   permissions?: string[];
   // escritório = multi-usuário (default); individual = single-user, esconde equipe/RBAC/carteiras.
   tipo_conta?: 'escritorio' | 'individual';
