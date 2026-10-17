@@ -52,6 +52,17 @@ export function leadRoutes(app: FastifyInstance, adminEmail = config.leadsAdminE
     return reply.code(201).send({ ok: true });
   });
 
+  // ponytail: conta carregamentos com JS, sem dedupe por visitante; rate limit só barra flood
+  app.post('/api/landing/visit', {
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+  }, async (_req, reply) => {
+    await query(
+      `INSERT INTO landing_visits (dia, visitas) VALUES ((now() AT TIME ZONE 'America/Sao_Paulo')::date, 1)
+       ON CONFLICT (dia) DO UPDATE SET visitas = landing_visits.visitas + 1`,
+    );
+    return reply.code(204).send();
+  });
+
   const ownerGuard = async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
     await requireLeadsOwner(req, reply, adminEmail);
   };

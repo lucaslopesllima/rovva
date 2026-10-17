@@ -1,11 +1,12 @@
 # Rovva — Oferta e planos
 
-Modelo do produto: uma conta **por organização**, cobrada **por usuário** (cada
-representante é um usuário). O empacotamento segue esses eixos: número de usuários,
+Modelo do produto: uma conta **por organização**, com mensalidade que já inclui usuários
+e valor fixo por usuário extra (cada representante é um usuário). O empacotamento segue esses eixos: número de usuários,
 territórios, profundidade do ciclo comercial (pedidos/comissões/financeiro) e nível de
 suporte.
 
-> Preço **médio, por usuário**, ancorado em valor: o Rovva substitui lista comprada +
+> Preço de **tabela** + **preço de fundador** (~30% menor, garantido enquanto assinar) para
+> os primeiros clientes. Preço ancorado em valor: o Rovva substitui lista comprada +
 > planilha + achismo e devolve horas de prospecção por semana. Âncora anual = **2 meses
 > grátis**. **Trial de 14 dias.**
 
@@ -15,7 +16,7 @@ suporte.
 
 ### 🟦 Solo — representante autônomo
 Para quem toca a própria carteira sozinho.
-- **R$ 150 / mês** · anual **R$ 125/mês** (R$ 1.500/ano)
+- Tabela **R$ 197 / mês** · fundador **R$ 139 / mês** · anual **R$ 1.390/ano**
 - **1 usuário**
 - Lista de empresas pra abordar (com mapa) · 1 território
 - Funil de vendas · agenda · clientes/carteiras
@@ -25,7 +26,8 @@ Para quem toca a própria carteira sozinho.
 
 ### 🟧 Equipe — escritório pequeno · **MAIS POPULAR**
 Para escritórios com um time de representantes.
-- **R$ 140 / usuário / mês** · anual **R$ 117/usuário/mês** · mínimo **2 usuários**
+- Tabela **R$ 297 / mês** · fundador **R$ 209 / mês** · **2 usuários inclusos**
+- Usuário extra: **R$ 69 / mês** (fundador)
 - Tudo do Solo, para todos os usuários
 - Funil **compartilhado** · vários vendedores com **metas**
 - **Comissões** (com divisão entre vendedores) · amostras · transportadoras
@@ -35,7 +37,8 @@ Para escritórios com um time de representantes.
 
 ### 🟪 Escritório — operação completa
 Para escritórios maiores, com vários territórios e várias representadas.
-- **Sob consulta** · mínimo **5 usuários**
+- Tabela **R$ 790 / mês** · fundador **a partir de R$ 549 / mês** · **5 usuários inclusos**
+- Usuário extra: **R$ 59 / mês** (fundador)
 - Tudo do Equipe
 - **Territórios ilimitados** · empresas no funil ilimitadas
 - Conferência de comissões · financeiro (contas, categorias, recorrência)
@@ -61,7 +64,9 @@ Para escritórios maiores, com vários territórios e várias representadas.
 | Permissões por perfil | — | ✅ | ✅ |
 | Relatórios avançados / histórico | — | básico | ✅ |
 | Suporte | e-mail | e-mail | prioritário + configuração |
-| Preço | R$ 125/mês | R$ 117/usuário | Sob consulta |
+| Preço fundador | R$ 139/mês | R$ 209/mês (2 usuários) | a partir de R$ 549/mês (5 usuários) |
+| Usuário extra | — | R$ 69 | R$ 59 |
+| Preço de tabela | R$ 197 | R$ 297 | R$ 790 |
 
 ---
 
@@ -70,6 +75,8 @@ Para escritórios maiores, com vários territórios e várias representadas.
 - **Trial:** 14 dias, plano Equipe liberado para testar.
 - **Upgrade/downgrade:** a qualquer momento; cobrança proporcional aos dias usados.
 - **Anual:** 2 meses grátis vs. mensal.
+- **Preço de fundador:** ~30% abaixo da tabela, para os primeiros 20–50 clientes, mantido
+  enquanto a assinatura estiver ativa. Depois disso, novos clientes pagam tabela.
 - **Novidade futura:** entrada automática de notas fiscais para gerar a comissão sozinha
   (fase 2) — comunicar como "em breve", não incluir no preço agora.
 

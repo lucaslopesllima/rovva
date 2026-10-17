@@ -229,6 +229,8 @@
   .plan-who { min-height: 44px; margin-top: 5px; color: var(--muted); font-size: .82rem; }
   .price { margin-top: 20px; font-size: 2.35rem; font-weight: 850; letter-spacing: -.055em; }
   .price small { color: var(--slate); font-size: .8rem; font-weight: 650; letter-spacing: 0; }
+  .list-price { margin-top: 20px; color: var(--muted); font-size: .78rem; }
+  .list-price + .price { margin-top: 2px; }
   .annual { min-height: 22px; margin-top: 3px; color: var(--success); font-size: .72rem; font-weight: 750; }
   .plan ul { display: grid; gap: 10px; margin: 24px 0 28px; list-style: none; }
   .plan li { position: relative; padding-left: 25px; color: var(--slate); font-size: .84rem; }
@@ -543,25 +545,25 @@
       <div class="section-head center">
         <span class="kicker">Planos</span>
         <h2>Comece pequeno. Cresça sem trocar de sistema.</h2>
-        <p>Conheça Rovva em uma conversa rápida e solicite seu teste grátis acompanhado.</p>
+        <p>Preço de fundador garantido enquanto você for assinante. Teste grátis de 14 dias. No anual, 2 meses grátis.</p>
       </div>
       <div class="plans">
         <article class="plan">
           <h3>Solo</h3><p class="plan-who">Para representante autônomo</p>
-          <div class="price">Sob consulta</div><div class="annual"></div>
+          <div class="list-price">de <s>R$ 197</s> por</div><div class="price">R$ 139 <small>/mês</small></div><div class="annual">Preço de fundador · R$ 1.390 no anual</div>
           <ul><li>1 usuário e 1 território</li><li>Prospecção com lista e mapa</li><li>Funil, agenda e carteiras</li><li>Catálogo, preços e pedidos</li><li>WhatsApp e e-mail agendado</li><li>Até 500 empresas no funil</li></ul>
           <a class="btn btn-secondary" href="#cadastro">Solicitar teste grátis</a>
         </article>
         <article class="plan popular">
           <span class="popular-tag">Mais escolhido</span>
           <h3>Equipe</h3><p class="plan-who">Para escritório pequeno</p>
-          <div class="price">Sob consulta</div><div class="annual"></div>
+          <div class="list-price">de <s>R$ 297</s> por</div><div class="price">R$ 209 <small>/mês</small></div><div class="annual">2 usuários inclusos · +R$ 69 por usuário extra</div>
           <ul><li>Tudo do Solo para o time</li><li>Funil e carteiras compartilhados</li><li>Metas por vendedor</li><li>Comissões com divisão</li><li>Rotas com check-in</li><li>Permissões por perfil</li></ul>
           <a class="btn btn-primary" href="#cadastro">Solicitar teste grátis</a>
         </article>
         <article class="plan">
           <h3>Escritório</h3><p class="plan-who">Para operação completa e multi-território</p>
-          <div class="price">Sob consulta</div><div class="annual"></div>
+          <div class="list-price">de <s>R$ 790</s> por</div><div class="price"><small>a partir de</small> R$ 549 <small>/mês</small></div><div class="annual">5 usuários inclusos · +R$ 59 por usuário extra</div>
           <ul><li>Tudo do Equipe</li><li>Territórios e funil ilimitados</li><li>Conferência de comissões</li><li>Financeiro completo</li><li>Dashboard e relatórios avançados</li><li>Auditoria e suporte prioritário</li></ul>
           <a class="btn btn-secondary" href="#cadastro">Agendar apresentação</a>
         </article>
@@ -625,6 +627,7 @@
 
 <script>
   const leadForm = document.getElementById('lead-form');
+  fetch('/api/landing/visit', { method: 'POST', keepalive: true }).catch(() => {});
   const leadStatus = document.getElementById('lead-status');
   leadForm.addEventListener('submit', async (event) => {
     event.preventDefault();

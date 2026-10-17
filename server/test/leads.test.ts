@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.ts';
-import { pool } from '../src/db.ts';
+import { one, pool } from '../src/db.ts';
 import { config } from '../src/config.ts';
 
 const run = Date.now();
@@ -99,5 +99,14 @@ describe('códigos de convite (cadastro fechado)', () => {
     const lista = (await app.inject({ method: 'GET', url: '/api/convites', headers: auth(ownerToken) })).json().convites;
     expect(lista.find((c: { codigo: string }) => c.codigo === codigo)).toMatchObject({ org_nome: `Convidado ${run}` });
     expect((await app.inject({ method: 'DELETE', url: `/api/convites/${codigo}`, headers: auth(ownerToken) })).statusCode).toBe(404);
+  });
+
+  it('landing conta visita do dia', async () => {
+    const dia = `(now() AT TIME ZONE 'America/Sao_Paulo')::date`;
+    const before = (await one<{ visitas: number }>(`SELECT visitas FROM landing_visits WHERE dia = ${dia}`))?.visitas ?? 0;
+    const response = await app.inject({ method: 'POST', url: '/api/landing/visit' });
+    expect(response.statusCode).toBe(204);
+    const after = await one<{ visitas: number }>(`SELECT visitas FROM landing_visits WHERE dia = ${dia}`);
+    expect(after!.visitas).toBe(before + 1);
   });
 });

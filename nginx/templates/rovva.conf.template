@@ -46,9 +46,9 @@ server {
     root /usr/share/nginx/landing;
     index index.html;
 
-    # Único endpoint público consumido pela landing. Mantém o formulário
-    # same-origin e deixa validação/rate-limit no Fastify.
-    location = /api/leads {
+    # Únicos endpoints públicos consumidos pela landing (formulário e contador
+    # de visitas). Mantém same-origin e deixa validação/rate-limit no Fastify.
+    location ~ ^/api/(leads|landing/visit)$ {
         proxy_pass http://app:8080;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
