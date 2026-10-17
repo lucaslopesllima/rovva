@@ -40,15 +40,16 @@ export type EditableActivity = {
   company_id: number | null; represented_id: number | null; contact_id: number | null;
 };
 
-export function ActivityCreateModal({ preset, funnel, represented, presetCompanyId, activity, onClose, onSaved }: {
+export function ActivityCreateModal({ preset, funnel, represented, presetCompanyId, presetTipo, presetNumero, activity, onClose, onSaved }: {
   preset: Date; funnel: FunnelCompany[]; represented: RepresentedOption[]; presetCompanyId?: number | null;
+  presetTipo?: string; presetNumero?: string | null;
   activity?: EditableActivity;  // se presente → modo edição (PATCH)
   onClose: () => void; onSaved: () => void;
 }): React.JSX.Element {
   const { can, user } = useAuth();
   const editando = !!activity;
   const [titulo, setTitulo] = useState(activity?.titulo ?? '');
-  const [tipo, setTipo] = useState(activity?.tipo ?? 'tarefa');
+  const [tipo, setTipo] = useState(activity?.tipo ?? presetTipo ?? 'tarefa');
   const [start, setStart] = useState(toLocalInput(activity ? new Date(activity.start_at) : preset));
   const [companyId, setCompanyId] = useState<number | null>(activity ? activity.company_id : (presetCompanyId ?? null));
   const [representedId, setRepresentedId] = useState<number | null>(activity?.represented_id ?? null);
@@ -56,7 +57,7 @@ export function ActivityCreateModal({ preset, funnel, represented, presetCompany
   const [contacts, setContacts] = useState<ContactOption[]>([]);
   const [busy, setBusy] = useState(false);
   // Campos do agendamento de WhatsApp.
-  const [numero, setNumero] = useState('');
+  const [numero, setNumero] = useState(presetNumero ? maskPhone(presetNumero) : '');
   const [mensagem, setMensagem] = useState('');
   // Campos do agendamento de e-mail (remetente sugere o e-mail do usuário logado).
   const [remetente, setRemetente] = useState(user?.email ?? '');

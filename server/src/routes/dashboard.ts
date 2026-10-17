@@ -54,8 +54,10 @@ export function dashboardRoutes(app: FastifyInstance): void {
     const inatOwner = ownerClause(req, q.user_id, 'r.owner_user_id', inatParams);
     const paradoParams: unknown[] = [orgId];
     const paradoOwner = ownerClause(req, q.user_id, 'r.owner_user_id', paradoParams);
+    const semPedidoParams: unknown[] = [orgId];
+    const semPedidoOwner = ownerClause(req, q.user_id, 'o.owner_user_id', semPedidoParams);
 
-    const [funil, vendas, meta, comissoes, agenda, semContato, parados, ranking] = await Promise.all([
+    const [funil, vendas, meta, comissoes, agenda, semContato, parados, semPedido, ranking] = await Promise.all([
       // 1) Funil por stage (negócios ativos: exclui descartados).
       query(
         `SELECT s.id, s.nome, s.ordem,
@@ -131,6 +133,22 @@ export function dashboardRoutes(app: FastifyInstance): void {
          LIMIT 20`,
         paradoParams,
       ),
+      // 5c) Clientes sem pedido há 30+ dias: último pedido válido (enviado em diante)
+      // por empresa. Sem LIMIT — o card mostra os primeiros e o modal "ver todos".
+      // ponytail: lista inteira no payload; paginar se carteira passar de milhares.
+      query(
+        `SELECT o.company_id, c.razao_social, c.nome_fantasia, c.telefone1,
+                (array_agg(o.relationship_id ORDER BY COALESCE(o.faturado_em, o.emitido_em, o.created_at) DESC))[1] AS relationship_id,
+                max(COALESCE(o.faturado_em, o.emitido_em, o.created_at))::date::text AS ultimo_pedido,
+                (current_date - max(COALESCE(o.faturado_em, o.emitido_em, o.created_at))::date)::int AS dias
+         FROM orders o
+         JOIN companies c ON c.id = o.company_id
+         WHERE o.org_id = $1 AND o.status IN ('enviado','faturado','entregue')${semPedidoOwner}
+         GROUP BY o.company_id, c.razao_social, c.nome_fantasia, c.telefone1
+         HAVING max(COALESCE(o.faturado_em, o.emitido_em, o.created_at))::date <= current_date - 30
+         ORDER BY dias DESC, c.razao_social`,
+        semPedidoParams,
+      ),
       // 6) Ranking de vendas do mês por vendedor (consolidado — só admin).
       req.auth!.role === 'admin' && q.user_id === undefined
         ? query(
@@ -160,7 +178,7 @@ export function dashboardRoutes(app: FastifyInstance): void {
         divergentes: comissoes?.divergentes ?? 0,
       },
       agenda,
-      alertas: { sem_contato: semContato, parados },
+      alertas: { sem_contato: semContato, parados, sem_pedido: semPedido },
       ranking,
     };
   });

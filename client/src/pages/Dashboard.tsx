@@ -3,13 +3,16 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.tsx';
 import { useSellers, SellerFilter, sellerLabel } from '../lib/sellers.tsx';
-import { Alert, Badge, Btn, Card, EmptyState, ErrorState, PageHeader, Spinner, StatCard, cn, inputCls } from '../lib/ui.tsx';
+import { Alert, Badge, Btn, Card, EmptyState, ErrorState, Modal, PageHeader, Spinner, StatCard, cn, inputCls } from '../lib/ui.tsx';
 import { brl, brl0, todayStr } from '../lib/format.ts';
+import { ActivityCreateModal } from '../lib/activityModal.tsx';
+import { Icon } from '../lib/icons.tsx';
 
 interface FunilStage { id: number; nome: string; ordem: number; qtd: number; valor: string }
 interface Agenda { id: number; tipo: string; titulo: string; start_at: string; company_id: number | null; razao_social: string | null }
 interface SemContato { id: number; company_id: number; razao_social: string; nome_fantasia: string | null; ultimo_contato: string; dias: number }
 interface Parado { id: number; company_id: number; razao_social: string; nome_fantasia: string | null; stage: string | null; desde: string; dias: number }
+interface SemPedido { company_id: number; razao_social: string; nome_fantasia: string | null; telefone1: string | null; relationship_id: number | null; ultimo_pedido: string; dias: number }
 interface RankRow { user_id: number; nome: string | null; email: string; total: string; qtd: number }
 interface DashboardData {
   competencia: string;
@@ -18,11 +21,42 @@ interface DashboardData {
   vendas: { total: number; qtd: number; meta: number };
   comissoes: { previsto: number; recebido: number; divergentes: number };
   agenda: Agenda[];
-  alertas: { sem_contato: SemContato[]; parados: Parado[] };
+  alertas: { sem_contato: SemContato[]; parados: Parado[]; sem_pedido: SemPedido[] };
   ranking: RankRow[];
 }
 
 const hora = (iso: string): string => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+const dataBR = (d: string): string => d.split('-').reverse().join('/');
+
+const amanhaAs9 = (): Date => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d; };
+
+function SemPedidoList({ rows, onWhats }: { rows: SemPedido[]; onWhats?: (x: SemPedido) => void }): React.JSX.Element {
+  return (
+    <ul className="space-y-1.5">
+      {rows.map((x) => {
+        const nome = x.nome_fantasia || x.razao_social;
+        return (
+          <li key={x.company_id} className="flex items-center justify-between gap-2 text-sm">
+            {x.relationship_id != null
+              ? <Link to={`/funil?relationship_id=${x.relationship_id}`} className="min-w-0 truncate text-ink-700 hover:text-brand-600">{nome}</Link>
+              : <span className="min-w-0 truncate text-ink-700">{nome}</span>}
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="tabnums text-xs text-ink-400">{dataBR(x.ultimo_pedido)}</span>
+              <Badge tone={x.dias >= 90 ? 'danger' : 'warn'}>{x.dias} dias</Badge>
+              {onWhats && (
+                <button type="button" onClick={() => onWhats(x)} aria-label={`Agendar WhatsApp para ${nome}`} title="Agendar WhatsApp"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-emerald-600 hover:bg-emerald-50">
+                  <Icon name="whatsapp" size={16} />
+                </button>
+              )}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 function KpiAction({ allowed, to, children }: { allowed: boolean; to: string; children: ReactNode }): React.JSX.Element {
   const cls = 'block rounded-2xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300';
@@ -39,6 +73,8 @@ export function Dashboard(): React.JSX.Element {
   const [loadError, setLoadError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
   const [refreshing, setRefreshing] = useState(true);
+  const [semPedidoOpen, setSemPedidoOpen] = useState(false);
+  const [whatsFor, setWhatsFor] = useState<SemPedido | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -211,6 +247,35 @@ export function Dashboard(): React.JSX.Element {
               )}
             </Card>
           </div>
+
+          <Card className="p-4 sm:p-5">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-ink-900">Clientes sem pedido</h3>
+              {data.alertas.sem_pedido.length > 0 && (
+                <button type="button" onClick={() => setSemPedidoOpen(true)} className="text-xs font-semibold text-brand-600 hover:underline">
+                  Ver todos ({data.alertas.sem_pedido.length})
+                </button>
+              )}
+            </div>
+            <p className="mb-3 text-xs text-ink-400">Último pedido há 30+ dias, do mais antigo ao mais recente.</p>
+            {data.alertas.sem_pedido.length === 0
+              ? <p className="text-sm text-ink-400">Toda a carteira comprou nos últimos 30 dias.</p>
+              : <SemPedidoList rows={data.alertas.sem_pedido.slice(0, 8)} />}
+          </Card>
+
+          {semPedidoOpen && (
+            <Modal title="Clientes sem pedido" subtitle={`${data.alertas.sem_pedido.length} cliente(s) com último pedido há 30+ dias`}
+              onClose={() => setSemPedidoOpen(false)} width="lg">
+              <SemPedidoList rows={data.alertas.sem_pedido} onWhats={can('whatsapp.schedule') ? setWhatsFor : undefined} />
+            </Modal>
+          )}
+
+          {whatsFor && (
+            <ActivityCreateModal preset={amanhaAs9()} represented={[]} presetTipo="whatsapp"
+              funnel={[{ company_id: Number(whatsFor.company_id), label: whatsFor.nome_fantasia || whatsFor.razao_social }]}
+              presetCompanyId={Number(whatsFor.company_id)} presetNumero={whatsFor.telefone1}
+              onClose={() => setWhatsFor(null)} onSaved={() => setWhatsFor(null)} />
+          )}
 
           {/* Ranking (admin consolidado) — só em conta escritório com equipe. */}
           {isOffice && data.ranking.length > 0 && (

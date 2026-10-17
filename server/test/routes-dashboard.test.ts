@@ -123,4 +123,26 @@ describe('dashboard: funil e alertas', () => {
     expect(hit).toBeDefined();
     expect(hit!.dias).toBeGreaterThanOrEqual(40);
   });
+
+  it('clientes sem pedido: entra com 30+ dias, mais antigo primeiro, recente fica fora', async () => {
+    const velho = await faturarPedido(rep1, 100);
+    const medio = await faturarPedido(rep1, 100);
+    const recente = await faturarPedido(rep1, 100);
+    await query("UPDATE orders SET faturado_em = now() - interval '90 days' WHERE id = $1", [velho]);
+    await query("UPDATE orders SET faturado_em = now() - interval '31 days' WHERE id = $1", [medio]);
+    const cid = async (id: number): Promise<number> =>
+      Number((await query<{ company_id: string }>('SELECT company_id FROM orders WHERE id = $1', [id]))[0]!.company_id);
+    const [cVelho, cMedio, cRecente] = [await cid(velho), await cid(medio), await cid(recente)];
+
+    const d = (await inj(rep1, 'GET', '/api/dashboard')).json() as {
+      alertas: { sem_pedido: { company_id: number; dias: number }[] };
+    };
+    const ids = d.alertas.sem_pedido.map((x) => Number(x.company_id));
+    expect(ids).not.toContain(cRecente);
+    expect(ids.indexOf(cVelho)).toBeGreaterThanOrEqual(0);
+    expect(ids.indexOf(cVelho)).toBeLessThan(ids.indexOf(cMedio));
+
+    const rep2d = (await inj(rep2, 'GET', '/api/dashboard')).json() as { alertas: { sem_pedido: unknown[] } };
+    expect(rep2d.alertas.sem_pedido).toHaveLength(0);
+  });
 });

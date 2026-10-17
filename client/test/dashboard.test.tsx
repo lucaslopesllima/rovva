@@ -25,6 +25,7 @@ const DATA = {
   alertas: {
     sem_contato: [{ id: 2, company_id: 7, razao_social: 'ACME LTDA', nome_fantasia: 'ACME', ultimo_contato: '2020-01-01', dias: 99 }],
     parados: [],
+    sem_pedido: [],
   },
   ranking: [{ user_id: 1, nome: 'Chefe', email: 'a@b.c', total: '1500', qtd: 2 }],
 };
@@ -63,6 +64,7 @@ describe('Dashboard', () => {
       alertas: {
         sem_contato: [],
         parados: [{ id: 3, company_id: 8, razao_social: 'BETA SA', nome_fantasia: null, stage: 'Proposta', desde: '2020-01-01', dias: 45 }],
+        sem_pedido: [],
       },
       ranking: [],
     };
@@ -73,6 +75,29 @@ describe('Dashboard', () => {
     expect(screen.getByText('Tudo em dia.')).toBeInTheDocument();
     expect(screen.getByText('BETA SA')).toBeInTheDocument();
     expect(screen.getByText('45 dias')).toBeInTheDocument();
+    expect(screen.getByText('Toda a carteira comprou nos últimos 30 dias.')).toBeInTheDocument();
+  });
+
+  it('clientes sem pedido: card mostra 8 e "ver todos" abre modal com a lista inteira', async () => {
+    const sem_pedido = Array.from({ length: 10 }, (_, i) => ({
+      company_id: 100 + i, razao_social: `CLIENTE ${i}`, nome_fantasia: null, telefone1: i === 0 ? '11912345678' : null,
+      relationship_id: i === 0 ? 50 : null, ultimo_pedido: '2026-01-15', dias: 120 - i * 10,
+    }));
+    m.get.mockImplementation(async (p: string) => p.startsWith('/api/dashboard') ? { ...DATA, alertas: { ...DATA.alertas, sem_pedido } } : { users: [], contacts: [] });
+    mount();
+    expect(await screen.findByText('CLIENTE 0')).toHaveAttribute('href', '/funil?relationship_id=50');
+    expect(screen.queryByText('CLIENTE 9')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Ver todos (10)' }));
+    expect(await screen.findByText('CLIENTE 9')).toBeInTheDocument();
+    expect(screen.getAllByText('15/01/2026').length).toBeGreaterThan(8);
+    // agendar WhatsApp: abre o modal de atividade já no tipo WhatsApp com o telefone do cliente
+    fireEvent.click(screen.getByRole('button', { name: 'Agendar WhatsApp para CLIENTE 0' }));
+    expect(await screen.findByDisplayValue('(11) 91234-5678')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Texto da mensagem…')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Fechar' }).at(-1)!);
+    await waitFor(() => expect(screen.queryByPlaceholderText('Texto da mensagem…')).not.toBeInTheDocument());
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByText('CLIENTE 9')).not.toBeInTheDocument());
   });
 
   it('troca a competência do mês', async () => {
